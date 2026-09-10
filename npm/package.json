@@ -1,0 +1,14 @@
+{
+  "name": "codemuster",
+  "version": "0.0.1",
+  "description": "CodeMuster: full-coverage codebase audits with a coverage number. Every file answers present. Placeholder release; the CLI ships soon.",
+  "license": "MIT",
+  "author": "Tim Carter",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TSCarterJr/CodeMuster.git"
+  },
+  "homepage": "https://github.com/TSCarterJr/CodeMuster",
+  "keywords": ["code-audit", "code-review", "security", "coverage", "ai", "agent-skill", "claude-code", "codex", "gemini-cli", "opencode"],
+  "files": ["README.md"]
+}
