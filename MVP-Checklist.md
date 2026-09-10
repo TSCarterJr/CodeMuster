@@ -157,4 +157,4 @@ Tasks within a phase run in order unless marked *(parallel)*. Phases run in orde
 | L6 | Shared, versioned lenses (tenancy, a11y, OWASP). | `[ ]` | |
 | L7 | Hosted scheduled scans (Part 2 of `idea.md`). | `[ ]` | Only after L1 has users. |
 | L8 | Monetization conversation. | `[-]` | Deferred by Tim (D22). Remind him after Milestone B. |
-| L9 | npm wrapper package `codemuster`: postinstall downloads the platform binary from the GitHub release so `npx codemuster` works anywhere Node is. Placeholder 0.0.1 in `npm/` reserves the name. | `[ ]` | D23. Also reserve the NuGet id `CodeMuster` with the first tool push in T12.1. |
+| L9 | npm wrapper package `codemuster`: postinstall downloads the platform binary from the GitHub release so `npx codemuster` works anywhere Node is. Placeholder 0.0.1 in `npm/` reserves the name. | `[ ]` | D23. Name reserved: `codemuster@0.0.1` placeholder published to npm by tim on 2026-09-10 (README only, public). Domain `codemuster.com` and GitHub org/repo also held. Next real release must be >= 0.1.0. Still to reserve: NuGet id `CodeMuster` with the first tool push in T12.1. |
