@@ -14,7 +14,7 @@ Tasks within a phase run in order unless marked *(parallel)*. Phases run in orde
 
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
-| T0.1 | `git init`, MIT license, `.gitignore` (bin, obj, `.codemuster/ledger.db`, `node_modules`), `.editorconfig`, `Directory.Build.props` with `Nullable`, `TreatWarningsAsErrors`, `LangVersion latest`, `InvariantGlobalization`. | `[x]` | claude 2026-09-10 | Remote: https://github.com/TSCarterJr/CodeMuster (private until release). |
+| T0.1 | `git init`, MIT license, `.gitignore` (bin, obj, `.codemuster/ledger.db`, `node_modules`), `.editorconfig`, `.gitattributes` (LF everywhere), `Directory.Build.props` with `Nullable`, `TreatWarningsAsErrors`, `LangVersion latest`, `InvariantGlobalization`. | `[x]` | claude 2026-09-10 | Remote: https://github.com/TSCarterJr/CodeMuster (private until release). |
 | T0.2 | Solution with the six source projects and six test projects from the AGENTS.md layout, all `net10.0`, xunit. Empty `Program.cs` that returns exit code 2 with usage text. | `[ ]` | | |
 | T0.3 | **Spike: SQLite + Roslyn in a self-contained build on all three OSes.** Console app opens a SQLite DB, writes one row, loads `fixtures/mixed-repo` solution with MSBuildWorkspace, resolves one invocation to its callee. Published `-r win-x64`, `osx-arm64`, `linux-x64` self-contained single-file. Record binary size and startup time in Notes. | `[ ]` | | This de-risks D02/D03/D08. If MSBuildWorkspace fails in single-file, fall back to framework-dependent global tool as the only route and record a new decision. |
 | T0.4 | CI: `.github/workflows/test.yml` runs `dotnet test` on `ubuntu-latest`, `windows-latest`, `macos-latest`. | `[ ]` | | Node must be on the runner for T8. |
