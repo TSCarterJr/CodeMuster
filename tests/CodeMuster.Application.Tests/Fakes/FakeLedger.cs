@@ -70,6 +70,18 @@ public sealed class FakeLedger : ILedger
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyList<UnitFinding>> GetCurrentFindingsAsync(CancellationToken cancellationToken)
+    {
+        var live = Units.Where(u => u.Status != UnitStatus.Retired).Select(u => u.Id).ToHashSet();
+        var current = Analyses
+            .Where(a => a.Analysis.Succeeded && live.Contains(a.Analysis.UnitId))
+            .GroupBy(a => a.Analysis.UnitId)
+            .Select(g => g.Last())
+            .SelectMany(a => a.Findings.Select(f => new UnitFinding(a.Analysis.UnitId, a.Analysis.Fingerprint, f)))
+            .ToList();
+        return Task.FromResult<IReadOnlyList<UnitFinding>>(current);
+    }
+
     public Task RecordRunAsync(Run run, CancellationToken cancellationToken)
     {
         Runs.Add(run);

@@ -27,6 +27,9 @@ public interface ILedger
     /// <summary>Stores an analysis and its findings atomically and moves the unit to Done (with summary, summary hash, and lens hash) or Failed.</summary>
     Task RecordAnalysisAsync(Analysis analysis, IReadOnlyList<Finding> findings, CancellationToken cancellationToken);
 
+    /// <summary>The findings of the most recent successful analysis of every non-retired unit, each with the fingerprint that analysis was made against, so a stale unit's findings still show and can be flagged.</summary>
+    Task<IReadOnlyList<UnitFinding>> GetCurrentFindingsAsync(CancellationToken cancellationToken);
+
     /// <summary>Appends a run.</summary>
     Task RecordRunAsync(Run run, CancellationToken cancellationToken);
 

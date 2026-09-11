@@ -74,7 +74,7 @@ Tasks within a phase run in order unless marked *(parallel)*. Phases run in orde
 
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
-| T6.1 | `Report` use case, markdown: coverage header (analyzed/total at commit, stale, low fidelity), findings grouped by severity then path, unit summaries as an inventory table. **Tests first:** golden markdown for a seeded ledger. | `[ ]` | | |
+| T6.1 | `Report` use case, markdown: coverage header (analyzed/total at commit, stale, low fidelity), findings grouped by severity then path, unit summaries as an inventory table. **Tests first:** golden markdown for a seeded ledger. | `[x]` | claude 2026-09-11 | Adds `ILedger.GetCurrentFindingsAsync`: findings of the latest successful analysis per non-retired unit, with the fingerprint they were made against; a finding whose fingerprint no longer matches its unit is marked stale in the report. Severities in fixed order, empty ones omitted; units table ordered by key. |
 | T6.2 | CLI `report [--out file]`. **Tests first (e2e):** after `run --agent fake`, report contains the planted findings. | `[ ]` | | SARIF is a later task (L2). |
 
 **Milestone A: file-mode v0.** Everything above works end to end on `fixtures/mixed-repo` on three OSes with `--agent fake`, and once for real with `--agent claude`.

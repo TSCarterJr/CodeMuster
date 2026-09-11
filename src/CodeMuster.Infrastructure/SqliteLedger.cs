@@ -80,6 +80,8 @@ public sealed class SqliteLedger : ILedger, IDisposable
 
     private const string RunColumns = "started_at, head_commit, files_included, files_excluded, units_total, resolution_rate";
 
+    private const string FindingColumns = "path, line_start, line_end, severity, category, claim, evidence, confidence, lens_id";
+
     private const int InListChunk = 500;
 
     private readonly SqliteConnection _connection;
@@ -268,8 +270,8 @@ public sealed class SqliteLedger : ILedger, IDisposable
         insertAnalysis.Parameters.AddWithValue("$error", Db(analysis.Error));
         var analysisId = Convert.ToInt64(await insertAnalysis.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
 
-        await using var insertFinding = CreateCommand("""
-            INSERT INTO findings (analysis_id, path, line_start, line_end, severity, category, claim, evidence, confidence, lens_id)
+        await using var insertFinding = CreateCommand($"""
+            INSERT INTO findings (analysis_id, {FindingColumns})
             VALUES ($analysis_id, $path, $line_start, $line_end, $severity, $category, $claim, $evidence, $confidence, $lens_id)
             """);
         foreach (var finding in findings)
@@ -299,6 +301,21 @@ public sealed class SqliteLedger : ILedger, IDisposable
         await update.ExecuteNonQueryAsync(cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<UnitFinding>> GetCurrentFindingsAsync(CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand($"""
+            SELECT a.unit_id, a.fingerprint, {FindingColumns}
+            FROM findings f
+            JOIN analyses a ON a.id = f.analysis_id
+            JOIN (SELECT unit_id, MAX(id) AS id FROM analyses WHERE succeeded = 1 GROUP BY unit_id) latest ON latest.id = a.id
+            JOIN units u ON u.id = a.unit_id
+            WHERE u.status != $retired
+            ORDER BY f.id
+            """);
+        command.Parameters.AddWithValue("$retired", Name(UnitStatus.Retired));
+        return await ReadAllAsync(command, ReadUnitFinding, cancellationToken);
     }
 
     public async Task RecordRunAsync(Run run, CancellationToken cancellationToken)
@@ -367,6 +384,11 @@ public sealed class SqliteLedger : ILedger, IDisposable
 
     private static UnitMember ReadMember(SqliteDataReader reader) =>
         new(reader.GetString(0), reader.GetString(1), Text(reader, 2), reader.GetString(3), reader.GetInt32(4));
+
+    private static UnitFinding ReadUnitFinding(SqliteDataReader reader) => new(
+        reader.GetString(0), reader.GetString(1),
+        new Finding(reader.GetString(2), reader.GetInt32(3), reader.GetInt32(4), Enum.Parse<Severity>(reader.GetString(5), ignoreCase: true),
+            reader.GetString(6), reader.GetString(7), reader.GetString(8), reader.GetDouble(9), reader.GetString(10)));
 
     private static Run ReadRun(SqliteDataReader reader) => new(
         reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4),
