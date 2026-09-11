@@ -10,7 +10,9 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
     private const string VerifyInstructions =
         "An earlier analysis reported the finding below. Try to refute it: check the claim against the code under Files and follow the calls it depends on. "
         + "Answer refuted when the code shows the claim is wrong or the defect cannot happen, confirmed only when the code shows the defect is real, "
-        + "and unsure when the code shown cannot settle it.";
+        + "and unsure when the code shown cannot settle it. "
+        + "A defect in code nothing can reach cannot happen: answer refuted when the repository shows nothing calls that code, "
+        + "and count code reached through dependency injection, reflection, routing, or a library's public API as reachable.";
 
     private sealed record Part(UnitMember Member, string Text, bool Outlined);
 

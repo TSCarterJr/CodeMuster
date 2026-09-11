@@ -33,7 +33,7 @@ The CLI owns the state and the loop; you analyze one unit at a time, in this ses
 }
 ```
 
-   - A pack whose header says `- kind: verify` asks you to refute one earlier finding instead of auditing. Approach it as a skeptic who did not write the finding: check the claim against the code, and answer in exactly this shape, where `verdict` is confirmed, refuted, or unsure:
+   - A pack whose header says `- kind: verify` asks you to refute one earlier finding instead of auditing. Approach it as a skeptic who did not write the finding: check the claim against the code, refute a defect in code nothing can reach (dependency injection, reflection, routing, and a library's public API count as reaching it), and answer in exactly this shape, where `verdict` is confirmed, refuted, or unsure:
 
 ```json
 {
