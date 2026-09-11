@@ -13,7 +13,8 @@ public static class SliceBuilder
     public static IReadOnlyList<PlannedUnit> Build(CompositeMap mapped, IReadOnlyList<FileRecord> included)
     {
         var paths = included.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
-        var symbols = mapped.Map.Symbols.ToDictionary(s => s.Id, StringComparer.Ordinal);
+        var unique = mapped.Map.Symbols.DistinctBy(s => s.Id, StringComparer.Ordinal).ToList();
+        var symbols = unique.ToDictionary(s => s.Id, StringComparer.Ordinal);
         var calls = mapped.Map.Edges.ToLookup(e => e.From, e => e.To, StringComparer.Ordinal);
         var slices = mapped.Map.EntryPoints
             .DistinctBy(e => e.SymbolId, StringComparer.Ordinal)
@@ -22,7 +23,7 @@ public static class SliceBuilder
             .ToList();
 
         var reached = slices.SelectMany(s => s.Members).Select(m => m.Symbol).ToHashSet(StringComparer.Ordinal);
-        var byPath = mapped.Map.Symbols.ToLookup(s => s.Path, StringComparer.Ordinal);
+        var byPath = unique.ToLookup(s => s.Path, StringComparer.Ordinal);
         var rest = included
             .Select(file => Unsliced(file, byPath[file.Path].ToList(), reached, mapped.FailedLanguages.Contains(file.Language)))
             .OfType<PlannedUnit>();

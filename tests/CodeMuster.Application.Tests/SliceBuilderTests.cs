@@ -39,6 +39,18 @@ public class SliceBuilderTests
     }
 
     [Fact]
+    public void ASymbolReportedTwice_IsPlannedOnce()
+    {
+        var map = Map();
+        map = map with { Symbols = [.. map.Symbols, map.Symbols.Single(s => s.Id == ArchiveQuote)] };
+
+        var units = Build(map);
+
+        Assert.Single(SliceOf(map, ControllerListQuotes).Members, m => m.Symbol == MoneyFormat);
+        Assert.Single(units.Single(u => u.Id == UnitIds.Orphan(ServicePath)).Members, m => m.Symbol == ArchiveQuote);
+    }
+
+    [Fact]
     public void EveryEntryPoint_GetsOneSlice_AndTheDeadMethodIsInNone()
     {
         var map = Map();
