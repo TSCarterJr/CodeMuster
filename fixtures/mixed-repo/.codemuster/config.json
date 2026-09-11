@@ -1,0 +1,10 @@
+{
+  "lenses": [
+    {
+      "id": "default",
+      "instructions": "Audit every file in this pack for defects a careful reviewer would flag: incorrect logic, unhandled failure paths, missing authorization or tenant scoping, injection and unsafe rendering, leaked secrets, and concurrency mistakes. Report only what the code shown evidences, cite exact lines, and prefer fewer high-confidence findings over speculation.",
+      "globs": [],
+      "languages": []
+    }
+  ]
+}

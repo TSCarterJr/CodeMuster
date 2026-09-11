@@ -1,6 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
-
 namespace CodeMuster.Domain;
 
 /// <summary>Computes the fingerprint that the members of a unit hash to, independent of member order.</summary>
@@ -12,7 +9,6 @@ public static class Fingerprints
         var lines = members
             .Select(m => $"{m.Path}\0{m.Symbol}\0{m.MemberHash}")
             .Order(StringComparer.Ordinal);
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', lines)));
-        return Convert.ToHexStringLower(bytes);
+        return Hashing.Sha256Hex(string.Join('\n', lines));
     }
 }
