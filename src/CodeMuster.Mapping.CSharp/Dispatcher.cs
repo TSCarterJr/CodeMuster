@@ -20,7 +20,7 @@ internal sealed class Dispatcher(Solution solution, IReadOnlyDictionary<string, 
 
     private async Task<IReadOnlyList<(string To, EdgeKind Kind)>> FindAsync(IMethodSymbol method, string methodId, CancellationToken cancellationToken)
     {
-        if (method.IsStatic || method.ContainingType is not { } type)
+        if (method.IsStatic || method.ContainingType is not { } type || !method.Locations.Any(location => location.IsInSource))
         {
             return [];
         }

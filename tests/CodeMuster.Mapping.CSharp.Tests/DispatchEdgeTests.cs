@@ -35,6 +35,39 @@ public class DispatchEdgeTests
         """;
 
     [Fact]
+    public async Task Calls_to_members_declared_outside_the_solution_fan_out_to_nothing()
+    {
+        var map = await Inline.MapAsync("""
+            using System;
+
+            namespace N;
+
+            public class Money
+            {
+                public override string ToString() { return "money"; }
+            }
+
+            public class Handle : IDisposable
+            {
+                public void Dispose() { }
+            }
+
+            public class Report
+            {
+                public string Render(object value, IDisposable resource)
+                {
+                    resource.Dispose();
+                    return value.ToString() ?? "";
+                }
+            }
+            """);
+
+        Assert.Contains(map.Symbols, symbol => symbol.Id == "M:N.Money.ToString");
+        Assert.Contains(map.Symbols, symbol => symbol.Id == "M:N.Handle.Dispose");
+        Assert.DoesNotContain(map.Edges, edge => edge.From == "M:N.Report.Render(System.Object,System.IDisposable)");
+    }
+
+    [Fact]
     public async Task Interface_calls_with_no_binding_reach_every_implementation()
     {
         var map = await Inline.MapAsync("""
