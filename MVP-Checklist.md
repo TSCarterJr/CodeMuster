@@ -143,7 +143,7 @@ Reached 2026-09-11. CI runs the whole loop with `--agent fake` on Ubuntu, Window
 |---|---|---|---|---|
 | T13.1 | `doctor` on ToolbagCRM; fix whatever it reports until both mappers are `working`. | `[ ]` | | |
 | T13.2 | Scan ToolbagCRM; record resolution rate, slice count, orphan count, top unresolved names in Notes. | `[ ]` | | |
-| T13.3 | One lens (tenant scoping) on one subtree with `run --agent claude`; record tokens, wall time, findings, verify results. | `[ ]` | | Decides budget defaults and whether verify is good enough. |
+| T13.3 | One lens (tenant scoping) on one subtree with `run --agent claude`; record tokens, wall time, findings, verify results. | `[ ]` | | Decides budget defaults and whether verify is good enough. Nothing scopes a run to one subtree yet: `run` has no `--lens` (removed, see T5.3), and a lens's globs do not remove units, so every file outside them is still sent to the agent with no instructions. D04 lists exclusions in `config.json` but no task builds them; add one before this pass. |
 | T13.4 | Read every finding by hand and record precision in Notes. Feed lens and budget changes back as tasks. | `[ ]` | | |
 
 ---
