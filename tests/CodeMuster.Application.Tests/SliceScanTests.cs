@@ -29,6 +29,15 @@ public class SliceScanTests
         Assert.Equal(DoneOutcome.Recorded, result.Outcome);
     }
 
+    private async Task ScanAndMarkEveryUnitDoneAsync()
+    {
+        await ScanAsync();
+        foreach (var unit in ledger.Units.ToList())
+        {
+            await MarkDoneAsync(unit.Id);
+        }
+    }
+
     private IEnumerable<string> IdsWith(UnitStatus status) =>
         ledger.Units.Where(u => u.Status == status).Select(u => u.Id).Order(StringComparer.Ordinal);
 
@@ -96,6 +105,33 @@ public class SliceScanTests
         await ScanAsync(new Config([before.Lenses[0], before.Lenses[1] with { Instructions = "Check rounding and currency." }]));
 
         Assert.Equal(new[] { ControllerGetQuote, ControllerListQuotes, ExecuteAsync }.Select(UnitIds.Slice).Order(StringComparer.Ordinal), IdsWith(UnitStatus.Stale));
+    }
+
+    [Fact]
+    public async Task EditingTheSharedHelper_MarksEverySliceThatContainsIt_Stale_AndNothingElse()
+    {
+        await ScanAndMarkEveryUnitDoneAsync();
+        csharp.Map = WithBodyHash(CSharp(), MoneyFormat, "body:edited");
+        tree.Add(MoneyPath, "content of an edited Money.cs");
+
+        var result = await ScanAsync();
+
+        Assert.Equal(new[] { ControllerGetQuote, ControllerListQuotes, ExecuteAsync }.Select(UnitIds.Slice).Order(StringComparer.Ordinal), IdsWith(UnitStatus.Stale));
+        Assert.Equal((3, 0), (result.UnitsStale, result.UnitsCreated));
+        Assert.Equal(14, IdsWith(UnitStatus.Done).Count());
+    }
+
+    [Fact]
+    public async Task EditingTheDeadMethod_MarksNoSliceStale_OnlyItsOrphan()
+    {
+        await ScanAndMarkEveryUnitDoneAsync();
+        csharp.Map = WithBodyHash(CSharp(), ArchiveQuote, "body:edited");
+        tree.Add(ServicePath, "content of an edited QuoteService.cs");
+
+        var result = await ScanAsync();
+
+        Assert.Equal(new[] { UnitIds.Orphan(ServicePath) }, IdsWith(UnitStatus.Stale));
+        Assert.Equal((1, 0), (result.UnitsStale, result.UnitsCreated));
     }
 
     [Fact]

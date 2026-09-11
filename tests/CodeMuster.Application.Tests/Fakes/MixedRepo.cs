@@ -139,6 +139,9 @@ public static class MixedRepo
             []);
     }
 
+    public static CodeMap WithBodyHash(CodeMap map, string symbolId, string bodyHash) =>
+        map with { Symbols = map.Symbols.Select(s => s.Id == symbolId ? s with { BodyHash = bodyHash } : s).ToList() };
+
     public static IReadOnlyList<FileRecord> Included() =>
         TrackedPaths
             .Where(path => Exclusions.Reason(path, false) is null)
