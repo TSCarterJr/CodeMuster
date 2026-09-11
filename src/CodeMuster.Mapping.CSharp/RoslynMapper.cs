@@ -1,4 +1,3 @@
-using System.Globalization;
 using CodeMuster.Domain;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
@@ -83,8 +82,7 @@ public sealed class RoslynMapper : ICodeMapper
         {
             if (value.Operation == ProjectLoadOperation.Resolve)
             {
-                var project = RepoPath.Normalize(Path.GetRelativePath(repoRoot, value.FilePath));
-                progress.Report(string.Create(CultureInfo.InvariantCulture, $"loaded {project} in {value.ElapsedTime.TotalSeconds:0.0} s"));
+                progress.Report($"loaded {RepoPath.Normalize(Path.GetRelativePath(repoRoot, value.FilePath))}");
             }
         }
     }

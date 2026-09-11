@@ -11,7 +11,7 @@ public class RoslynMapperProgressTests
         await new RoslynMapper().MapAsync(copy.Root, Fixtures.IncludedPaths(copy.Root), progress, CancellationToken.None);
 
         Assert.Equal("loading MixedRepo.sln", progress.Messages[0]);
-        Assert.Contains(progress.Messages, message => message.StartsWith("loaded src/MixedRepo.Api/MixedRepo.Api.csproj in ", StringComparison.Ordinal));
+        Assert.Contains("loaded src/MixedRepo.Api/MixedRepo.Api.csproj", progress.Messages);
         Assert.Contains("finding dependency injection bindings", progress.Messages);
         Assert.Contains(progress.Messages, message => System.Text.RegularExpressions.Regex.IsMatch(message, @"^reading MixedRepo\.Api, \d+ files$"));
         Assert.Matches(@"^mapped (\d+)/\1 files$", progress.Messages[^1]);
