@@ -21,6 +21,14 @@ public class NextTests
         return unit;
     }
 
+    private Unit AddUnit(string id, UnitKind kind, string key, params UnitMember[] members)
+    {
+        var unit = new Unit(id, kind, key, Fingerprints.Compute(members), UnitStatus.Pending, Fidelity.Full, null, null, null);
+        ledger.Units.Add(unit);
+        ledger.Members.AddRange(members);
+        return unit;
+    }
+
     private Task<IReadOnlyList<UnitPack>> RunAsync(int batch = 1, Config? config = null) =>
         new Next(ledger, tree, config ?? Config.Default).RunAsync(batch, CancellationToken.None);
 
@@ -36,6 +44,7 @@ public class NextTests
 
             - unit: file:src/A.cs
             - kind: file
+            - key: src/A.cs
             - fingerprint: {{unit.Fingerprint}}
             - lenses: default
 
@@ -224,5 +233,72 @@ public class NextTests
         var headings = pack.Markdown.Split('\n').Where(l => l.StartsWith("### src/", StringComparison.Ordinal)).ToList();
         Assert.Equal(["### src/B.cs (csharp)", "### src/A.cs (csharp)", "### src/Z.cs (csharp)"], headings);
         Assert.Contains("- kind: slice\n", pack.Markdown);
+    }
+
+    [Fact]
+    public async Task SymbolMember_ShowsOnlyItsLines_NumberedFromTheFile()
+    {
+        tree.Add("src/Quotes.cs", string.Join('\n', Enumerable.Range(1, 12).Select(i => $"line {i}")));
+        const string id = "slice:M:Q.Get";
+        AddUnit(id, UnitKind.Slice, "GET /quotes", new UnitMember(id, "src/Quotes.cs", "M:Q.Get", "h", 0, new LineRange(9, 11), "class Q\nvoid Get()"));
+
+        var pack = Assert.Single(await RunAsync());
+
+        Assert.Contains("- key: GET /quotes\n", pack.Markdown);
+        Assert.Contains("### src/Quotes.cs :: M:Q.Get (csharp)\n\nlines 9-11\n\n```csharp\n 9 | line 9\n10 | line 10\n11 | line 11\n```\n", pack.Markdown);
+        Assert.DoesNotContain("line 8", pack.Markdown);
+        Assert.DoesNotContain("line 12", pack.Markdown);
+        Assert.DoesNotContain("- outlined:", pack.Markdown);
+    }
+
+    [Fact]
+    public async Task Budget_KeepsTheEntryPointWhole_AndOutlinesFartherMembersToTheirSignature()
+    {
+        tree.Add("src/Api.cs", "entry " + new string('x', 400)).Add("src/Svc.cs", "helper body").Add("src/Db.cs", "leaf body");
+        const string id = "slice:M:Api.Get";
+        AddUnit(id, UnitKind.Slice, "GET /x",
+            new UnitMember(id, "src/Api.cs", "M:Api.Get", "h1", 0, new LineRange(1, 1), "class Api\nvoid Get()"),
+            new UnitMember(id, "src/Svc.cs", "M:Svc.Run", "h2", 1, new LineRange(1, 1), "class Svc\nvoid Run()"),
+            new UnitMember(id, "src/Db.cs", "M:Db.Load", "h3", 2, new LineRange(1, 1), "class Db\nvoid Load()"));
+
+        var pack = Assert.Single(await RunAsync(config: Config.Default with { SliceTokenBudget = 10 }));
+
+        Assert.Contains("- outlined: 2 of 3 members\n", pack.Markdown);
+        Assert.Contains("### src/Api.cs :: M:Api.Get (csharp)\n\nline 1\n\n```csharp\n1 | entry xxxx", pack.Markdown);
+        Assert.Contains("### src/Svc.cs :: M:Svc.Run (csharp)\n\nline 1, outlined to its signature to fit the token budget\n\n```csharp\nclass Svc\nvoid Run()\n```\n", pack.Markdown);
+        Assert.Contains("### src/Db.cs :: M:Db.Load (csharp)\n\nline 1, outlined to its signature to fit the token budget\n\n```csharp\nclass Db\nvoid Load()\n```\n", pack.Markdown);
+        Assert.DoesNotContain("helper body", pack.Markdown);
+        Assert.DoesNotContain("leaf body", pack.Markdown);
+    }
+
+    [Fact]
+    public async Task Budget_OutlinesEveryMemberAfterTheFirstOneThatDoesNotFit()
+    {
+        tree.Add("src/E.cs", "e").Add("src/A.cs", "a body").Add("src/B.cs", new string('b', 200)).Add("src/C.cs", "c");
+        const string id = "slice:M:E.Run";
+        AddUnit(id, UnitKind.Slice, "GET /e",
+            new UnitMember(id, "src/E.cs", "M:E.Run", "he", 0, new LineRange(1, 1), "class E\nvoid Run()"),
+            new UnitMember(id, "src/A.cs", "M:A.Run", "ha", 1, new LineRange(1, 1), "class A\nvoid Run()"),
+            new UnitMember(id, "src/B.cs", "M:B.Run", "hb", 1, new LineRange(1, 1), "class B\nvoid Run()"),
+            new UnitMember(id, "src/C.cs", "M:C.Run", "hc", 2, new LineRange(1, 1), "class C\nvoid Run()"));
+
+        var pack = Assert.Single(await RunAsync(config: Config.Default with { SliceTokenBudget = 10 }));
+
+        Assert.Contains("- outlined: 2 of 4 members\n", pack.Markdown);
+        Assert.Contains("```csharp\n1 | a body\n```", pack.Markdown);
+        Assert.Contains("### src/B.cs :: M:B.Run (csharp)\n\nline 1, outlined", pack.Markdown);
+        Assert.Contains("### src/C.cs :: M:C.Run (csharp)\n\nline 1, outlined", pack.Markdown);
+    }
+
+    [Fact]
+    public async Task SymbolMember_ShowsTheLinesThatRemain_WhenTheFileShrankSinceTheScan()
+    {
+        tree.Add("src/A.cs", "line 1\nline 2");
+        const string id = "orphan:src/A.cs";
+        AddUnit(id, UnitKind.Orphan, "src/A.cs", new UnitMember(id, "src/A.cs", "M:A.Run", "h", 0, new LineRange(2, 5), "class A\nvoid Run()"));
+
+        var pack = Assert.Single(await RunAsync());
+
+        Assert.Contains("lines 2-5\n\n```csharp\n2 | line 2\n```\n", pack.Markdown);
     }
 }
