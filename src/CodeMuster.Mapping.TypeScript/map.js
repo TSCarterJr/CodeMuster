@@ -7,8 +7,24 @@ const chunks = [];
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => chunks.push(chunk));
 process.stdin.on('end', () => {
-  process.stdout.write(JSON.stringify(mapRepo(JSON.parse(chunks.join('')))));
+  const request = JSON.parse(chunks.join(''));
+  const missing = request.tsconfigs.find((tsconfig) => typeScriptPath(request.repo_root, tsconfig) === undefined);
+  if (missing !== undefined) {
+    process.stderr.write(`typescript was not found for ${missing}; run npm ci --prefix ${path.posix.dirname(missing)}\n`);
+    process.exitCode = 1;
+    return;
+  }
+
+  process.stdout.write(JSON.stringify(mapRepo(request)));
 });
+
+function typeScriptPath(repoRoot, tsconfig) {
+  try {
+    return require.resolve('typescript', { paths: [path.dirname(path.resolve(repoRoot, tsconfig))] });
+  } catch {
+    return undefined;
+  }
+}
 
 function mapRepo(request) {
   const repoRoot = path.resolve(request.repo_root);
@@ -23,7 +39,7 @@ function mapRepo(request) {
 
   for (const tsconfig of request.tsconfigs) {
     const configPath = path.join(repoRoot, tsconfig);
-    const ts = require(require.resolve('typescript', { paths: [path.dirname(configPath)] }));
+    const ts = require(typeScriptPath(repoRoot, tsconfig));
     const config = ts.readConfigFile(configPath, ts.sys.readFile).config;
     const parsed = ts.parseJsonConfigFileContent(config, ts.sys, path.dirname(configPath), undefined, configPath);
     const program = ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options });

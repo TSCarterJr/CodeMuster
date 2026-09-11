@@ -2,4 +2,10 @@
   <ItemGroup>
     <ProjectReference Include="../CodeMuster.Domain/CodeMuster.Domain.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="map.js" LogicalName="map.js" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="CodeMuster.Mapping.TypeScript.Tests" />
+  </ItemGroup>
 </Project>
