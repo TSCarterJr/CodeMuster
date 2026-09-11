@@ -28,6 +28,11 @@ public static class Exclusions
         }
 
         var normalized = RepoPath.Normalize(path);
+        if (normalized.StartsWith(".codemuster/", StringComparison.Ordinal))
+        {
+            return "tool-config";
+        }
+
         var slash = normalized.LastIndexOf('/');
         string[] directories = slash < 0 ? [] : normalized[..slash].Split('/');
         var name = normalized[(slash + 1)..];
