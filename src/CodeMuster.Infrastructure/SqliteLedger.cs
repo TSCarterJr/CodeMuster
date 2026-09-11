@@ -71,6 +71,9 @@ public sealed class SqliteLedger : ILedger, IDisposable
             lens_id TEXT NOT NULL);
         """;
 
+    private const string FileColumns =
+        "path, language, content_hash, size, mtime, first_seen, last_seen, last_commit, last_commit_at, excluded_reason, deleted_at, summary, summary_hash";
+
     private readonly SqliteConnection _connection;
 
     private SqliteLedger(SqliteConnection connection)
@@ -114,11 +117,45 @@ public sealed class SqliteLedger : ILedger, IDisposable
         return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
     }
 
-    public Task<IReadOnlyList<FileRecord>> GetFilesAsync(CancellationToken cancellationToken) =>
-        throw new NotImplementedException();
+    public async Task<IReadOnlyList<FileRecord>> GetFilesAsync(CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand($"SELECT {FileColumns} FROM files ORDER BY path");
+        return await ReadAllAsync(command, ReadFile, cancellationToken);
+    }
 
-    public Task UpsertFilesAsync(IReadOnlyList<FileRecord> files, CancellationToken cancellationToken) =>
-        throw new NotImplementedException();
+    public async Task UpsertFilesAsync(IReadOnlyList<FileRecord> files, CancellationToken cancellationToken)
+    {
+        await using var transaction = await _connection.BeginTransactionAsync(cancellationToken);
+        await using var command = CreateCommand($"""
+            INSERT INTO files ({FileColumns})
+            VALUES ($path, $language, $content_hash, $size, $mtime, $first_seen, $last_seen, $last_commit, $last_commit_at, $excluded_reason, $deleted_at, $summary, $summary_hash)
+            ON CONFLICT(path) DO UPDATE SET
+                language = excluded.language, content_hash = excluded.content_hash, size = excluded.size, mtime = excluded.mtime,
+                first_seen = excluded.first_seen, last_seen = excluded.last_seen, last_commit = excluded.last_commit,
+                last_commit_at = excluded.last_commit_at, excluded_reason = excluded.excluded_reason, deleted_at = excluded.deleted_at,
+                summary = excluded.summary, summary_hash = excluded.summary_hash
+            """);
+        foreach (var file in files)
+        {
+            command.Parameters.Clear();
+            command.Parameters.AddWithValue("$path", file.Path);
+            command.Parameters.AddWithValue("$language", file.Language);
+            command.Parameters.AddWithValue("$content_hash", file.ContentHash);
+            command.Parameters.AddWithValue("$size", file.Size);
+            command.Parameters.AddWithValue("$mtime", file.Mtime);
+            command.Parameters.AddWithValue("$first_seen", file.FirstSeen);
+            command.Parameters.AddWithValue("$last_seen", file.LastSeen);
+            command.Parameters.AddWithValue("$last_commit", Db(file.LastCommit));
+            command.Parameters.AddWithValue("$last_commit_at", Db(file.LastCommitAt));
+            command.Parameters.AddWithValue("$excluded_reason", Db(file.ExcludedReason));
+            command.Parameters.AddWithValue("$deleted_at", Db(file.DeletedAt));
+            command.Parameters.AddWithValue("$summary", Db(file.Summary));
+            command.Parameters.AddWithValue("$summary_hash", Db(file.SummaryHash));
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
 
     public Task<IReadOnlyList<Unit>> GetUnitsAsync(CancellationToken cancellationToken) =>
         throw new NotImplementedException();
@@ -168,4 +205,24 @@ public sealed class SqliteLedger : ILedger, IDisposable
         command.CommandText = sql;
         return command;
     }
+
+    private static async Task<IReadOnlyList<T>> ReadAllAsync<T>(SqliteCommand command, Func<SqliteDataReader, T> read, CancellationToken cancellationToken)
+    {
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var rows = new List<T>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(read(reader));
+        }
+
+        return rows;
+    }
+
+    private static FileRecord ReadFile(SqliteDataReader reader) => new(
+        reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3), reader.GetString(4), reader.GetString(5), reader.GetString(6),
+        Text(reader, 7), Text(reader, 8), Text(reader, 9), Text(reader, 10), Text(reader, 11), Text(reader, 12));
+
+    private static string? Text(SqliteDataReader reader, int ordinal) => reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+
+    private static object Db(object? value) => value ?? DBNull.Value;
 }
