@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>codemuster</AssemblyName>
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../CodeMuster.Application/CodeMuster.Application.csproj" />
+    <ProjectReference Include="../CodeMuster.Infrastructure/CodeMuster.Infrastructure.csproj" />
+    <ProjectReference Include="../CodeMuster.Mapping.CSharp/CodeMuster.Mapping.CSharp.csproj" />
+    <ProjectReference Include="../CodeMuster.Mapping.TypeScript/CodeMuster.Mapping.TypeScript.csproj" />
+  </ItemGroup>
+</Project>

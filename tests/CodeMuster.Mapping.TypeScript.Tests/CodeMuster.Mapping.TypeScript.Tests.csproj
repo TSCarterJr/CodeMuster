@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/CodeMuster.Mapping.TypeScript/CodeMuster.Mapping.TypeScript.csproj" />
+  </ItemGroup>
+</Project>

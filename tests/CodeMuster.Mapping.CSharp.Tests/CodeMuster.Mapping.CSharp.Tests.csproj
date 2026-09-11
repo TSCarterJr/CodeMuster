@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/CodeMuster.Mapping.CSharp/CodeMuster.Mapping.CSharp.csproj" />
+  </ItemGroup>
+</Project>
