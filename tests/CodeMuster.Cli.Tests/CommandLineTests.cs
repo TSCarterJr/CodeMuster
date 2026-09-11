@@ -30,6 +30,17 @@ public class CommandLineTests
     }
 
     [Fact]
+    public void Parse_KnownFlags_TakeNoValue()
+    {
+        var command = CommandLine.Parse(["init", "--yes", "--no-gitignore"]);
+
+        Assert.NotNull(command);
+        Assert.Equal(["no-gitignore", "yes"], command.Flags.Order());
+        Assert.Empty(command.Options);
+        Assert.Empty(CommandLine.Parse(["init"])!.Flags);
+    }
+
+    [Fact]
     public void Parse_LaterOptionWins_AndVerbIsLowercased()
     {
         var command = CommandLine.Parse(["NEXT", "--batch", "1", "--batch", "3"]);

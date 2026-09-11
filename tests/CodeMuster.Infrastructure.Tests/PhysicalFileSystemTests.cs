@@ -24,4 +24,25 @@ public class PhysicalFileSystemTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task WriteAllTextAsync_creates_parent_directories_and_writes_utf8_without_bom()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "codemuster-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var path = Path.Combine(dir, ".codemuster", "config.json");
+            IFileSystem fs = new PhysicalFileSystem();
+
+            await fs.WriteAllTextAsync(path, "{ \"héllo\": 1 }\n", CancellationToken.None);
+
+            var bytes = await File.ReadAllBytesAsync(path);
+            Assert.Equal((byte)'{', bytes[0]);
+            Assert.Equal("{ \"héllo\": 1 }\n", await fs.ReadAllTextAsync(path, CancellationToken.None));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }

@@ -66,17 +66,13 @@ public class ConfigTests
     }
 
     [Fact]
-    public async Task Loader_ReturnsDefault_WhenNoConfigFile()
+    public async Task Loader_ThrowsNotInitialized_WhenNoConfigFile()
     {
         var loader = new ConfigLoader(new FakeFileSystem());
 
-        var config = await loader.LoadAsync("/repo", CancellationToken.None);
+        var error = await Assert.ThrowsAsync<NotInitializedException>(() => loader.LoadAsync("/repo", CancellationToken.None));
 
-        Assert.Single(config.Lenses);
-        Assert.Equal("default", config.Lenses[0].Id);
-        Assert.Empty(config.Lenses[0].Globs);
-        Assert.Empty(config.Lenses[0].Languages);
-        Assert.Equal(Config.Default.Lenses[0].Hash(), config.Lenses[0].Hash());
+        Assert.Equal("not set up here; run `codemuster init`", error.Message);
     }
 
     [Fact]

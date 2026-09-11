@@ -9,16 +9,17 @@ public static class Program
         usage: codemuster <verb> [options]
 
         verbs:
+          init [--yes] [--no-gitignore]                     set this repo up: write .codemuster/config.json, gitignore the ledger
           scan                                              build or refresh the ledger for this repo
           status                                            print coverage
           next [--batch N] [--out <file>]                   print the next unit pack(s)
           done <unit> --fingerprint <fp> --findings <file>  record the model's response for a unit
           estimate                                          approximate token cost of pending units
 
-        run every verb from the root of the repository.
+        every verb runs against the git repository containing the current directory.
         """;
 
-    private static readonly string[] Verbs = ["scan", "status", "next", "done", "estimate"];
+    private static readonly string[] Verbs = ["init", "scan", "status", "next", "done", "estimate"];
 
     public static async Task<int> Main(string[] args)
     {
@@ -35,11 +36,15 @@ public static class Program
             e.Cancel = true;
             cancellation.Cancel();
         };
-        var cancellationToken = cancellation.Token;
 
         try
         {
-            return await RunAsync(command, cancellationToken);
+            return await RunAsync(command, cancellation.Token);
+        }
+        catch (NotInitializedException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 2;
         }
         catch (InvalidOperationException ex)
         {
@@ -51,7 +56,13 @@ public static class Program
     private static async Task<int> RunAsync(Command command, CancellationToken cancellationToken)
     {
         var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
-        var config = await new ConfigLoader(new PhysicalFileSystem()).LoadAsync(repoRoot, cancellationToken);
+        var fileSystem = new PhysicalFileSystem();
+        if (command.Verb == "init")
+        {
+            return await InitAsync(command, repoRoot, fileSystem, cancellationToken);
+        }
+
+        var config = await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken);
         using var ledger = await SqliteLedger.OpenAsync(Path.Combine(repoRoot, ".codemuster", "ledger.db"), cancellationToken);
         var tree = new GitSourceTree(repoRoot);
         var clock = new SystemClock();
@@ -96,10 +107,41 @@ public static class Program
         }
     }
 
+    private static async Task<int> InitAsync(Command command, string repoRoot, PhysicalFileSystem fileSystem, CancellationToken cancellationToken)
+    {
+        var result = await new Init(fileSystem).RunAsync(repoRoot, _ => Task.FromResult(ConfirmGitignore(command)), cancellationToken);
+        Console.WriteLine(result.ConfigCreated ? "created .codemuster/config.json" : ".codemuster/config.json already present");
+        Console.WriteLine(result.Gitignore switch
+        {
+            GitignoreOutcome.Appended => "added .codemuster/ledger.db to .gitignore",
+            GitignoreOutcome.AlreadyCovered => ".gitignore already ignores .codemuster/ledger.db",
+            _ => "left .gitignore alone; make sure .codemuster/ledger.db is ignored",
+        });
+        return 0;
+    }
+
+    private static bool ConfirmGitignore(Command command)
+    {
+        if (command.Flags.Contains("no-gitignore"))
+        {
+            return false;
+        }
+
+        if (command.Flags.Contains("yes") || Console.IsInputRedirected || Console.IsOutputRedirected)
+        {
+            return true;
+        }
+
+        Console.Write("add .codemuster/ledger.db to .gitignore? [Y/n] ");
+        var answer = Console.ReadLine()?.Trim() ?? "";
+        return answer.Length == 0 || answer.StartsWith('y') || answer.StartsWith('Y');
+    }
+
     private static bool HasRequiredArguments(Command command) => command.Verb switch
     {
-        "done" => command.Positionals.Count == 1 && command.Options.ContainsKey("fingerprint") && command.Options.ContainsKey("findings"),
-        "next" => !command.Options.TryGetValue("batch", out var batch) || (int.TryParse(batch, out var n) && n > 0),
-        _ => command.Positionals.Count == 0,
+        "init" => command.Positionals.Count == 0,
+        "done" => command.Flags.Count == 0 && command.Positionals.Count == 1 && command.Options.ContainsKey("fingerprint") && command.Options.ContainsKey("findings"),
+        "next" => command.Flags.Count == 0 && (!command.Options.TryGetValue("batch", out var batch) || (int.TryParse(batch, out var n) && n > 0)),
+        _ => command.Flags.Count == 0 && command.Positionals.Count == 0,
     };
 }

@@ -10,6 +10,16 @@ public class EndToEndTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
 
+        var gated = await CliProcess.RunAsync(repo.Root, "scan");
+        Assert.Equal(2, gated.ExitCode);
+        Assert.Contains("run `codemuster init`", gated.Stderr);
+        Assert.False(Directory.Exists(Path.Combine(repo.Root, ".codemuster")));
+
+        var init = await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        Assert.Equal(0, init.ExitCode);
+        Assert.Contains("created .codemuster/config.json", init.Stdout);
+        Assert.Contains("already ignores", init.Stdout);
+
         var scan = await CliProcess.RunAsync(repo.Root, "scan");
         Assert.Equal(0, scan.ExitCode);
         Assert.True(File.Exists(Path.Combine(repo.Root, ".codemuster", "ledger.db")));
@@ -48,9 +58,45 @@ public class EndToEndTests
     }
 
     [Fact]
+    public async Task Init_AppendsLedgerToGitignore_AndIsIdempotent()
+    {
+        using var repo = TempRepo.FromFixture("mixed-repo");
+        var gitignore = Path.Combine(repo.Root, ".gitignore");
+        await File.WriteAllTextAsync(gitignore, "bin/\nobj/");
+
+        var first = await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        Assert.Equal(0, first.ExitCode);
+        Assert.Contains("added .codemuster/ledger.db to .gitignore", first.Stdout);
+        Assert.Equal("bin/\nobj/\n.codemuster/ledger.db\n.codemuster/ledger.db-*\n", await File.ReadAllTextAsync(gitignore));
+        var config = await File.ReadAllTextAsync(Path.Combine(repo.Root, ".codemuster", "config.json"));
+
+        var second = await CliProcess.RunAsync(Path.Combine(repo.Root, "web"), "init", "--yes");
+        Assert.Equal(0, second.ExitCode);
+        Assert.Contains("already present", second.Stdout);
+        Assert.Contains("already ignores", second.Stdout);
+        Assert.Equal("bin/\nobj/\n.codemuster/ledger.db\n.codemuster/ledger.db-*\n", await File.ReadAllTextAsync(gitignore));
+        Assert.Equal(config, await File.ReadAllTextAsync(Path.Combine(repo.Root, ".codemuster", "config.json")));
+    }
+
+    [Fact]
+    public async Task Init_NoGitignore_LeavesGitignoreAlone()
+    {
+        using var repo = TempRepo.FromFixture("mixed-repo");
+        File.Delete(Path.Combine(repo.Root, ".gitignore"));
+
+        var init = await CliProcess.RunAsync(repo.Root, "init", "--no-gitignore");
+
+        Assert.Equal(0, init.ExitCode);
+        Assert.Contains("left .gitignore alone", init.Stdout);
+        Assert.False(File.Exists(Path.Combine(repo.Root, ".gitignore")));
+        Assert.True(File.Exists(Path.Combine(repo.Root, ".codemuster", "config.json")));
+    }
+
+    [Fact]
     public async Task NextToStdout_PrintsPack()
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
+        await CliProcess.RunAsync(repo.Root, "init", "--yes");
         await CliProcess.RunAsync(repo.Root, "scan");
 
         var next = await CliProcess.RunAsync(repo.Root, "next", "--batch", "2");
@@ -63,6 +109,8 @@ public class EndToEndTests
     [InlineData("frobnicate")]
     [InlineData("done")]
     [InlineData("next --batch")]
+    [InlineData("init extra")]
+    [InlineData("scan --yes")]
     public async Task BadUsage_PrintsUsage_AndExits2(string arguments)
     {
         var result = await CliProcess.RunAsync(Path.GetTempPath(), arguments.Split(' '));
