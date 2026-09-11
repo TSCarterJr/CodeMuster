@@ -4,7 +4,8 @@ public sealed record Command(string Verb, IReadOnlyList<string> Positionals, IRe
 
 public static class CommandLine
 {
-    private static readonly HashSet<string> FlagNames = ["yes", "no-gitignore"];
+    private static readonly HashSet<string> FlagNames = ["yes", "no-gitignore", "global", "force"];
+    private static readonly Dictionary<string, string> ShortOptions = new(StringComparer.Ordinal) { ["-j"] = "jobs" };
 
     public static Command? Parse(string[] args)
     {
@@ -18,13 +19,13 @@ public static class CommandLine
         var flags = new HashSet<string>(StringComparer.Ordinal);
         for (var i = 1; i < args.Length; i++)
         {
-            if (!args[i].StartsWith("--", StringComparison.Ordinal))
+            if (!args[i].StartsWith("--", StringComparison.Ordinal) && !ShortOptions.ContainsKey(args[i]))
             {
                 positionals.Add(args[i]);
                 continue;
             }
 
-            var name = args[i][2..];
+            var name = ShortOptions.TryGetValue(args[i], out var expanded) ? expanded : args[i][2..];
             if (FlagNames.Contains(name))
             {
                 flags.Add(name);

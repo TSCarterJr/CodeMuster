@@ -41,6 +41,19 @@ public class CommandLineTests
     }
 
     [Fact]
+    public void Parse_ShortJobsOption_AndRunFlags()
+    {
+        var command = CommandLine.Parse(["run", "--agent", "fake", "-j", "4", "--force"]);
+
+        Assert.NotNull(command);
+        Assert.Equal("4", command.Options["jobs"]);
+        Assert.Equal("fake", command.Options["agent"]);
+        Assert.Contains("force", command.Flags);
+        Assert.Empty(command.Positionals);
+        Assert.Null(CommandLine.Parse(["run", "-j"]));
+    }
+
+    [Fact]
     public void Parse_LaterOptionWins_AndVerbIsLowercased()
     {
         var command = CommandLine.Parse(["NEXT", "--batch", "1", "--batch", "3"]);

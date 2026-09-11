@@ -12,14 +12,19 @@ public static class Program
           init [--yes] [--no-gitignore]                     set this repo up: write .codemuster/config.json, gitignore the ledger
           scan                                              build or refresh the ledger for this repo
           status                                            print coverage
+          estimate                                          approximate token cost of pending units
           next [--batch N] [--out <file>]                   print the next unit pack(s)
           done <unit> --fingerprint <fp> --findings <file>  record the model's response for a unit
-          estimate                                          approximate token cost of pending units
+          run --agent <name> [-j N] [--attempts N] [--lens <id>] [--force]
+                                                            drive a headless agent over every pending unit
+                                                            agents: claude, codex, gemini, opencode, fake
+          report [--out <file>]                             render findings and coverage as markdown
+          skill install --for <agent> [--global]            install the skill for claude, codex, gemini, or opencode
 
         every verb runs against the git repository containing the current directory.
         """;
 
-    private static readonly string[] Verbs = ["init", "scan", "status", "next", "done", "estimate"];
+    private static readonly string[] Verbs = ["init", "scan", "status", "estimate", "next", "done", "run", "report", "skill"];
 
     public static async Task<int> Main(string[] args)
     {
@@ -46,9 +51,19 @@ public static class Program
             Console.Error.WriteLine(ex.Message);
             return 2;
         }
+        catch (ArgumentException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 2;
+        }
         catch (InvalidOperationException ex)
         {
             Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("cancelled");
             return 1;
         }
     }
@@ -58,9 +73,20 @@ public static class Program
         var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
         var fileSystem = new PhysicalFileSystem();
         var tree = new GitSourceTree(repoRoot);
-        if (command.Verb == "init")
+        switch (command.Verb)
         {
-            return await InitAsync(command, repoRoot, fileSystem, tree, cancellationToken);
+            case "init":
+                return await InitAsync(command, repoRoot, fileSystem, tree, cancellationToken);
+            case "skill":
+                var path = await new SkillInstaller(fileSystem).InstallAsync(
+                    command.Options["for"],
+                    command.Flags.Contains("global"),
+                    repoRoot,
+                    Environment.GetEnvironmentVariable("HOME") ?? Environment.GetEnvironmentVariable("USERPROFILE") ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    EmbeddedSkill.Text,
+                    cancellationToken);
+                Console.WriteLine($"installed skill to {path}");
+                return 0;
         }
 
         var config = await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken);
@@ -80,31 +106,76 @@ public static class Program
                 Console.WriteLine((await new Estimate(ledger).RunAsync(cancellationToken)).Render());
                 return 0;
             case "next":
-                var packs = await new Next(ledger, tree, config).RunAsync(int.Parse(command.Options.GetValueOrDefault("batch", "1")), cancellationToken);
-                if (packs.Count == 0)
-                {
-                    Console.Error.WriteLine("nothing pending; run status");
-                    return 0;
-                }
-
-                var text = string.Join('\n', packs.Select(pack => pack.Markdown));
-                if (command.Options.TryGetValue("out", out var outPath))
-                {
-                    await File.WriteAllTextAsync(outPath, text, cancellationToken);
-                    Console.WriteLine($"wrote {packs.Count} pack(s) to {outPath}");
-                }
-                else
-                {
-                    Console.Write(text);
-                }
-
-                return 0;
-            default:
+                return await NextAsync(command, ledger, tree, config, cancellationToken);
+            case "done":
                 var response = await File.ReadAllTextAsync(command.Options["findings"], cancellationToken);
                 var done = await new Done(ledger, clock, config).RunAsync(command.Positionals[0], command.Options["fingerprint"], response, cancellationToken);
                 Console.WriteLine(done.Message);
                 return done.Outcome == DoneOutcome.Recorded ? 0 : 1;
+            case "run":
+                return await RunAgentAsync(command, ledger, tree, clock, config, cancellationToken);
+            default:
+                var markdown = await new Report(ledger).RunAsync(cancellationToken);
+                if (command.Options.TryGetValue("out", out var reportPath))
+                {
+                    await File.WriteAllTextAsync(reportPath, markdown, cancellationToken);
+                    Console.WriteLine($"wrote report to {reportPath}");
+                }
+                else
+                {
+                    Console.Write(markdown);
+                }
+
+                return 0;
         }
+    }
+
+    private static async Task<int> NextAsync(Command command, SqliteLedger ledger, GitSourceTree tree, Config config, CancellationToken cancellationToken)
+    {
+        var packs = await new Next(ledger, tree, config).RunAsync(int.Parse(command.Options.GetValueOrDefault("batch", "1")), cancellationToken);
+        if (packs.Count == 0)
+        {
+            Console.Error.WriteLine("nothing pending; run status");
+            return 0;
+        }
+
+        var text = string.Join('\n', packs.Select(pack => pack.Markdown));
+        if (command.Options.TryGetValue("out", out var outPath))
+        {
+            await File.WriteAllTextAsync(outPath, text, cancellationToken);
+            Console.WriteLine($"wrote {packs.Count} pack(s) to {outPath}");
+        }
+        else
+        {
+            Console.Write(text);
+        }
+
+        return 0;
+    }
+
+    private static async Task<int> RunAgentAsync(Command command, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, CancellationToken cancellationToken)
+    {
+        if (command.Options.TryGetValue("lens", out var lensId))
+        {
+            var lens = config.Lenses.FirstOrDefault(l => l.Id == lensId) ?? throw new InvalidOperationException($"no lens named {lensId} in .codemuster/config.json");
+            config = new Config([lens]);
+        }
+
+        var template = Environment.GetEnvironmentVariable("CODEMUSTER_FAKE_RESPONSE");
+        var adapter = AgentAdapters.Create(command.Options["agent"], template is null ? null : await File.ReadAllTextAsync(template, cancellationToken));
+        var options = new RunOptions(
+            int.Parse(command.Options.GetValueOrDefault("jobs", "1")),
+            int.Parse(command.Options.GetValueOrDefault("attempts", "3")),
+            command.Flags.Contains("force"));
+        var progress = new Progress<RunProgress>(p => Console.WriteLine($"{p.Completed}/{p.Total} {p.UnitId} (attempt {p.Attempt}): {p.Message}"));
+        var result = await new Run(ledger, tree, clock, config, adapter, progress).RunAsync(options, cancellationToken);
+        foreach (var unitId in result.GaveUp)
+        {
+            Console.Error.WriteLine($"gave up on {unitId} after {options.MaxAttempts} attempts");
+        }
+
+        Console.WriteLine(result.Cancelled ? $"cancelled after {result.Completed} unit(s)" : $"completed {result.Completed} unit(s), {result.GaveUp.Count} gave up");
+        return result.Cancelled || result.GaveUp.Count > 0 ? 1 : 0;
     }
 
     private static async Task<int> InitAsync(Command command, string repoRoot, PhysicalFileSystem fileSystem, GitSourceTree tree, CancellationToken cancellationToken)
@@ -127,9 +198,14 @@ public static class Program
 
     private static bool HasRequiredArguments(Command command) => command.Verb switch
     {
-        "init" => command.Positionals.Count == 0,
+        "init" => command.Positionals.Count == 0 && command.Options.Count == 0,
         "done" => command.Flags.Count == 0 && command.Positionals.Count == 1 && command.Options.ContainsKey("fingerprint") && command.Options.ContainsKey("findings"),
-        "next" => command.Flags.Count == 0 && (!command.Options.TryGetValue("batch", out var batch) || (int.TryParse(batch, out var n) && n > 0)),
+        "next" => command.Flags.Count == 0 && command.Positionals.Count == 0 && IsPositiveOrAbsent(command, "batch"),
+        "run" => command.Positionals.Count == 0 && command.Options.ContainsKey("agent") && command.Flags.All(f => f == "force") && IsPositiveOrAbsent(command, "jobs") && IsPositiveOrAbsent(command, "attempts"),
+        "skill" => command.Positionals.SequenceEqual(["install"]) && SkillInstaller.Harnesses.Contains(command.Options.GetValueOrDefault("for", "")) && command.Flags.All(f => f == "global"),
         _ => command.Flags.Count == 0 && command.Positionals.Count == 0,
     };
+
+    private static bool IsPositiveOrAbsent(Command command, string option) =>
+        !command.Options.TryGetValue(option, out var value) || (int.TryParse(value, out var n) && n > 0);
 }

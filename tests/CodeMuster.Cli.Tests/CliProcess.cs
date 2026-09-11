@@ -6,7 +6,9 @@ public sealed record CliResult(int ExitCode, string Stdout, string Stderr);
 
 public static class CliProcess
 {
-    public static async Task<CliResult> RunAsync(string workingDirectory, params string[] args)
+    public static Task<CliResult> RunAsync(string workingDirectory, params string[] args) => RunAsync(workingDirectory, null, args);
+
+    public static async Task<CliResult> RunAsync(string workingDirectory, IReadOnlyDictionary<string, string>? environment, params string[] args)
     {
         var start = new ProcessStartInfo("dotnet")
         {
@@ -19,6 +21,11 @@ public static class CliProcess
         foreach (var arg in args)
         {
             start.ArgumentList.Add(arg);
+        }
+
+        foreach (var (name, value) in environment ?? new Dictionary<string, string>())
+        {
+            start.Environment[name] = value;
         }
 
         using var process = Process.Start(start) ?? throw new InvalidOperationException("dotnet did not start");
