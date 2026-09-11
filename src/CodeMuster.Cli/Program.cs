@@ -1,3 +1,4 @@
+using System.Text;
 using CodeMuster.Application;
 using CodeMuster.Infrastructure;
 
@@ -15,7 +16,7 @@ public static class Program
           estimate                                          approximate token cost of pending units
           next [--batch N] [--out <file>]                   print the next unit pack(s)
           done <unit> --fingerprint <fp> --findings <file>  record the model's response for a unit
-          run --agent <name> [-j N] [--attempts N] [--lens <id>] [--force]
+          run --agent <name> [-j N] [--attempts N] [--force]
                                                             drive a headless agent over every pending unit
                                                             agents: claude, codex, gemini, opencode, fake
           report [--out <file>]                             render findings and coverage as markdown
@@ -28,6 +29,16 @@ public static class Program
 
     public static async Task<int> Main(string[] args)
     {
+        if (Console.IsOutputRedirected)
+        {
+            Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true });
+        }
+
+        if (Console.IsErrorRedirected)
+        {
+            Console.SetError(new StreamWriter(Console.OpenStandardError(), new UTF8Encoding(false)) { AutoFlush = true });
+        }
+
         var command = CommandLine.Parse(args);
         if (command is null || !Verbs.Contains(command.Verb) || !HasRequiredArguments(command))
         {
@@ -158,20 +169,13 @@ public static class Program
 
     private static async Task<int> RunAgentAsync(Command command, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, CancellationToken cancellationToken)
     {
-        if (command.Options.TryGetValue("lens", out var lensId))
-        {
-            var lens = config.Lenses.FirstOrDefault(l => l.Id == lensId) ?? throw new InvalidOperationException($"no lens named {lensId} in .codemuster/config.json");
-            config = new Config([lens]);
-        }
-
         var template = Environment.GetEnvironmentVariable("CODEMUSTER_FAKE_RESPONSE");
         var adapter = AgentAdapters.Create(command.Options["agent"], template is null ? null : await File.ReadAllTextAsync(template, cancellationToken));
         var options = new RunOptions(
             int.Parse(command.Options.GetValueOrDefault("jobs", "1")),
             int.Parse(command.Options.GetValueOrDefault("attempts", "3")),
             command.Flags.Contains("force"));
-        var progress = new Progress<RunProgress>(p => Console.WriteLine($"{p.Completed}/{p.Total} {p.UnitId} (attempt {p.Attempt}): {p.Message}"));
-        var result = await new Run(ledger, tree, clock, config, adapter, progress).RunAsync(options, cancellationToken);
+        var result = await new Run(ledger, tree, clock, config, adapter, new RunProgressWriter(Console.Out)).RunAsync(options, cancellationToken);
         foreach (var unitId in result.GaveUp)
         {
             Console.Error.WriteLine($"gave up on {unitId} after {options.MaxAttempts} attempts");
@@ -204,7 +208,7 @@ public static class Program
         "init" => command.Positionals.Count == 0 && command.Options.Count == 0,
         "done" => command.Flags.Count == 0 && command.Positionals.Count == 1 && command.Options.ContainsKey("fingerprint") && command.Options.ContainsKey("findings"),
         "next" => command.Flags.Count == 0 && command.Positionals.Count == 0 && IsPositiveOrAbsent(command, "batch"),
-        "run" => command.Positionals.Count == 0 && command.Options.ContainsKey("agent") && command.Flags.All(f => f == "force") && IsPositiveOrAbsent(command, "jobs") && IsPositiveOrAbsent(command, "attempts"),
+        "run" => command.Positionals.Count == 0 && command.Options.ContainsKey("agent") && command.Options.Keys.All(k => k is "agent" or "jobs" or "attempts") && command.Flags.All(f => f == "force") && IsPositiveOrAbsent(command, "jobs") && IsPositiveOrAbsent(command, "attempts"),
         "skill" => command.Positionals.SequenceEqual(["install"]) && SkillInstaller.Harnesses.Contains(command.Options.GetValueOrDefault("for", "")) && command.Flags.All(f => f == "global"),
         _ => command.Flags.Count == 0 && command.Positionals.Count == 0,
     };

@@ -5,7 +5,7 @@ namespace CodeMuster.Cli.Tests;
 
 public class HeadlessTests
 {
-    private const string PlantedClaim = "planted by the fake adapter for the end-to-end test";
+    private const string PlantedClaim = "planted by the fake adapter: café → naïve";
 
     [Fact]
     public async Task RunWithFakeAgent_CompletesEveryUnit_AndReportShowsPlantedFindings()
@@ -25,8 +25,9 @@ public class HeadlessTests
         Assert.True(match.Success, status.Stdout);
         Assert.Equal(match.Groups[2].Value, match.Groups[1].Value);
         var total = int.Parse(match.Groups[2].Value);
-        Assert.Equal(total, Regex.Matches(run.Stdout, "^\\d+/\\d+ file:", RegexOptions.Multiline).Count);
-        Assert.Contains($"completed {total} unit(s), 0 gave up", run.Stdout);
+        var progress = Regex.Matches(run.Stdout, "^(\\d+)/\\d+ file:", RegexOptions.Multiline).Select(m => int.Parse(m.Groups[1].Value)).ToList();
+        Assert.Equal(Enumerable.Range(1, total), progress);
+        Assert.Equal($"completed {total} unit(s), 0 gave up", run.Stdout.TrimEnd().Split('\n')[^1].TrimEnd('\r'));
 
         var report = await CliProcess.RunAsync(repo.Root, "report");
         Assert.Equal(0, report.ExitCode);
@@ -153,6 +154,7 @@ public class HeadlessTests
     [InlineData("skill install --for gpt5")]
     [InlineData("skill remove --for claude")]
     [InlineData("report extra")]
+    [InlineData("run --agent fake --lens tenancy")]
     public async Task BadUsage_ForNewVerbs_Exits2(string arguments)
     {
         var result = await CliProcess.RunAsync(Path.GetTempPath(), arguments.Split(' '));

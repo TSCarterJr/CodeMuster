@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 
 namespace CodeMuster.Cli.Tests;
 
@@ -15,6 +16,8 @@ public static class CliProcess
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = new UTF8Encoding(false),
+            StandardErrorEncoding = new UTF8Encoding(false),
             UseShellExecute = false,
         };
         start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "codemuster.dll"));
