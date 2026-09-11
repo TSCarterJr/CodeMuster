@@ -1,0 +1,49 @@
+{
+  "symbols": [
+    {
+      "id": "M:MinimalApi.Endpoints.Hello",
+      "path": "src/MinimalApi/Endpoints.cs",
+      "range": { "start_line": 5, "end_line": 8 },
+      "kind": "method",
+      "signature": "public static class Endpoints\npublic static string Hello()",
+      "body_hash": "083d02d86dc665fdf220b008585c81c07b1fa6f676490e0592c671104c53b3b3"
+    },
+    {
+      "id": "M:MinimalApi.Endpoints.Echo(System.String)",
+      "path": "src/MinimalApi/Endpoints.cs",
+      "range": { "start_line": 10, "end_line": 13 },
+      "kind": "method",
+      "signature": "public static class Endpoints\npublic static string Echo(string text)",
+      "body_hash": "4ac5fbb84219faeab7c104a51b3934c4edaec96d0d9485df5422575d181842a8"
+    },
+    {
+      "id": "M:MinimalApi.Endpoints.Greeting(System.String)",
+      "path": "src/MinimalApi/Endpoints.cs",
+      "range": { "start_line": 15, "end_line": 18 },
+      "kind": "method",
+      "signature": "public static class Endpoints\nprivate static string Greeting(string name)",
+      "body_hash": "c5d2ed3fb33559ab69089c2dff555bf8bb429bb4e4cb098cef98088437effac0"
+    }
+  ],
+  "edges": [
+    {
+      "from": "M:MinimalApi.Endpoints.Hello",
+      "to": "M:MinimalApi.Endpoints.Greeting(System.String)",
+      "kind": "call"
+    }
+  ],
+  "entry_points": [
+    {
+      "symbol_id": "M:MinimalApi.Endpoints.Hello",
+      "kind": "http",
+      "display": "GET /hello"
+    },
+    {
+      "symbol_id": "M:MinimalApi.Endpoints.Echo(System.String)",
+      "kind": "http",
+      "display": "POST /echo"
+    }
+  ],
+  "resolution": { "resolved": 1, "unresolved": 0, "top_unresolved_names": [] },
+  "diagnostics": []
+}

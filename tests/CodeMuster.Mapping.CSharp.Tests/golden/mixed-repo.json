@@ -1,0 +1,169 @@
+{
+  "symbols": [
+    {
+      "id": "M:MixedRepo.Api.Controllers.QuotesController.ListQuotes(System.Int32)",
+      "path": "src/MixedRepo.Api/Controllers/QuotesController.cs",
+      "range": { "start_line": 9, "end_line": 13 },
+      "kind": "method",
+      "signature": "[ApiController] public sealed class QuotesController(IQuoteService quotes) : ControllerBase\n[HttpGet(\"quotes\")] public IReadOnlyList<QuoteSummary> ListQuotes(int tenantId)",
+      "body_hash": "60bb40ed06221a0e62e56cbc88239a6007534edace01dbb26217793cf00bcf94"
+    },
+    {
+      "id": "M:MixedRepo.Api.Controllers.QuotesController.GetQuote(System.Int32,System.Int32)",
+      "path": "src/MixedRepo.Api/Controllers/QuotesController.cs",
+      "range": { "start_line": 15, "end_line": 25 },
+      "kind": "method",
+      "signature": "[ApiController] public sealed class QuotesController(IQuoteService quotes) : ControllerBase\n[HttpGet(\"quotes/{id}\")] public ActionResult<QuoteSummary> GetQuote(int tenantId, int id)",
+      "body_hash": "7e7ca1555f421162017fa740cb6f01607c0375c4e768512a747ddadfdf495a1b"
+    },
+    {
+      "id": "M:MixedRepo.Api.Data.QuoteRepository.#ctor",
+      "path": "src/MixedRepo.Api/Data/QuoteRepository.cs",
+      "range": { "start_line": 7, "end_line": 15 },
+      "kind": "constructor",
+      "signature": "public sealed class QuoteRepository\npublic QuoteRepository()",
+      "body_hash": "7e9cc0d1755334901fb06c7d8341f58ae703df99bffcdde24cb27a3560953748"
+    },
+    {
+      "id": "M:MixedRepo.Api.Data.QuoteRepository.ListForTenant(System.Int32)",
+      "path": "src/MixedRepo.Api/Data/QuoteRepository.cs",
+      "range": { "start_line": 17, "end_line": 20 },
+      "kind": "method",
+      "signature": "public sealed class QuoteRepository\npublic IReadOnlyList<Quote> ListForTenant(int tenantId)",
+      "body_hash": "8ca7a867b524cc79118948ec14f6e4f3fd9172a4bfd73820b4b9a2ff981da07f"
+    },
+    {
+      "id": "M:MixedRepo.Api.Data.QuoteRepository.FindForTenant(System.Int32,System.Int32)",
+      "path": "src/MixedRepo.Api/Data/QuoteRepository.cs",
+      "range": { "start_line": 22, "end_line": 25 },
+      "kind": "method",
+      "signature": "public sealed class QuoteRepository\npublic Quote? FindForTenant(int tenantId, int id)",
+      "body_hash": "231f3cfbb21a086122113824f3bb04fe04e5b6e8571552f0e2ff54b118f8db00"
+    },
+    {
+      "id": "M:MixedRepo.Api.Services.EmptyQuoteService.ListQuotes(System.Int32)",
+      "path": "src/MixedRepo.Api/Services/EmptyQuoteService.cs",
+      "range": { "start_line": 5, "end_line": 8 },
+      "kind": "method",
+      "signature": "public sealed class EmptyQuoteService : IQuoteService\npublic IReadOnlyList<QuoteSummary> ListQuotes(int tenantId)",
+      "body_hash": "df20a8a112855a9e65da319affd8df9cad73a2ba32d7807a74101f037610826b"
+    },
+    {
+      "id": "M:MixedRepo.Api.Services.EmptyQuoteService.GetQuote(System.Int32,System.Int32)",
+      "path": "src/MixedRepo.Api/Services/EmptyQuoteService.cs",
+      "range": { "start_line": 10, "end_line": 13 },
+      "kind": "method",
+      "signature": "public sealed class EmptyQuoteService : IQuoteService\npublic QuoteSummary? GetQuote(int tenantId, int id)",
+      "body_hash": "b1acea22ef2e55565c59601d36848b3c2361de0f3a1a83d777c6a5aa2f29535d"
+    },
+    {
+      "id": "M:MixedRepo.Api.Services.QuoteService.ListQuotes(System.Int32)",
+      "path": "src/MixedRepo.Api/Services/QuoteService.cs",
+      "range": { "start_line": 8, "end_line": 11 },
+      "kind": "method",
+      "signature": "public sealed class QuoteService(QuoteRepository repository) : IQuoteService\npublic IReadOnlyList<QuoteSummary> ListQuotes(int tenantId)",
+      "body_hash": "b958be14615cc6ac97dd7ad910839637fc33c0bb44cea75117058a1d997674e7"
+    },
+    {
+      "id": "M:MixedRepo.Api.Services.QuoteService.GetQuote(System.Int32,System.Int32)",
+      "path": "src/MixedRepo.Api/Services/QuoteService.cs",
+      "range": { "start_line": 13, "end_line": 17 },
+      "kind": "method",
+      "signature": "public sealed class QuoteService(QuoteRepository repository) : IQuoteService\npublic QuoteSummary? GetQuote(int tenantId, int id)",
+      "body_hash": "12d1f24f127383686fdbb0c5f23bb3bd1d7aaea57e5ffd0fa1cb56a84bdddf1a"
+    },
+    {
+      "id": "M:MixedRepo.Api.Services.QuoteService.ArchiveQuote(System.Int32)",
+      "path": "src/MixedRepo.Api/Services/QuoteService.cs",
+      "range": { "start_line": 19, "end_line": 22 },
+      "kind": "method",
+      "signature": "public sealed class QuoteService(QuoteRepository repository) : IQuoteService\npublic string ArchiveQuote(int id)",
+      "body_hash": "7f6d291e84a5798cd15a590c25ef9b5d6bb87fb4c3038b1022a5666f68687ff8"
+    },
+    {
+      "id": "M:MixedRepo.Api.Services.QuoteService.ToSummary(MixedRepo.Api.Data.Quote)",
+      "path": "src/MixedRepo.Api/Services/QuoteService.cs",
+      "range": { "start_line": 24, "end_line": 27 },
+      "kind": "method",
+      "signature": "public sealed class QuoteService(QuoteRepository repository) : IQuoteService\nprivate static QuoteSummary ToSummary(Quote quote)",
+      "body_hash": "1cd13ffb0479cbb770a343c8f8e745543e03afd35e92c9ba10a5ac28413b843c"
+    },
+    {
+      "id": "M:MixedRepo.Api.Shared.Money.Format(System.Decimal)",
+      "path": "src/MixedRepo.Api/Shared/Money.cs",
+      "range": { "start_line": 7, "end_line": 10 },
+      "kind": "method",
+      "signature": "public static class Money\npublic static string Format(decimal amount)",
+      "body_hash": "73fb285b67899dbd7a5868f322b39f74a24bcb208bd05cd77e0824539472ec3d"
+    },
+    {
+      "id": "M:MixedRepo.Api.Workers.ReminderWorker.ExecuteAsync(System.Threading.CancellationToken)",
+      "path": "src/MixedRepo.Api/Workers/ReminderWorker.cs",
+      "range": { "start_line": 7, "end_line": 15 },
+      "kind": "method",
+      "signature": "public sealed class ReminderWorker(IQuoteService quotes, ILogger<ReminderWorker> logger) : BackgroundService\nprotected override async Task ExecuteAsync(CancellationToken stoppingToken)",
+      "body_hash": "c85b551b598c86de917b0af0262077587d8eb4b390cc8ef64ec3ebfe18182d0c"
+    }
+  ],
+  "edges": [
+    {
+      "from": "M:MixedRepo.Api.Controllers.QuotesController.ListQuotes(System.Int32)",
+      "to": "M:MixedRepo.Api.Services.QuoteService.ListQuotes(System.Int32)",
+      "kind": "bound"
+    },
+    {
+      "from": "M:MixedRepo.Api.Controllers.QuotesController.GetQuote(System.Int32,System.Int32)",
+      "to": "M:MixedRepo.Api.Services.QuoteService.GetQuote(System.Int32,System.Int32)",
+      "kind": "bound"
+    },
+    {
+      "from": "M:MixedRepo.Api.Services.QuoteService.ListQuotes(System.Int32)",
+      "to": "M:MixedRepo.Api.Data.QuoteRepository.ListForTenant(System.Int32)",
+      "kind": "call"
+    },
+    {
+      "from": "M:MixedRepo.Api.Services.QuoteService.ListQuotes(System.Int32)",
+      "to": "M:MixedRepo.Api.Services.QuoteService.ToSummary(MixedRepo.Api.Data.Quote)",
+      "kind": "call"
+    },
+    {
+      "from": "M:MixedRepo.Api.Services.QuoteService.GetQuote(System.Int32,System.Int32)",
+      "to": "M:MixedRepo.Api.Data.QuoteRepository.FindForTenant(System.Int32,System.Int32)",
+      "kind": "call"
+    },
+    {
+      "from": "M:MixedRepo.Api.Services.QuoteService.GetQuote(System.Int32,System.Int32)",
+      "to": "M:MixedRepo.Api.Services.QuoteService.ToSummary(MixedRepo.Api.Data.Quote)",
+      "kind": "call"
+    },
+    {
+      "from": "M:MixedRepo.Api.Services.QuoteService.ToSummary(MixedRepo.Api.Data.Quote)",
+      "to": "M:MixedRepo.Api.Shared.Money.Format(System.Decimal)",
+      "kind": "call"
+    },
+    {
+      "from": "M:MixedRepo.Api.Workers.ReminderWorker.ExecuteAsync(System.Threading.CancellationToken)",
+      "to": "M:MixedRepo.Api.Services.QuoteService.ListQuotes(System.Int32)",
+      "kind": "bound"
+    }
+  ],
+  "entry_points": [
+    {
+      "symbol_id": "M:MixedRepo.Api.Controllers.QuotesController.ListQuotes(System.Int32)",
+      "kind": "http",
+      "display": "GET /quotes"
+    },
+    {
+      "symbol_id": "M:MixedRepo.Api.Controllers.QuotesController.GetQuote(System.Int32,System.Int32)",
+      "kind": "http",
+      "display": "GET /quotes/{id}"
+    },
+    {
+      "symbol_id": "M:MixedRepo.Api.Workers.ReminderWorker.ExecuteAsync(System.Threading.CancellationToken)",
+      "kind": "background",
+      "display": "ReminderWorker"
+    }
+  ],
+  "resolution": { "resolved": 21, "unresolved": 0, "top_unresolved_names": [] },
+  "diagnostics": []
+}
