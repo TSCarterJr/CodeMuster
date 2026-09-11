@@ -1,14 +1,31 @@
 {
   "name": "codemuster",
-  "version": "0.0.1",
-  "description": "CodeMuster: full-coverage codebase audits with a coverage number. Every file answers present. Placeholder release; the CLI ships soon.",
+  "version": "0.1.0-dev",
+  "description": "CodeMuster: full-coverage codebase audits with a coverage number, driven by your coding agent through one skill.",
   "license": "MIT",
   "author": "Tim Carter",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/TSCarterJr/CodeMuster.git"
   },
-  "homepage": "https://github.com/TSCarterJr/CodeMuster",
+  "homepage": "https://codemuster.com",
   "keywords": ["code-audit", "code-review", "security", "coverage", "ai", "agent-skill", "claude-code", "codex", "gemini-cli", "opencode"],
-  "files": ["README.md"]
+  "bin": {
+    "codemuster": "bin/codemuster.js"
+  },
+  "files": ["bin", "lib", "README.md"],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/launcher.test.js"
+  },
+  "optionalDependencies": {
+    "@codemuster/darwin-arm64": "0.1.0-dev",
+    "@codemuster/darwin-x64": "0.1.0-dev",
+    "@codemuster/linux-arm64": "0.1.0-dev",
+    "@codemuster/linux-x64": "0.1.0-dev",
+    "@codemuster/win32-arm64": "0.1.0-dev",
+    "@codemuster/win32-x64": "0.1.0-dev"
+  }
 }

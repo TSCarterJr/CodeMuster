@@ -24,5 +24,6 @@ jobs:
       - run: dotnet restore fixtures/mixed-repo/MixedRepo.sln
       - run: dotnet restore fixtures/minimal-api/MinimalApi.sln
       - run: npm ci --prefix fixtures/mixed-repo/web
+      - run: node --test npm/test/launcher.test.js
       - run: dotnet build --no-restore
       - run: dotnet test --no-build
