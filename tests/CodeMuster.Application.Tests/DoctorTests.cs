@@ -106,6 +106,18 @@ public class DoctorTests
     }
 
     [Fact]
+    public async Task Progress_NamesEachStepAsItHappens_WithTheLanguageInFront()
+    {
+        var progress = new ListProgress();
+        csharp.Reports.Add("loading MixedRepo.sln");
+        typescript.Reports.Add("loading web/tsconfig.json");
+
+        await new Doctor(tree, [csharp, typescript], clock, RepoRoot, progress: progress).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["git: listed 4 files", "csharp: loading MixedRepo.sln", "typescript: loading web/tsconfig.json"], progress.Messages);
+    }
+
+    [Fact]
     public async Task GitThatCannotListFiles_IsFailed_AndNoMapperRuns()
     {
         var report = await RunAsync(new BrokenTree());

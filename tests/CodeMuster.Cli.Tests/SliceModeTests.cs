@@ -15,7 +15,8 @@ public class SliceModeTests
         var scan = await CliProcess.RunAsync(repo.Root, "scan");
 
         Assert.Equal(0, scan.ExitCode);
-        Assert.Equal("", scan.Stderr);
+        Assert.DoesNotContain("warning:", scan.Stderr);
+        Assert.Matches(new Regex(@"^\[\s*\d+ s\] saving \d+ units$", RegexOptions.Multiline), scan.Stderr.ReplaceLineEndings("\n"));
         Assert.Matches(new Regex(@"^5 slices, 3 orphans, \d+ files, resolution 100\.0%\r?$", RegexOptions.Multiline), scan.Stdout);
 
         var packs = Path.Combine(repo.Root, "packs.md");

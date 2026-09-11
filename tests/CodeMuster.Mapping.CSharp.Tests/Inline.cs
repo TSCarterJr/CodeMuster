@@ -30,7 +30,7 @@ internal static class Inline
         }
 
         var builder = new CodeMapBuilder(Root, included ?? files.Select(file => file.Path).ToList());
-        await builder.AddAsync(project.Solution, CancellationToken.None);
+        await builder.AddAsync(project.Solution, null, CancellationToken.None);
         return builder.Build();
     }
 }

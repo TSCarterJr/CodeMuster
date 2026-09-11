@@ -2,8 +2,8 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
 
-/// <summary>Checks that this machine can map the repository with functional probes, never liveness checks (D09): git lists the tracked files, then every mapper whose language has an included file maps the repository for real. A failure carries the fix to run; doctor never runs it. Without a <paramref name="config"/>, as before <c>init</c>, only the built-in exclusions apply.</summary>
-public sealed class Doctor(ISourceTree tree, IReadOnlyList<ICodeMapper> mappers, IClock clock, string repoRoot, Config? config = null)
+/// <summary>Checks that this machine can map the repository with functional probes, never liveness checks (D09): git lists the tracked files, then every mapper whose language has an included file maps the repository for real. A failure carries the fix to run; doctor never runs it. Without a <paramref name="config"/>, as before <c>init</c>, only the built-in exclusions apply. Each step is reported to <paramref name="progress"/> as it happens, under <c>git</c> or the mapper's language.</summary>
+public sealed class Doctor(ISourceTree tree, IReadOnlyList<ICodeMapper> mappers, IClock clock, string repoRoot, Config? config = null, IProgress<string>? progress = null)
 {
     /// <summary>Runs git, then each mapper in order, and reports what each one needs.</summary>
     public async Task<DoctorReport> RunAsync(CancellationToken cancellationToken)
@@ -18,6 +18,7 @@ public sealed class Doctor(ISourceTree tree, IReadOnlyList<ICodeMapper> mappers,
             return DoctorReport.GitFailed(ex.Message);
         }
 
+        progress?.Report($"git: listed {files.Count} files");
         var paths = files.Where(f => (config ?? Config.Default).ExcludedReason(f.Path, f.LinguistGenerated) is null).Select(f => f.Path).ToList();
         var probes = new List<DoctorProbe> { new("git", ProbeState.Working, null, 0, []) };
         foreach (var mapper in mappers.Where(m => paths.Any(path => Languages.FromPath(path) == m.Language)))
@@ -33,7 +34,7 @@ public sealed class Doctor(ISourceTree tree, IReadOnlyList<ICodeMapper> mappers,
         var started = clock.UtcNow;
         try
         {
-            var map = await mapper.MapAsync(repoRoot, paths, cancellationToken);
+            var map = await mapper.MapAsync(repoRoot, paths, PrefixedProgress.For(progress, mapper.Language), cancellationToken);
             var elapsed = clock.UtcNow - started;
             return map.Diagnostics.Count > 0 ? new DoctorProbe(mapper.Language, ProbeState.Failed, elapsed, map.Symbols.Count, map.Diagnostics)
                 : map.Symbols.Count == 0 ? new DoctorProbe(mapper.Language, ProbeState.LoadedButEmpty, elapsed, 0, [EmptyHint(mapper.Language)])

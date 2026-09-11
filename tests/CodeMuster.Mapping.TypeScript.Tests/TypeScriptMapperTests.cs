@@ -17,7 +17,7 @@ public class TypeScriptMapperTests
     {
         var root = TestPaths.MixedRepoWithTypeScript();
 
-        var map = await new TypeScriptMapper().MapAsync(root, TestPaths.RepoPaths(root), CancellationToken.None);
+        var map = await new TypeScriptMapper().MapAsync(root, TestPaths.RepoPaths(root), null, CancellationToken.None);
 
         GoldenAssert.Matches(map);
     }
@@ -25,7 +25,7 @@ public class TypeScriptMapperTests
     [Fact]
     public async Task Without_a_tsconfig_json_returns_an_empty_map_and_never_starts_node()
     {
-        var map = await new TypeScriptMapper(MissingNode).MapAsync(TestPaths.MixedRepo, ["web/tsconfig.base.json", "web/lib/api.ts"], CancellationToken.None);
+        var map = await new TypeScriptMapper(MissingNode).MapAsync(TestPaths.MixedRepo, ["web/tsconfig.base.json", "web/lib/api.ts"], null, CancellationToken.None);
 
         Assert.Empty(map.Symbols);
         Assert.Empty(map.Edges);
@@ -40,7 +40,7 @@ public class TypeScriptMapperTests
     {
         var mapper = new TypeScriptMapper(MissingNode);
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => mapper.MapAsync(TestPaths.MixedRepo, ["web/tsconfig.json"], CancellationToken.None));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => mapper.MapAsync(TestPaths.MixedRepo, ["web/tsconfig.json"], null, CancellationToken.None));
 
         Assert.Contains($"{MissingNode} was not found on PATH", error.Message);
         Assert.Contains("install Node.js", error.Message);
@@ -52,7 +52,7 @@ public class TypeScriptMapperTests
         using var temp = new TempFolder();
         temp.Copy(Path.Combine(TestPaths.MixedRepo, "web"), "web", "node_modules");
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper().MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), CancellationToken.None));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper().MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None));
 
         Assert.Contains("typescript was not found for web/tsconfig.json", error.Message);
         Assert.Contains("npm ci --prefix web", error.Message);

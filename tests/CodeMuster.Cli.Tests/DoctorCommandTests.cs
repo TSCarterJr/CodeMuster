@@ -21,6 +21,10 @@ public class DoctorCommandTests
         Assert.Matches(@"^typescript: working in \d+\.\d s, [1-9]\d* symbol\(s\)$", lines[2]);
         Assert.Equal("ready", lines[3]);
         Assert.False(Directory.Exists(Path.Combine(repo.Root, ".codemuster")));
+        var progress = healthy.Stderr.ReplaceLineEndings("\n");
+        Assert.Matches(new Regex(@"^\[\s*\d+ s\] git: listed \d+ files$", RegexOptions.Multiline), progress);
+        Assert.Matches(new Regex(@"^\[\s*\d+ s\] csharp: loading MixedRepo\.sln$", RegexOptions.Multiline), progress);
+        Assert.Matches(new Regex(@"^\[\s*\d+ s\] typescript: loading web/tsconfig\.json$", RegexOptions.Multiline), progress);
 
         foreach (var obj in Directory.GetDirectories(Path.Combine(repo.Root, "src"), "obj", SearchOption.AllDirectories))
         {

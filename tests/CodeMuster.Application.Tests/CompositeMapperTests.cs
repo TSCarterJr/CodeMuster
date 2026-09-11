@@ -8,7 +8,7 @@ public class CompositeMapperTests
     private const string Root = "/repos/mixed-repo";
 
     private static Task<CompositeMap> MapAsync(params ICodeMapper[] mappers) =>
-        CompositeMapper.MapAsync(mappers, Root, MixedRepo.Included(), CancellationToken.None);
+        CompositeMapper.MapAsync(mappers, Root, MixedRepo.Included(), null, CancellationToken.None);
 
     [Fact]
     public async Task TwoMappers_MergeIntoOneMap_InMapperOrder()
@@ -140,6 +140,6 @@ public class CompositeMapperTests
         var csharp = new FakeCodeMapper(Languages.CSharp, MixedRepo.CSharp()) { Throws = new OperationCanceledException() };
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            CompositeMapper.MapAsync([csharp], Root, MixedRepo.Included(), new CancellationToken(canceled: true)));
+            CompositeMapper.MapAsync([csharp], Root, MixedRepo.Included(), null, new CancellationToken(canceled: true)));
     }
 }

@@ -16,40 +16,67 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
     private readonly Dictionary<string, int> unresolved = new(StringComparer.Ordinal);
     private int resolved;
 
-    public async Task AddAsync(Solution solution, CancellationToken cancellationToken)
+    public async Task AddAsync(Solution solution, IProgress<string>? progress, CancellationToken cancellationToken)
     {
+        progress?.Report("finding dependency injection bindings");
         var dispatcher = new Dispatcher(solution, await Bindings.FindAsync(solution, cancellationToken));
-        foreach (var document in solution.Projects.SelectMany(project => project.Documents))
+        var documents = solution.Projects
+            .SelectMany(project => project.Documents)
+            .Where(document => document.FilePath is not null)
+            .Select(document => (Document: document, Path: RepoPath.Normalize(Path.GetRelativePath(repoRoot, document.FilePath!))))
+            .Where(item => included.Contains(item.Path) && !seen.Contains(item.Path))
+            .DistinctBy(item => item.Path, StringComparer.Ordinal)
+            .ToList();
+        var perProject = documents.GroupBy(item => item.Document.Project.Id).ToDictionary(group => group.Key, group => group.Count());
+        ProjectId? project = null;
+        var done = 0;
+        foreach (var (document, path) in documents)
         {
-            var path = document.FilePath is null ? null : RepoPath.Normalize(Path.GetRelativePath(repoRoot, document.FilePath));
-            if (path is null || !included.Contains(path) || !seen.Add(path) || await document.GetSemanticModelAsync(cancellationToken) is not { } model)
+            if (document.Project.Id != project)
+            {
+                project = document.Project.Id;
+                progress?.Report($"reading {document.Project.Name}, {perProject[project]} files");
+            }
+
+            seen.Add(path);
+            await AddDocumentAsync(document, path, dispatcher, cancellationToken);
+            done++;
+            if (done * 10 / documents.Count > (done - 1) * 10 / documents.Count)
+            {
+                progress?.Report($"mapped {done}/{documents.Count} files");
+            }
+        }
+    }
+
+    private async Task AddDocumentAsync(Document document, string path, Dispatcher dispatcher, CancellationToken cancellationToken)
+    {
+        if (await document.GetSemanticModelAsync(cancellationToken) is not { } model)
+        {
+            return;
+        }
+
+        var root = await model.SyntaxTree.GetRootAsync(cancellationToken);
+        entryPoints.UnionWith(EntryPoints.Find(root, model, cancellationToken));
+        foreach (var node in root.DescendantNodes())
+        {
+            if (DeclaredMethod(node, model, cancellationToken) is not { } method || Id(method) is not { } from)
             {
                 continue;
             }
 
-            var root = await model.SyntaxTree.GetRootAsync(cancellationToken);
-            entryPoints.UnionWith(EntryPoints.Find(root, model, cancellationToken));
-            foreach (var node in root.DescendantNodes())
+            symbols.TryAdd(from, new Symbol(from, path, Lines(node), KindOf(node), Signature(node), BodyHash(node)));
+            CountCallSites(node, model, cancellationToken);
+            foreach (var callee in Callees(node, model, cancellationToken))
             {
-                if (DeclaredMethod(node, model, cancellationToken) is not { } method || Id(method) is not { } from)
+                if (Id(callee) is not { } to)
                 {
                     continue;
                 }
 
-                symbols.TryAdd(from, new Symbol(from, path, Lines(node), KindOf(node), Signature(node), BodyHash(node)));
-                CountCallSites(node, model, cancellationToken);
-                foreach (var callee in Callees(node, model, cancellationToken))
+                edges.Add(new Edge(from, to, EdgeKind.Call));
+                foreach (var (target, kind) in await dispatcher.TargetsAsync(callee, to, cancellationToken))
                 {
-                    if (Id(callee) is not { } to)
-                    {
-                        continue;
-                    }
-
-                    edges.Add(new Edge(from, to, EdgeKind.Call));
-                    foreach (var (target, kind) in await dispatcher.TargetsAsync(callee, to, cancellationToken))
-                    {
-                        edges.Add(new Edge(from, target, kind));
-                    }
+                    edges.Add(new Edge(from, target, kind));
                 }
             }
         }

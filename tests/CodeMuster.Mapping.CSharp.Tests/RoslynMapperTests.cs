@@ -30,7 +30,7 @@ public class RoslynMapperTests
     public async Task Throws_when_csharp_files_have_no_solution_or_project()
     {
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => new RoslynMapper().MapAsync(Path.GetTempPath(), ["src/Program.cs", "README.md"], CancellationToken.None));
+            () => new RoslynMapper().MapAsync(Path.GetTempPath(), ["src/Program.cs", "README.md"], null, CancellationToken.None));
 
         Assert.Equal("C# files found but no .sln, .slnx, or .csproj is included, so there is nothing to load them with", error.Message);
     }
@@ -38,7 +38,7 @@ public class RoslynMapperTests
     [Fact]
     public async Task Returns_an_empty_map_when_nothing_is_csharp()
     {
-        var map = await new RoslynMapper().MapAsync(Path.GetTempPath(), ["README.md", "web/app.ts"], CancellationToken.None);
+        var map = await new RoslynMapper().MapAsync(Path.GetTempPath(), ["README.md", "web/app.ts"], null, CancellationToken.None);
 
         Assert.Empty(map.Symbols);
         Assert.Empty(map.Edges);
@@ -52,7 +52,7 @@ public class RoslynMapperTests
         using var copy = new FixtureCopy("minimal-api");
         var paths = Fixtures.IncludedPaths(copy.Root).Where(path => !path.EndsWith(".sln", StringComparison.Ordinal)).ToList();
 
-        var map = await new RoslynMapper().MapAsync(copy.Root, paths, CancellationToken.None);
+        var map = await new RoslynMapper().MapAsync(copy.Root, paths, null, CancellationToken.None);
 
         var golden = Fixtures.Golden("minimal-api");
         Assert.Equal(golden.Symbols.OrderBy(symbol => symbol.Id, StringComparer.Ordinal), map.Symbols.OrderBy(symbol => symbol.Id, StringComparer.Ordinal));
@@ -82,7 +82,7 @@ public class RoslynMapperTests
             }
             """);
 
-        var map = await new RoslynMapper().MapAsync(copy.Root, Fixtures.IncludedPaths(copy.Root), CancellationToken.None);
+        var map = await new RoslynMapper().MapAsync(copy.Root, Fixtures.IncludedPaths(copy.Root), null, CancellationToken.None);
 
         Assert.Contains("src/MixedRepo.Api/MixedRepo.Api.csproj is not restored; run dotnet restore MixedRepo.sln", map.Diagnostics);
         Assert.Equal(21, map.Resolution.Resolved);
@@ -106,7 +106,7 @@ public class RoslynMapperTests
         var money = copy.PathOf("src/MixedRepo.Api/Shared/Money.cs");
         File.WriteAllText(money, File.ReadAllText(money).Replace("\"N2\"", "\"N0\"", StringComparison.Ordinal));
 
-        var map = await new RoslynMapper().MapAsync(copy.Root, Fixtures.IncludedPaths(copy.Root), CancellationToken.None);
+        var map = await new RoslynMapper().MapAsync(copy.Root, Fixtures.IncludedPaths(copy.Root), null, CancellationToken.None);
 
         var golden = Fixtures.Golden("mixed-repo").Symbols.ToDictionary(symbol => symbol.Id, StringComparer.Ordinal);
         var edited = map.Symbols.ToDictionary(symbol => symbol.Id, StringComparer.Ordinal);

@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 
 const chunks = [];
@@ -17,6 +18,11 @@ process.stdin.on('end', () => {
 
   process.stdout.write(JSON.stringify(mapRepo(request)));
 });
+
+// Synchronous so each line reaches the parent while mapping runs, not in one burst after it.
+function report(message) {
+  fs.writeSync(2, `progress: ${message}\n`);
+}
 
 function typeScriptPath(repoRoot, tsconfig) {
   try {
@@ -38,20 +44,27 @@ function mapRepo(request) {
   let unresolved = 0;
 
   for (const tsconfig of request.tsconfigs) {
+    report(`loading ${tsconfig}`);
     const configPath = path.join(repoRoot, tsconfig);
     const ts = require(typeScriptPath(repoRoot, tsconfig));
     const config = ts.readConfigFile(configPath, ts.sys.readFile).config;
     const parsed = ts.parseJsonConfigFileContent(config, ts.sys, path.dirname(configPath), undefined, configPath);
     const program = ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options });
     const mapper = createMapper(ts, program.getTypeChecker(), repoRoot);
-
-    for (const sourceFile of program.getSourceFiles()) {
+    const files = program.getSourceFiles().filter((sourceFile) => {
       const file = mapper.repoPath(sourceFile);
-      if (sourceFile.isDeclarationFile || !included.has(file) || mapped.has(file)) {
-        continue;
+      return !sourceFile.isDeclarationFile && included.has(file) && !mapped.has(file);
+    });
+    let done = 0;
+
+    for (const sourceFile of files) {
+      const file = mapper.repoPath(sourceFile);
+      mapped.add(file);
+      done += 1;
+      if (Math.floor((done * 10) / files.length) > Math.floor(((done - 1) * 10) / files.length)) {
+        report(`mapped ${done}/${files.length} files`);
       }
 
-      mapped.add(file);
       for (const declaration of mapper.declarations(sourceFile)) {
         if (symbols.has(declaration.id)) {
           continue;

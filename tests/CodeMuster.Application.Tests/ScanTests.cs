@@ -264,6 +264,20 @@ public class ScanTests
     }
 
     [Fact]
+    public async Task Progress_NamesEachStepAsItHappens_WithMapperMessagesUnderTheirLanguage()
+    {
+        AddThree();
+        tree.Add("web/package-lock.json", "{}");
+        var progress = new ListProgress();
+        var csharp = new FakeCodeMapper(Languages.CSharp, new CodeMap([], [], [], new ResolutionStats(0, 0, []), []));
+        csharp.Reports.Add("loading App.sln");
+
+        await new Scan(ledger, tree, new FakeContentHasher(), clock, Config.Default, [csharp], "/repo", progress).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["listed 4 files, 1 excluded", "csharp: loading App.sln", "planning units", "saving 3 units"], progress.Messages);
+    }
+
+    [Fact]
     public async Task RemovedFile_GetsDeletedAt_AndItsUnitIsRetired_WithRowsKept()
     {
         tree.Add("src/A.cs", "class A {}");

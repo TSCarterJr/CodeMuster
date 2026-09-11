@@ -8,6 +8,8 @@ namespace CodeMuster.Mapping.TypeScript;
 
 public sealed class TypeScriptMapper : ICodeMapper
 {
+    private const string ProgressPrefix = "progress: ";
+
     private readonly string _node;
 
     public TypeScriptMapper()
@@ -22,7 +24,7 @@ public sealed class TypeScriptMapper : ICodeMapper
 
     public string Language => Languages.TypeScript;
 
-    public async Task<CodeMap> MapAsync(string repoRoot, IReadOnlyList<string> paths, CancellationToken cancellationToken)
+    public async Task<CodeMap> MapAsync(string repoRoot, IReadOnlyList<string> paths, IProgress<string>? progress, CancellationToken cancellationToken)
     {
         List<string> normalized = [.. paths.Select(RepoPath.Normalize)];
         List<string> tsconfigs = [.. normalized.Where(path => Path.GetFileName(path) == "tsconfig.json").Order(StringComparer.Ordinal)];
@@ -37,7 +39,7 @@ public sealed class TypeScriptMapper : ICodeMapper
             var script = Path.Combine(folder.FullName, "map.js");
             await ExtractScriptAsync(script, cancellationToken).ConfigureAwait(false);
             var request = JsonSerializer.Serialize(new MapRequest(Path.GetFullPath(repoRoot), tsconfigs, normalized), DomainJson.Options);
-            return CodeMapJson.Parse(await RunNodeAsync(script, request, cancellationToken).ConfigureAwait(false));
+            return CodeMapJson.Parse(await RunNodeAsync(script, request, progress, cancellationToken).ConfigureAwait(false));
         }
         finally
         {
@@ -62,7 +64,7 @@ public sealed class TypeScriptMapper : ICodeMapper
         await resource.CopyToAsync(file, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<string> RunNodeAsync(string script, string request, CancellationToken cancellationToken)
+    private async Task<string> RunNodeAsync(string script, string request, IProgress<string>? progress, CancellationToken cancellationToken)
     {
         var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
         var startInfo = new ProcessStartInfo(_node)
@@ -81,13 +83,14 @@ public sealed class TypeScriptMapper : ICodeMapper
         try
         {
             var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+            var errors = new StringBuilder();
+            var stderr = ReadErrorsAsync(process.StandardError, progress, errors, cancellationToken);
             await process.StandardInput.WriteAsync(request.AsMemory(), cancellationToken).ConfigureAwait(false);
             process.StandardInput.Close();
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
             var output = await stdout.ConfigureAwait(false);
-            var error = await stderr.ConfigureAwait(false);
-            return process.ExitCode == 0 ? output : throw new InvalidOperationException($"TypeScript mapping failed: {error.Trim()}");
+            await stderr.ConfigureAwait(false);
+            return process.ExitCode == 0 ? output : throw new InvalidOperationException($"TypeScript mapping failed: {errors.ToString().Trim()}");
         }
         catch (OperationCanceledException)
         {
@@ -97,6 +100,21 @@ public sealed class TypeScriptMapper : ICodeMapper
             }
 
             throw;
+        }
+    }
+
+    private static async Task ReadErrorsAsync(StreamReader reader, IProgress<string>? progress, StringBuilder errors, CancellationToken cancellationToken)
+    {
+        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        {
+            if (line.StartsWith(ProgressPrefix, StringComparison.Ordinal))
+            {
+                progress?.Report(line[ProgressPrefix.Length..]);
+            }
+            else
+            {
+                errors.AppendLine(line);
+            }
         }
     }
 

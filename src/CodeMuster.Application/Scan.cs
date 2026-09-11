@@ -6,8 +6,9 @@ namespace CodeMuster.Application;
 /// Discovers the tree, refreshes file rows through the stat cache (D05), plans units, retires every live unit the plan no longer holds, and records a <see cref="ScanRun"/>.
 /// A current finding keeps its verify unit while the code of the unit that reported it is unchanged since that analysis (D27), unless verification is off (D28).
 /// With at least one mapper the scan runs in slice mode: the mappers map the repository at <paramref name="repoRoot"/> and units are slices, orphans, and file units (D25). Without mappers every included file is one file unit.
+/// Each step is reported to <paramref name="progress"/> as it starts or finishes, with mapper steps under their language.
 /// </summary>
-public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config, IReadOnlyList<ICodeMapper>? mappers = null, string repoRoot = "")
+public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config, IReadOnlyList<ICodeMapper>? mappers = null, string repoRoot = "", IProgress<string>? progress = null)
 {
     /// <summary>Runs one scan, in slice mode when mappers were given.</summary>
     public async Task<ScanResult> RunAsync(CancellationToken cancellationToken)
@@ -32,8 +33,11 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         await ledger.UpsertFilesAsync([.. current, .. deleted], cancellationToken);
 
         var included = current.Where(f => f.ExcludedReason is null).ToList();
+        var excluded = current.Count - included.Count;
+        progress?.Report($"listed {current.Count} files, {excluded} excluded");
         IReadOnlyList<ICodeMapper> active = mappers ?? [];
-        var mapped = await CompositeMapper.MapAsync(active, repoRoot, included, cancellationToken);
+        var mapped = await CompositeMapper.MapAsync(active, repoRoot, included, progress, cancellationToken);
+        progress?.Report("planning units");
         var planned = SliceBuilder.Build(mapped, included);
         if (config.Verify)
         {
@@ -68,6 +72,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             members.AddRange(await ledger.GetMembersAsync(retired.Select(u => u.Id).ToList(), cancellationToken));
         }
 
+        progress?.Report($"saving {units.Count} units");
         await ledger.UpsertUnitsAsync([.. units, .. retired], members, cancellationToken);
 
         foreach (var unit in units.Concat(retired))
@@ -76,7 +81,6 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         }
 
         var total = existingUnits.Values.Count(u => u.Status != UnitStatus.Retired);
-        var excluded = current.Count - included.Count;
         await ledger.RecordRunAsync(new ScanRun(now, head, included.Count, excluded, total, mapped.ResolutionRate, mapped.TopUnresolvedNames), cancellationToken);
         var sliceMode = active.Count == 0
             ? null

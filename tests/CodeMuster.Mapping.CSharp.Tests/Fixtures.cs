@@ -33,7 +33,7 @@ internal static class Fixtures
             }
         }
 
-        return await new RoslynMapper().MapAsync(root, IncludedPaths(root), CancellationToken.None);
+        return await new RoslynMapper().MapAsync(root, IncludedPaths(root), null, CancellationToken.None);
     }
 
     public static IReadOnlyList<string> IncludedPaths(string root) =>

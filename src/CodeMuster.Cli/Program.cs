@@ -172,7 +172,7 @@ public static class Program
     private static async Task<int> ScanAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, CancellationToken cancellationToken)
     {
         var mappers = command.Options.GetValueOrDefault("mode") == "file" ? [] : Mappers();
-        var scan = await new Scan(ledger, tree, new GitBlobHasher(repoRoot), clock, config, mappers, repoRoot).RunAsync(cancellationToken);
+        var scan = await new Scan(ledger, tree, new GitBlobHasher(repoRoot), clock, config, mappers, repoRoot, new ProgressWriter(Console.Error)).RunAsync(cancellationToken);
         Console.WriteLine($"scanned {scan.FilesIncluded} files ({scan.FilesExcluded} excluded) at {scan.HeadCommit[..7]}: {scan.UnitsCreated} new, {scan.UnitsStale} stale, {scan.UnitsTotal} total units");
         if (scan.SliceMode is { } slices)
         {
@@ -201,7 +201,7 @@ public static class Program
         }
 
         var config = File.Exists(ConfigLoader.PathFor(repoRoot)) ? await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken) : null;
-        var report = await new Doctor(new GitSourceTree(repoRoot), Mappers(), new SystemClock(), repoRoot, config).RunAsync(cancellationToken);
+        var report = await new Doctor(new GitSourceTree(repoRoot), Mappers(), new SystemClock(), repoRoot, config, new ProgressWriter(Console.Error)).RunAsync(cancellationToken);
         Console.WriteLine(report.Render());
         return report.Ready ? 0 : 1;
     }
@@ -241,6 +241,7 @@ public static class Program
             int.Parse(command.Options.GetValueOrDefault("attempts", "3")),
             command.Flags.Contains("force"),
             kind is null ? null : Enum.Parse<UnitKind>(kind, ignoreCase: true));
+        Console.WriteLine($"running {command.Options["agent"]} on up to {options.Parallelism} unit(s) at a time; a line prints as each unit finishes");
         var result = await new Run(ledger, tree, clock, config, adapter, new RunProgressWriter(Console.Out)).RunAsync(options, cancellationToken);
         foreach (var unitId in result.GaveUp)
         {

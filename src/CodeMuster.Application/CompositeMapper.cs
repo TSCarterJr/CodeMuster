@@ -7,8 +7,8 @@ public static class CompositeMapper
 {
     private const int MaxUnresolvedNames = 20;
 
-    /// <summary>Runs, in order, each mapper whose language has at least one of the <paramref name="included"/> files, handing it every included path. A mapper that throws adds the diagnostic <c>&lt;language&gt; mapper failed: &lt;message&gt;</c> and marks its language failed; cancellation propagates.</summary>
-    public static async Task<CompositeMap> MapAsync(IReadOnlyList<ICodeMapper> mappers, string repoRoot, IReadOnlyList<FileRecord> included, CancellationToken cancellationToken)
+    /// <summary>Runs, in order, each mapper whose language has at least one of the <paramref name="included"/> files, handing it every included path. A mapper that throws adds the diagnostic <c>&lt;language&gt; mapper failed: &lt;message&gt;</c> and marks its language failed; cancellation propagates. Each mapper's progress reaches <paramref name="progress"/> as <c>&lt;language&gt;: &lt;step&gt;</c>.</summary>
+    public static async Task<CompositeMap> MapAsync(IReadOnlyList<ICodeMapper> mappers, string repoRoot, IReadOnlyList<FileRecord> included, IProgress<string>? progress, CancellationToken cancellationToken)
     {
         var paths = included.Select(f => f.Path).ToList();
         var maps = new List<CodeMap>();
@@ -19,7 +19,7 @@ public static class CompositeMapper
         {
             try
             {
-                var map = await mapper.MapAsync(repoRoot, paths, cancellationToken);
+                var map = await mapper.MapAsync(repoRoot, paths, PrefixedProgress.For(progress, mapper.Language), cancellationToken);
                 maps.Add(map);
                 mapped.Add(mapper.Language);
                 diagnostics.AddRange(map.Diagnostics);
