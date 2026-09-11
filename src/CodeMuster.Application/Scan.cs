@@ -4,11 +4,11 @@ namespace CodeMuster.Application;
 
 /// <summary>
 /// Discovers the tree, refreshes file rows through the stat cache (D05), plans units, retires every live unit the plan no longer holds, and records a <see cref="ScanRun"/>.
-/// With at least one mapper and <paramref name="fileMode"/> false the scan runs in slice mode: the mappers map the repository at <paramref name="repoRoot"/> and units are slices, orphans, and file units (D25). Otherwise every included file is one file unit.
+/// With at least one mapper the scan runs in slice mode: the mappers map the repository at <paramref name="repoRoot"/> and units are slices, orphans, and file units (D25). Without mappers every included file is one file unit.
 /// </summary>
-public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config, IReadOnlyList<ICodeMapper>? mappers = null, string repoRoot = "", bool fileMode = false)
+public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config, IReadOnlyList<ICodeMapper>? mappers = null, string repoRoot = "")
 {
-    /// <summary>Runs one scan, in slice mode when mappers were given and file mode was not forced.</summary>
+    /// <summary>Runs one scan, in slice mode when mappers were given.</summary>
     public async Task<ScanResult> RunAsync(CancellationToken cancellationToken)
     {
         var now = Timestamps.Format(clock.UtcNow);
@@ -31,7 +31,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         await ledger.UpsertFilesAsync([.. current, .. deleted], cancellationToken);
 
         var included = current.Where(f => f.ExcludedReason is null).ToList();
-        IReadOnlyList<ICodeMapper> active = fileMode || mappers is null ? [] : mappers;
+        IReadOnlyList<ICodeMapper> active = mappers ?? [];
         var mapped = await CompositeMapper.MapAsync(active, repoRoot, included, cancellationToken);
         var planned = SliceBuilder.Build(mapped, included);
 

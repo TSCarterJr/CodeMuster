@@ -54,7 +54,7 @@ public class StatusTests
 
         var text = (await RunAsync()).Render();
 
-        Assert.Equal("analyzed 2/5 at abcdef0\nfile 2/5, 1 stale\nstale 1\nexcluded 1\nlow-fidelity 1\nresolution 97.3%", text);
+        Assert.Equal("analyzed 2/5 at abcdef0\nfile 2/5, 1 stale\nstale 1\nexcluded 1\nlow-fidelity 1\nresolution 97.3%\nincomplete: 1 unit(s) have no call map because their language's mapper failed", text);
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class StatusTests
         var report = await RunAsync();
 
         Assert.Null(report.ResolutionRate);
-        Assert.Equal("analyzed 2/5 at abcdef0\nfile 2/5, 1 stale\nstale 1\nexcluded 1\nlow-fidelity 1", report.Render());
+        Assert.Equal("analyzed 2/5 at abcdef0\nfile 2/5, 1 stale\nstale 1\nexcluded 1\nlow-fidelity 1\nincomplete: 1 unit(s) have no call map because their language's mapper failed", report.Render());
     }
 
     [Fact]
@@ -113,6 +113,18 @@ public class StatusTests
         ledger.Runs.Add(new ScanRun(At, Head, 1, 0, 1, null));
 
         Assert.EndsWith("\nlow-fidelity 0\ncomplete", (await RunAsync()).Render());
+    }
+
+    [Fact]
+    public async Task Incomplete_WhenAMapperFailed_EvenWithEveryUnitDoneAndFullResolution()
+    {
+        AddUnit("/quotes", UnitStatus.Done, kind: UnitKind.Slice);
+        AddUnit("src/Program.cs", UnitStatus.Done, Fidelity.Low);
+        ledger.Runs.Add(new ScanRun(At, Head, 2, 0, 2, 1.0, []));
+
+        var text = (await RunAsync()).Render();
+
+        Assert.EndsWith("\nresolution 100.0%\nincomplete: 1 unit(s) have no call map because their language's mapper failed", text);
     }
 
     [Fact]

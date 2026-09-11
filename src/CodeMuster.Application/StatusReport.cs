@@ -62,6 +62,10 @@ public sealed record StatusReport(
                 lines.Add("top unresolved: " + string.Join(", ", names));
             }
         }
+        else if (LowFidelity > 0)
+        {
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"incomplete: {LowFidelity} unit(s) have no call map because their language's mapper failed"));
+        }
         else if (Total > 0 && Analyzed == Total)
         {
             lines.Add("complete");

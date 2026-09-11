@@ -17,7 +17,7 @@ public class SliceScanTests
     public SliceScanTests() => AddTo(tree);
 
     private Task<ScanResult> ScanAsync(Config? config = null, bool fileMode = false) =>
-        new Scan(ledger, tree, new FakeContentHasher(), clock, config ?? Config.Default, [csharp, typescript], Root, fileMode).RunAsync(CancellationToken.None);
+        new Scan(ledger, tree, new FakeContentHasher(), clock, config ?? Config.Default, fileMode ? [] : [csharp, typescript], Root).RunAsync(CancellationToken.None);
 
     private Unit UnitById(string id) => ledger.Units.Single(u => u.Id == id);
 
