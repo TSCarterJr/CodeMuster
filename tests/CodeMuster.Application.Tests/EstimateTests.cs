@@ -37,17 +37,18 @@ public class EstimateTests
     }
 
     [Fact]
-    public async Task PendingStaleAndFailedUnits_AreSummedPerKind_AtBytesOverFour()
+    public async Task PendingStaleAndFailedUnits_AreSummedPerKind_AtBytesOverFourPlusPackOverhead()
     {
         Seed();
 
         var report = await RunAsync();
 
+        Assert.Equal(700, Estimate.PackOverheadTokens);
         Assert.Equal(
-            [new EstimateLine(UnitKind.File, 4, 1210), new EstimateLine(UnitKind.Slice, 1, 1201)],
+            [new EstimateLine(UnitKind.File, 4, 1210 + 4 * 700), new EstimateLine(UnitKind.Slice, 1, 1201 + 700)],
             report.Lines);
-        Assert.Equal(2411, report.TotalTokens);
-        Assert.Equal("file 4 units ~1210 tokens\nslice 1 units ~1201 tokens\ntotal ~2411 tokens", report.Render());
+        Assert.Equal(5911, report.TotalTokens);
+        Assert.Equal("file 4 units ~4010 tokens\nslice 1 units ~1901 tokens\ntotal ~5911 tokens", report.Render());
     }
 
     [Fact]
