@@ -1,0 +1,114 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build and smoke-test; no release is created
+        required: true
+        default: 0.1.0-dev.1
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT: ${{ inputs.version }}
+        run: |
+          if [ "$EVENT" = push ]; then version="${GITHUB_REF_NAME#v}"; else version="$INPUT"; fi
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "not a version: $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - run: node --test npm/test/launcher.test.js
+      - name: Publish a self-contained build per platform
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          for rid in win-x64 win-arm64 osx-x64 osx-arm64 linux-x64 linux-arm64; do
+            dotnet publish src/CodeMuster.Cli -c Release -r "$rid" --self-contained \
+              -p:Version="$VERSION" -p:SatelliteResourceLanguages=en -p:DebugType=none -o "builds/$rid"
+          done
+      - name: Pack the platform packages and the launcher
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node npm/scripts/stage.js "$VERSION" builds staged
+          mkdir packages
+          for dir in staged/*; do npm pack "./$dir" --pack-destination packages; done
+          ls -l packages
+          test "$(ls packages/*.tgz | wc -l)" -eq 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: packages/*.tgz
+          retention-days: 7
+
+  smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win32-x64
+          - os: ubuntu-latest
+            platform: linux-x64
+          - os: macos-latest
+            platform: darwin-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: packages
+      - name: Install with npm and ask the build for its version
+        shell: bash
+        env:
+          CODEMUSTER_NO_UPDATE: '1'
+          PLATFORM: ${{ matrix.platform }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          npm install -g "packages/codemuster-$PLATFORM-$VERSION.tgz" "packages/codemuster-$VERSION.tgz"
+          actual="$(codemuster --version | tr -d '\r')"
+          echo "codemuster --version printed $actual"
+          test "$actual" = "$VERSION"
+
+  release:
+    needs: [build, smoke]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: packages
+      - name: Attach the packages to a GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" packages/*.tgz --repo "$GITHUB_REPOSITORY" --title "$TAG" \
+            --notes "Publish to npm with npm publish <file> --access public: the six platform packages first, then codemuster."
