@@ -41,7 +41,7 @@ public static class SliceBuilder
             var symbol = symbols[current];
             if (paths.Contains(symbol.Path))
             {
-                members.Add(new UnitMember(id, symbol.Path, symbol.Id, symbol.BodyHash, distances[current], symbol.Range, symbol.Signature));
+                members.Add(Member(id, symbol, distances[current]));
             }
 
             foreach (var next in calls[current].Where(symbols.ContainsKey))
@@ -73,9 +73,15 @@ public static class SliceBuilder
         var id = UnitIds.Orphan(file.Path);
         IReadOnlyList<UnitMember> members = unreached.Count == symbols.Count
             ? [WholeFile(id, file)]
-            : unreached.Select(s => new UnitMember(id, s.Path, s.Id, s.BodyHash, 0, s.Range, s.Signature)).ToList();
+            : unreached.Select(s => Member(id, s, 0)).ToList();
         return new PlannedUnit(id, UnitKind.Orphan, file.Path, Fidelity.Full, members);
     }
+
+    /// <summary>The member hash of a symbol: its body hash and its signature together, so a changed class header, which only the signature carries (D26), marks every unit holding one of the class's members stale.</summary>
+    public static string MemberHash(Symbol symbol) => Hashing.Sha256Hex(symbol.BodyHash + "\n" + symbol.Signature);
+
+    private static UnitMember Member(string unitId, Symbol symbol, int distance) =>
+        new(unitId, symbol.Path, symbol.Id, MemberHash(symbol), distance, symbol.Range, symbol.Signature);
 
     private static UnitMember WholeFile(string unitId, FileRecord file) => new(unitId, file.Path, null, file.ContentHash, 0);
 }

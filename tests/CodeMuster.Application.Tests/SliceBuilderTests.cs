@@ -33,7 +33,7 @@ public class SliceBuilderTests
         Assert.Equal(Fidelity.Full, slice.Fidelity);
         var symbols = map.Symbols.ToDictionary(s => s.Id);
         var expected = new (string Symbol, int Distance)[] { (ControllerListQuotes, 0), (ServiceListQuotes, 1), (ListForTenant, 2), (ToSummary, 2), (MoneyFormat, 3) }
-            .Select(e => new UnitMember(slice.Id, symbols[e.Symbol].Path, e.Symbol, symbols[e.Symbol].BodyHash, e.Distance, symbols[e.Symbol].Range, symbols[e.Symbol].Signature))
+            .Select(e => new UnitMember(slice.Id, symbols[e.Symbol].Path, e.Symbol, SliceBuilder.MemberHash(symbols[e.Symbol]), e.Distance, symbols[e.Symbol].Range, symbols[e.Symbol].Signature))
             .OrderBy(m => m.Symbol, StringComparer.Ordinal);
         Assert.Equal(expected, slice.Members.OrderBy(m => m.Symbol, StringComparer.Ordinal));
     }
@@ -151,7 +151,7 @@ public class SliceBuilderTests
         var orphan = Assert.Single(units, u => u.Id == UnitIds.Orphan(ServicePath));
         Assert.Equal((UnitKind.Orphan, ServicePath, Fidelity.Full), (orphan.Kind, orphan.Key, orphan.Fidelity));
         var archive = map.Symbols.Single(s => s.Id == ArchiveQuote);
-        Assert.Equal(new UnitMember(orphan.Id, ServicePath, ArchiveQuote, archive.BodyHash, 0, archive.Range, archive.Signature), Assert.Single(orphan.Members));
+        Assert.Equal(new UnitMember(orphan.Id, ServicePath, ArchiveQuote, SliceBuilder.MemberHash(archive), 0, archive.Range, archive.Signature), Assert.Single(orphan.Members));
         foreach (var reached in new[] { ServiceListQuotes, ServiceGetQuote, ToSummary })
         {
             Assert.All(units.Where(u => u.Members.Any(m => m.Symbol == reached)), u => Assert.Equal(UnitKind.Slice, u.Kind));

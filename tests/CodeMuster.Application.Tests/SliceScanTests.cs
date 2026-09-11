@@ -122,6 +122,22 @@ public class SliceScanTests
     }
 
     [Fact]
+    public async Task ChangingOnlyAClassHeader_MarksTheUnitsOfItsMethodsStale()
+    {
+        await ScanAndMarkEveryUnitDoneAsync();
+        var map = CSharp();
+        csharp.Map = map with
+        {
+            Symbols = map.Symbols.Select(s => s.Path == ServicePath ? s with { Signature = "[Authorize] " + s.Signature } : s).ToList(),
+        };
+        tree.Add(ServicePath, "content of QuoteService.cs with an attribute on the class");
+
+        await ScanAsync();
+
+        Assert.Equal(new[] { UnitIds.Orphan(ServicePath) }.Concat(new[] { ControllerGetQuote, ControllerListQuotes, ExecuteAsync }.Select(UnitIds.Slice)).Order(StringComparer.Ordinal), IdsWith(UnitStatus.Stale));
+    }
+
+    [Fact]
     public async Task EditingTheDeadMethod_MarksNoSliceStale_OnlyItsOrphan()
     {
         await ScanAndMarkEveryUnitDoneAsync();
