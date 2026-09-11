@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
@@ -15,9 +16,28 @@ public sealed class FakeAgentAdapter : IAgentAdapter
 
     public Task<string> RunAsync(string pack, CancellationToken cancellationToken)
     {
+        if (FindingUnderTest(pack) is { } finding)
+        {
+            var verdict = finding.Confidence < 0.5 ? Verdict.Refuted : Verdict.Confirmed;
+            return Task.FromResult(VerifyResponseJson.Serialize(new VerifyResponse(verdict, "fake verification")));
+        }
+
         var path = FirstFilePath(pack);
         var findings = _template.Findings.Select(finding => finding with { Path = path }).ToList();
         return Task.FromResult(AnalysisResponseJson.Serialize(_template with { Findings = findings }));
+    }
+
+    private static Finding? FindingUnderTest(string pack)
+    {
+        var lines = pack.Split('\n').Select(line => line.TrimEnd('\r')).ToList();
+        var heading = lines.IndexOf("## Finding");
+        if (!lines.Contains("- kind: verify") || heading < 0)
+        {
+            return null;
+        }
+
+        var json = lines.Skip(heading + 3).TakeWhile(line => line != "```");
+        return JsonSerializer.Deserialize<Finding>(string.Join('\n', json), DomainJson.Options);
     }
 
     private static string FirstFilePath(string pack)

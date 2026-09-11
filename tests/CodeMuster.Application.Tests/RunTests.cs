@@ -305,6 +305,24 @@ public class RunTests
     }
 
     [Fact]
+    public async Task FindingsRecordedDuringTheRun_AreVerifiedInTheSameRun_AndTheTotalGrowsToCoverThem()
+    {
+        AddFileUnit("src/a.cs");
+        var finding = new Finding("src/a.cs", 1, 1, Severity.High, "security", "claim", "evidence", 0.9, "default");
+        var adapter = new FakeAgentAdapter((pack, _) => Task.FromResult(pack.Contains("- kind: verify\n", StringComparison.Ordinal)
+            ? VerifyResponseJson.Serialize(new VerifyResponse(Verdict.Confirmed, "Line 1 shows it."))
+            : AnalysisResponseJson.Serialize(new AnalysisResponse("A", [finding]))));
+
+        var result = await RunAsync(adapter, new RunOptions(1, 1, false));
+
+        Assert.Equal(2, result.Completed);
+        Assert.Empty(result.GaveUp);
+        Assert.Equal([("file:src/a.cs", 1, 1), ("verify:1", 2, 2)], reports.Select(r => (r.UnitId, r.Completed, r.Total)));
+        Assert.Equal(UnitStatus.Done, Stored(UnitIds.Verify(1)).Status);
+        Assert.Equal(Verdict.Confirmed, ledger.Verifications[1].Verdict);
+    }
+
+    [Fact]
     public async Task FencedJsonOutput_IsAccepted()
     {
         var unit = AddFileUnit("src/a.cs");
@@ -315,7 +333,7 @@ public class RunTests
 
         Assert.Equal(1, result.Completed);
         Assert.Equal(UnitStatus.Done, Stored(unit.Id).Status);
-        var (analysis, findings) = Assert.Single(ledger.Analyses);
+        var (analysis, findings) = Assert.Single(ledger.Analyses, a => a.Analysis.UnitId == unit.Id);
         Assert.True(analysis.Succeeded);
         Assert.Equal("src/a.cs", Assert.Single(findings).Path);
     }

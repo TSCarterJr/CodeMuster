@@ -25,16 +25,20 @@ public class HeadlessTests
         Assert.True(match.Success, status.Stdout);
         Assert.Equal(match.Groups[2].Value, match.Groups[1].Value);
         var total = int.Parse(match.Groups[2].Value);
-        var progress = Regex.Matches(run.Stdout, "^(\\d+)/\\d+ file:", RegexOptions.Multiline).Select(m => int.Parse(m.Groups[1].Value)).ToList();
-        Assert.Equal(Enumerable.Range(1, total), progress);
+        var files = int.Parse(Regex.Match(status.Stdout, @"^file (\d+)/\1\r?$", RegexOptions.Multiline).Groups[1].Value);
+        Assert.Equal(2 * files, total);
+        Assert.Contains($"\nverify {files}/{files}\n", status.Stdout.ReplaceLineEndings("\n"));
+        var progress = Regex.Matches(run.Stdout, "^(\\d+)/\\d+ (file|verify):", RegexOptions.Multiline).Select(m => (int.Parse(m.Groups[1].Value), m.Groups[2].Value)).ToList();
+        Assert.Equal(Enumerable.Range(1, total).Select(n => (n, n <= files ? "file" : "verify")), progress);
         Assert.Equal($"completed {total} unit(s), 0 gave up", run.Stdout.TrimEnd().Split('\n')[^1].TrimEnd('\r'));
 
         var report = await CliProcess.RunAsync(repo.Root, "report");
         Assert.Equal(0, report.ExitCode);
         Assert.StartsWith("# CodeMuster report", report.Stdout);
         Assert.Contains($"analyzed {total}/{total} units at", report.Stdout);
-        Assert.Contains("### medium (" + total + ")", report.Stdout);
+        Assert.Contains("### medium (" + files + ")", report.Stdout);
         Assert.Contains(PlantedClaim, report.Stdout);
+        Assert.Contains("  confirmed: fake verification", report.Stdout);
         Assert.Contains("| src/MixedRepo.Api/Program.cs | done | fake summary |", report.Stdout);
 
         var reportPath = Path.Combine(repo.Root, "audit.md");

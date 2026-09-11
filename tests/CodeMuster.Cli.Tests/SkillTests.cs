@@ -10,6 +10,7 @@ public class SkillTests
     public void Skill_ContainsTheExactResponseSample()
     {
         Assert.Contains("```json\n" + AnalysisResponseJson.Sample + "\n```", SkillText.ReplaceLineEndings("\n"));
+        Assert.Contains("```json\n" + VerifyResponseJson.Sample + "\n```", SkillText.ReplaceLineEndings("\n"));
     }
 
     [Fact]

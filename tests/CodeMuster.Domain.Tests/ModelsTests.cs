@@ -36,6 +36,7 @@ public class ModelsTests
     {
         Assert.Equal("file:src/A.cs", UnitIds.File("src/A.cs"));
         Assert.Equal("orphan:src/A.cs", UnitIds.Orphan("src/A.cs"));
+        Assert.Equal("verify:12", UnitIds.Verify(12));
         Assert.Equal("slice:M:Api.QuotesController.Get(System.Int32)", UnitIds.Slice("M:Api.QuotesController.Get(System.Int32)"));
     }
 

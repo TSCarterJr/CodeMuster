@@ -50,7 +50,12 @@ public class EndToEndTests
         Assert.Equal(0, done.ExitCode);
 
         status = await CliProcess.RunAsync(repo.Root, "status");
-        Assert.Contains($"analyzed 1/{total} at ", status.Stdout);
+        Assert.Contains($"analyzed 1/{int.Parse(total) + 1} at ", status.Stdout);
+        Assert.Contains("\nverify 0/1\n", status.Stdout.ReplaceLineEndings("\n"));
+
+        next = await CliProcess.RunAsync(repo.Root, "next", "--batch", "100", "--out", packPath);
+        Assert.Equal(0, next.ExitCode);
+        Assert.Contains("- kind: verify\n", (await File.ReadAllTextAsync(packPath)).ReplaceLineEndings("\n"));
 
         var estimate = await CliProcess.RunAsync(repo.Root, "estimate");
         Assert.Equal(0, estimate.ExitCode);

@@ -9,6 +9,7 @@ public sealed class FakeLedger : ILedger
     public List<UnitMember> Members { get; } = [];
     public List<(Analysis Analysis, IReadOnlyList<Finding> Findings)> Analyses { get; } = [];
     public List<ScanRun> Runs { get; } = [];
+    public Dictionary<long, VerifyResponse> Verifications { get; } = [];
 
     public Task<IReadOnlyList<FileRecord>> GetFilesAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<FileRecord>>(Files.Values.ToList());
@@ -70,14 +71,23 @@ public sealed class FakeLedger : ILedger
         return Task.CompletedTask;
     }
 
+    public Task RecordVerificationAsync(Analysis analysis, long findingId, VerifyResponse verification, CancellationToken cancellationToken)
+    {
+        Verifications[findingId] = verification;
+        return RecordAnalysisAsync(analysis, [], cancellationToken);
+    }
+
     public Task<IReadOnlyList<UnitFinding>> GetCurrentFindingsAsync(CancellationToken cancellationToken)
     {
         var live = Units.Where(u => u.Status != UnitStatus.Retired).Select(u => u.Id).ToHashSet();
-        var current = Analyses
+        var id = 0L;
+        var numbered = Analyses.Select(a => (a.Analysis, Findings: a.Findings.Select(f => (Id: ++id, Finding: f)).ToList())).ToList();
+        var current = numbered
             .Where(a => a.Analysis.Succeeded && live.Contains(a.Analysis.UnitId))
             .GroupBy(a => a.Analysis.UnitId)
             .Select(g => g.Last())
-            .SelectMany(a => a.Findings.Select(f => new UnitFinding(a.Analysis.UnitId, a.Analysis.Fingerprint, f)))
+            .SelectMany(a => a.Findings.Select(f => new UnitFinding(f.Id, a.Analysis.UnitId, a.Analysis.Fingerprint, f.Finding, Verifications.GetValueOrDefault(f.Id))))
+            .OrderBy(f => f.Id)
             .ToList();
         return Task.FromResult<IReadOnlyList<UnitFinding>>(current);
     }

@@ -68,14 +68,14 @@ public class ReportTests
             "\n" +
             "### high (1)\n" +
             "\n" +
-            "- `src/a.cs:10-12` [tenant-scoping, confidence 0.90] Query is not tenant scoped\n" +
+            "- `src/a.cs:10-12` [tenant-scoping, confidence 0.90, unverified] Query is not tenant scoped\n" +
             "  The WHERE clause omits tenant_id.\n" +
             "\n" +
             "### medium (2)\n" +
             "\n" +
-            "- `src/a.cs:30-31` [tenant-scoping, confidence 0.55] Tenant id read from the query string\n" +
+            "- `src/a.cs:30-31` [tenant-scoping, confidence 0.55, unverified] Tenant id read from the query string\n" +
             "  Line 30 trusts the tenant query parameter over the claim.\n" +
-            "- `src/b.cs:1-4` [tenant-scoping, confidence 0.75] Null check missing\n" +
+            "- `src/b.cs:1-4` [tenant-scoping, confidence 0.75, unverified] Null check missing\n" +
             "  quote may be null at line 3.\n" +
             "  (stale: unit changed since this analysis)\n" +
             "\n" +
@@ -89,6 +89,44 @@ public class ReportTests
             "| src/d.cs | pending |  |\n" +
             "| src/e.cs | done | Does E |\n";
         Assert.Equal(golden, markdown);
+    }
+
+    [Fact]
+    public async Task RefutedFindings_AreLeftOut_AndTheRestShowTheirVerdict()
+    {
+        ledger.Runs.Add(new ScanRun(At, Head, 1, 0, 1, null));
+        var a = AddUnit("src/a.cs");
+        await AnalyzeAsync(a, "Does A",
+            Finding("src/a.cs", 1, 1, Severity.High, "Confirmed claim", "Evidence one.", 0.9),
+            Finding("src/a.cs", 2, 2, Severity.High, "Refuted claim", "Evidence two.", 0.9),
+            Finding("src/a.cs", 3, 3, Severity.Low, "Unsure claim", "Evidence three.", 0.6),
+            Finding("src/a.cs", 4, 4, Severity.Low, "Unverified claim", "Evidence four.", 0.5));
+        ledger.Verifications[1] = new VerifyResponse(Verdict.Confirmed, "Line 1 shows it.");
+        ledger.Verifications[2] = new VerifyResponse(Verdict.Refuted, "Line 2 guards it.");
+        ledger.Verifications[3] = new VerifyResponse(Verdict.Unsure, "Depends on the caller.");
+
+        var markdown = await RunAsync();
+
+        const string findings =
+            "## Findings (3, 1 refuted not shown)\n" +
+            "\n" +
+            "### high (1)\n" +
+            "\n" +
+            "- `src/a.cs:1` [tenant-scoping, confidence 0.90, confirmed] Confirmed claim\n" +
+            "  Evidence one.\n" +
+            "  confirmed: Line 1 shows it.\n" +
+            "\n" +
+            "### low (2)\n" +
+            "\n" +
+            "- `src/a.cs:3` [tenant-scoping, confidence 0.60, unsure] Unsure claim\n" +
+            "  Evidence three.\n" +
+            "  unsure: Depends on the caller.\n" +
+            "- `src/a.cs:4` [tenant-scoping, confidence 0.50, unverified] Unverified claim\n" +
+            "  Evidence four.\n" +
+            "\n" +
+            "## Units\n";
+        Assert.Contains(findings, markdown);
+        Assert.DoesNotContain("Refuted claim", markdown);
     }
 
     [Fact]
@@ -110,7 +148,7 @@ public class ReportTests
             "\n" +
             "### high (1)\n" +
             "\n" +
-            "- `src/a|b.cs:2` [tenant-scoping, confidence 0.80] Unscoped query ## Injected heading\n" +
+            "- `src/a|b.cs:2` [tenant-scoping, confidence 0.80, unverified] Unscoped query ## Injected heading\n" +
             "  Line 2 filters on status only. - not a list item\n" +
             "\n" +
             "## Units\n" +
@@ -165,9 +203,9 @@ public class ReportTests
             "\n" +
             "### low (2)\n" +
             "\n" +
-            "- `src/a.cs:3-5` [tenant-scoping, confidence 0.40] Unused parameter\n" +
+            "- `src/a.cs:3-5` [tenant-scoping, confidence 0.40, unverified] Unused parameter\n" +
             "  tenantId is never read.\n" +
-            "- `src/a.cs:7` [tenant-scoping, confidence 0.30] Magic number\n" +
+            "- `src/a.cs:7` [tenant-scoping, confidence 0.30, unverified] Magic number\n" +
             "  7 is unexplained.\n" +
             "\n" +
             "## Units\n" +

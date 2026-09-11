@@ -25,6 +25,14 @@ public class ScanTests
 
     private Unit Unit(string path) => ledger.Units.Single(u => u.Id == UnitIds.File(path));
 
+    private async Task<Unit> RecordFindingAsync(string path)
+    {
+        var unit = Unit(path);
+        var finding = new Finding(path, 1, 1, Severity.High, "security", "claim", "evidence", 0.9, "default");
+        await new Done(ledger, clock, Config.Default).RunAsync(unit.Id, unit.Fingerprint, AnalysisResponseJson.Serialize(new AnalysisResponse("summary", [finding])), CancellationToken.None);
+        return ledger.Units.Single(u => u.Kind == UnitKind.Verify && u.Key == path + ":1" && u.Status != UnitStatus.Retired);
+    }
+
     private void AddThree()
     {
         tree.Add("src/A.cs", "class A {}");
@@ -129,6 +137,73 @@ public class ScanTests
         var member = Assert.Single(ledger.Members, m => m.Path == "src/B.cs");
         Assert.Equal(ledger.Files["src/B.cs"].ContentHash, member.MemberHash);
         Assert.Equal(Fingerprints.Compute([member]), Unit("src/B.cs").Fingerprint);
+    }
+
+    [Fact]
+    public async Task VerifyUnits_SurviveAScan_WhileTheirFindingIsCurrent()
+    {
+        tree.Add("src/A.cs", "class A {}");
+        await ScanAsync();
+        var pending = await RecordFindingAsync("src/A.cs");
+        tree.Add("src/B.cs", "class B {}");
+        await ScanAsync();
+        var verified = await RecordFindingAsync("src/B.cs");
+        await new Done(ledger, clock, Config.Default).RunAsync(verified.Id, verified.Fingerprint, VerifyResponseJson.Sample, CancellationToken.None);
+        var done = ledger.Units.Single(u => u.Id == verified.Id);
+
+        var result = await ScanAsync();
+
+        Assert.Equal((0, 0, 4), (result.UnitsCreated, result.UnitsStale, result.UnitsTotal));
+        Assert.Equal(pending, ledger.Units.Single(u => u.Id == pending.Id));
+        Assert.Equal(done, ledger.Units.Single(u => u.Id == verified.Id));
+        Assert.Equal(UnitStatus.Done, done.Status);
+    }
+
+    [Fact]
+    public async Task VerifyUnits_AreRetired_WhenTheCodeTheirFindingWasMadeAgainstChanges()
+    {
+        tree.Add("src/A.cs", "class A {}");
+        await ScanAsync();
+        var verify = await RecordFindingAsync("src/A.cs");
+        tree.Add("src/A.cs", "class A { int x; }");
+
+        var result = await ScanAsync();
+
+        Assert.Equal(UnitStatus.Stale, Unit("src/A.cs").Status);
+        Assert.Equal(UnitStatus.Retired, ledger.Units.Single(u => u.Id == verify.Id).Status);
+        Assert.Equal(1, result.UnitsTotal);
+    }
+
+    [Fact]
+    public async Task VerifyUnits_AreRetired_WithTheirUnit()
+    {
+        tree.Add("src/A.cs", "class A {}");
+        tree.Add("src/B.cs", "class B {}");
+        await ScanAsync();
+        var verify = await RecordFindingAsync("src/B.cs");
+        tree.Files.RemoveAll(f => f.Path == "src/B.cs");
+
+        await ScanAsync();
+
+        Assert.Equal(UnitStatus.Retired, ledger.Units.Single(u => u.Id == verify.Id).Status);
+    }
+
+    [Fact]
+    public async Task FindingsWithoutAVerifyUnit_GetOne()
+    {
+        tree.Add("src/A.cs", "class A {}");
+        await ScanAsync();
+        var unit = Unit("src/A.cs");
+        var finding = new Finding("src/A.cs", 2, 3, Severity.Low, "style", "claim", "evidence", 0.4, "default");
+        await ledger.RecordAnalysisAsync(new Analysis(unit.Id, unit.Fingerprint, "lens", Timestamps.Format(clock.UtcNow), true, "A", null), [finding], CancellationToken.None);
+
+        var result = await ScanAsync();
+
+        Assert.Equal((1, 2), (result.UnitsCreated, result.UnitsTotal));
+        Assert.Equal(
+            new Unit(UnitIds.Verify(1), UnitKind.Verify, "src/A.cs:2-3", unit.Fingerprint, UnitStatus.Pending, Fidelity.Full, null, null, null),
+            ledger.Units.Single(u => u.Kind == UnitKind.Verify));
+        Assert.Equal([new UnitMember(UnitIds.Verify(1), "src/A.cs", null, ledger.Files["src/A.cs"].ContentHash, 0)], ledger.Members.Where(m => m.UnitId == UnitIds.Verify(1)));
     }
 
     [Fact]

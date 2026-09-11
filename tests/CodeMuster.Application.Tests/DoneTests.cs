@@ -26,6 +26,95 @@ public class DoneTests
 
     private Unit Stored => ledger.Units.Single(u => u.Id == unit.Id);
 
+    private static string Respond(params (int Start, int End)[] ranges) => AnalysisResponseJson.Serialize(new AnalysisResponse("A",
+        ranges.Select(r => new Finding(MemberPath, r.Start, r.End, Severity.High, "security", "claim", "evidence", 0.9, "default")).ToList()));
+
+    private async Task<Unit> RecordOneFindingAsync()
+    {
+        await RunAsync(responseJson: Respond((18, 21)));
+        return ledger.Units.Single(u => u.Id == UnitIds.Verify(1));
+    }
+
+    [Fact]
+    public async Task RecordedFindings_EachGetAPendingVerifyUnit_WithTheUnitsMembers()
+    {
+        var result = await RunAsync(responseJson: Respond((18, 21), (30, 30)));
+
+        Assert.Equal($"recorded 2 finding(s) for {unit.Id}", result.Message);
+        var verify = ledger.Units.Where(u => u.Kind == UnitKind.Verify).ToList();
+        Assert.Equal(
+            [
+                new Unit(UnitIds.Verify(1), UnitKind.Verify, "src/A.cs:18-21", unit.Fingerprint, UnitStatus.Pending, Fidelity.Full, null, null, null),
+                new Unit(UnitIds.Verify(2), UnitKind.Verify, "src/A.cs:30", unit.Fingerprint, UnitStatus.Pending, Fidelity.Full, null, null, null),
+            ],
+            verify);
+        Assert.Equal([new UnitMember(UnitIds.Verify(1), MemberPath, null, "hash-a", 0)], ledger.Members.Where(m => m.UnitId == UnitIds.Verify(1)));
+    }
+
+    [Fact]
+    public async Task NoFindings_NoVerifyUnits()
+    {
+        await RunAsync(responseJson: Respond());
+
+        Assert.DoesNotContain(ledger.Units, u => u.Kind == UnitKind.Verify);
+    }
+
+    [Fact]
+    public async Task Reanalysis_RetiresTheVerifyUnitsOfTheFindingsItReplaces_AndKeepsTheirRows()
+    {
+        await RecordOneFindingAsync();
+
+        await RunAsync(responseJson: Respond((18, 21)));
+
+        Assert.Equal(UnitStatus.Retired, ledger.Units.Single(u => u.Id == UnitIds.Verify(1)).Status);
+        Assert.Equal(UnitStatus.Pending, ledger.Units.Single(u => u.Id == UnitIds.Verify(2)).Status);
+        Assert.Single(ledger.Members, m => m.UnitId == UnitIds.Verify(1));
+    }
+
+    [Theory]
+    [InlineData(Verdict.Confirmed, "confirmed")]
+    [InlineData(Verdict.Refuted, "refuted")]
+    [InlineData(Verdict.Unsure, "unsure")]
+    public async Task Verdict_IsStoredOnTheFinding_AndTheVerifyUnitIsDone(Verdict verdict, string name)
+    {
+        var verify = await RecordOneFindingAsync();
+        var response = new VerifyResponse(verdict, "Line 19 settles it.");
+
+        var result = await RunAsync(verify.Id, verify.Fingerprint, VerifyResponseJson.Serialize(response));
+
+        Assert.Equal(new DoneResult(DoneOutcome.Recorded, $"recorded {name} for {verify.Id}"), result);
+        Assert.Equal(response, ledger.Verifications[1]);
+        Assert.Equal(
+            verify with { Status = UnitStatus.Done, Summary = $"{name}: Line 19 settles it.", SummaryHash = verify.Fingerprint, LensHash = Config.HashOf(Config.Default.Lenses) },
+            ledger.Units.Single(u => u.Id == verify.Id));
+        Assert.Empty(ledger.Analyses[^1].Findings);
+        Assert.Equal(response, Assert.Single(await ledger.GetCurrentFindingsAsync(CancellationToken.None)).Verification);
+    }
+
+    [Fact]
+    public async Task VerifyUnit_GivenAnAnalysisInsteadOfAVerdict_IsFailed_AndTheFindingStaysUnverified()
+    {
+        var verify = await RecordOneFindingAsync();
+
+        var result = await RunAsync(verify.Id, verify.Fingerprint, ValidResponse);
+
+        Assert.Equal(DoneOutcome.InvalidResponse, result.Outcome);
+        Assert.Equal(UnitStatus.Failed, ledger.Units.Single(u => u.Id == verify.Id).Status);
+        Assert.Empty(ledger.Verifications);
+    }
+
+    [Fact]
+    public async Task VerifyUnit_WhoseFindingWasReplaced_IsRejected()
+    {
+        var verify = await RecordOneFindingAsync();
+        await RunAsync(responseJson: Respond((18, 21)));
+
+        var result = await RunAsync(verify.Id, verify.Fingerprint, VerifyResponseJson.Sample);
+
+        Assert.Equal(new DoneResult(DoneOutcome.Rejected, "verify:1 tests a finding that a later analysis replaced; run codemuster scan"), result);
+        Assert.Empty(ledger.Verifications);
+    }
+
     [Fact]
     public async Task ValidResponse_RecordsAnalysisAndFindings_AndMarksUnitDone()
     {

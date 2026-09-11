@@ -47,6 +47,23 @@ public class FakeAgentAdapterTests
         Assert.Equal("src/Only.ts", Assert.Single(response.Findings).Path);
     }
 
+    [Theory]
+    [InlineData(0.5, Verdict.Confirmed)]
+    [InlineData(0.49, Verdict.Refuted)]
+    public async Task Verify_pack_confirms_a_confident_finding_and_refutes_a_doubtful_one(double confidence, Verdict verdict)
+    {
+        var finding = new Finding("src/A.cs", 1, 2, Severity.High, "security", "claim", "evidence", confidence, "default");
+        var adapter = new FakeAgentAdapter(FakeAgentAdapter.DefaultTemplate);
+        var pack = string.Join('\n',
+            "# CodeMuster unit", "", "- unit: verify:1", "- kind: verify", "", "## Instructions", "", "Try to refute it.", "",
+            "## Finding", "", "```json", JsonSerializer.Serialize(finding, DomainJson.Options), "```", "",
+            "## Files", "", "### src/A.cs (csharp)", "", "```csharp", "class A {}", "```", "", "## Response", "");
+
+        var output = await adapter.RunAsync(pack, CancellationToken.None);
+
+        Assert.Equal(VerifyResponseJson.Serialize(new VerifyResponse(verdict, "fake verification")), output);
+    }
+
     [Fact]
     public async Task Pack_without_files_throws()
     {

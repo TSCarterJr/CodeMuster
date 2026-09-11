@@ -6,7 +6,7 @@ namespace CodeMuster.Infrastructure;
 
 public sealed class SqliteLedger : ILedger, IDisposable
 {
-    internal const int SchemaVersion = 2;
+    internal const int SchemaVersion = 3;
 
     internal const string Schema = """
         CREATE TABLE files (
@@ -73,11 +73,16 @@ public sealed class SqliteLedger : ILedger, IDisposable
             lens_id TEXT NOT NULL);
         """;
 
-    private const string SchemaVersion2 = """
+    internal const string SchemaVersion2 = """
         ALTER TABLE unit_members ADD COLUMN start_line INTEGER;
         ALTER TABLE unit_members ADD COLUMN end_line INTEGER;
         ALTER TABLE unit_members ADD COLUMN signature TEXT;
         ALTER TABLE runs ADD COLUMN top_unresolved_names TEXT;
+        """;
+
+    private const string SchemaVersion3 = """
+        ALTER TABLE findings ADD COLUMN verify_status TEXT;
+        ALTER TABLE findings ADD COLUMN verify_reason TEXT;
         """;
 
     private const string FileColumns =
@@ -268,19 +273,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
     public async Task RecordAnalysisAsync(Analysis analysis, IReadOnlyList<Finding> findings, CancellationToken cancellationToken)
     {
         await using var transaction = await _connection.BeginTransactionAsync(cancellationToken);
-        await using var insertAnalysis = CreateCommand("""
-            INSERT INTO analyses (unit_id, fingerprint, lens_hash, created_at, succeeded, summary, error)
-            VALUES ($unit_id, $fingerprint, $lens_hash, $created_at, $succeeded, $summary, $error)
-            RETURNING id
-            """);
-        insertAnalysis.Parameters.AddWithValue("$unit_id", analysis.UnitId);
-        insertAnalysis.Parameters.AddWithValue("$fingerprint", analysis.Fingerprint);
-        insertAnalysis.Parameters.AddWithValue("$lens_hash", analysis.LensHash);
-        insertAnalysis.Parameters.AddWithValue("$created_at", analysis.CreatedAt);
-        insertAnalysis.Parameters.AddWithValue("$succeeded", analysis.Succeeded);
-        insertAnalysis.Parameters.AddWithValue("$summary", Db(analysis.Summary));
-        insertAnalysis.Parameters.AddWithValue("$error", Db(analysis.Error));
-        var analysisId = Convert.ToInt64(await insertAnalysis.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
+        var analysisId = await InsertAnalysisAsync(analysis, cancellationToken);
 
         await using var insertFinding = CreateCommand($"""
             INSERT INTO findings (analysis_id, {FindingColumns})
@@ -302,6 +295,42 @@ public sealed class SqliteLedger : ILedger, IDisposable
             await insertFinding.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        await UpdateUnitAsync(analysis, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task RecordVerificationAsync(Analysis analysis, long findingId, VerifyResponse verification, CancellationToken cancellationToken)
+    {
+        await using var transaction = await _connection.BeginTransactionAsync(cancellationToken);
+        await InsertAnalysisAsync(analysis, cancellationToken);
+        await using var verdict = CreateCommand("UPDATE findings SET verify_status = $status, verify_reason = $reason WHERE id = $id");
+        verdict.Parameters.AddWithValue("$id", findingId);
+        verdict.Parameters.AddWithValue("$status", Name(verification.Verdict));
+        verdict.Parameters.AddWithValue("$reason", verification.Reason);
+        await verdict.ExecuteNonQueryAsync(cancellationToken);
+        await UpdateUnitAsync(analysis, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private async Task<long> InsertAnalysisAsync(Analysis analysis, CancellationToken cancellationToken)
+    {
+        await using var insert = CreateCommand("""
+            INSERT INTO analyses (unit_id, fingerprint, lens_hash, created_at, succeeded, summary, error)
+            VALUES ($unit_id, $fingerprint, $lens_hash, $created_at, $succeeded, $summary, $error)
+            RETURNING id
+            """);
+        insert.Parameters.AddWithValue("$unit_id", analysis.UnitId);
+        insert.Parameters.AddWithValue("$fingerprint", analysis.Fingerprint);
+        insert.Parameters.AddWithValue("$lens_hash", analysis.LensHash);
+        insert.Parameters.AddWithValue("$created_at", analysis.CreatedAt);
+        insert.Parameters.AddWithValue("$succeeded", analysis.Succeeded);
+        insert.Parameters.AddWithValue("$summary", Db(analysis.Summary));
+        insert.Parameters.AddWithValue("$error", Db(analysis.Error));
+        return Convert.ToInt64(await insert.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
+    }
+
+    private async Task UpdateUnitAsync(Analysis analysis, CancellationToken cancellationToken)
+    {
         await using var update = CreateCommand(analysis.Succeeded
             ? "UPDATE units SET status = $status, summary = $summary, summary_hash = $summary_hash, lens_hash = $lens_hash WHERE id = $unit_id"
             : "UPDATE units SET status = $status WHERE id = $unit_id");
@@ -311,14 +340,12 @@ public sealed class SqliteLedger : ILedger, IDisposable
         update.Parameters.AddWithValue("$summary_hash", analysis.Fingerprint);
         update.Parameters.AddWithValue("$lens_hash", analysis.LensHash);
         await update.ExecuteNonQueryAsync(cancellationToken);
-
-        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<UnitFinding>> GetCurrentFindingsAsync(CancellationToken cancellationToken)
     {
         await using var command = CreateCommand($"""
-            SELECT a.unit_id, a.fingerprint, {FindingColumns}
+            SELECT f.id, a.unit_id, a.fingerprint, {FindingColumns}, f.verify_status, f.verify_reason
             FROM findings f
             JOIN analyses a ON a.id = f.analysis_id
             JOIN (SELECT unit_id, MAX(id) AS id FROM analyses WHERE succeeded = 1 GROUP BY unit_id) latest ON latest.id = a.id
@@ -369,6 +396,11 @@ public sealed class SqliteLedger : ILedger, IDisposable
             await ExecuteAsync(SchemaVersion2, cancellationToken);
         }
 
+        if (version < 3)
+        {
+            await ExecuteAsync(SchemaVersion3, cancellationToken);
+        }
+
         await ExecuteAsync(string.Create(CultureInfo.InvariantCulture, $"PRAGMA user_version = {SchemaVersion}"), cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -412,9 +444,10 @@ public sealed class SqliteLedger : ILedger, IDisposable
         reader.IsDBNull(5) ? null : new LineRange(reader.GetInt32(5), reader.GetInt32(6)), Text(reader, 7));
 
     private static UnitFinding ReadUnitFinding(SqliteDataReader reader) => new(
-        reader.GetString(0), reader.GetString(1),
-        new Finding(reader.GetString(2), reader.GetInt32(3), reader.GetInt32(4), Enum.Parse<Severity>(reader.GetString(5), ignoreCase: true),
-            reader.GetString(6), reader.GetString(7), reader.GetString(8), reader.GetDouble(9), reader.GetString(10)));
+        reader.GetInt64(0), reader.GetString(1), reader.GetString(2),
+        new Finding(reader.GetString(3), reader.GetInt32(4), reader.GetInt32(5), Enum.Parse<Severity>(reader.GetString(6), ignoreCase: true),
+            reader.GetString(7), reader.GetString(8), reader.GetString(9), reader.GetDouble(10), reader.GetString(11)),
+        Text(reader, 12) is { } verdict ? new VerifyResponse(Enum.Parse<Verdict>(verdict, ignoreCase: true), reader.GetString(13)) : null);
 
     private static ScanRun ReadRun(SqliteDataReader reader) => new(
         reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4),

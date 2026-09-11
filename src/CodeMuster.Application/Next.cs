@@ -1,11 +1,17 @@
 using System.Globalization;
+using System.Text.Json;
 using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
 
-/// <summary>Hands out the next units that need work, each as one markdown pack (D01).</summary>
+/// <summary>Hands out the next units that need work, each as one markdown pack (D01). A verify unit's pack asks the model to refute its finding instead of auditing (D27).</summary>
 public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool interactive = true)
 {
+    private const string VerifyInstructions =
+        "An earlier analysis reported the finding below. Try to refute it: check the claim against the code under Files and follow the calls it depends on. "
+        + "Answer refuted when the code shows the claim is wrong or the defect cannot happen, confirmed only when the code shows the defect is real, "
+        + "and unsure when the code shown cannot settle it.";
+
     private sealed record Part(UnitMember Member, string Text, bool Outlined);
 
     /// <summary>Builds a pack for up to <paramref name="batch"/> units; empty when nothing needs work.</summary>
@@ -13,6 +19,9 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
     {
         var units = await ledger.NextAsync(batch, cancellationToken);
         var members = await ledger.GetMembersAsync(units.Select(u => u.Id).ToList(), cancellationToken);
+        var findings = units.Any(u => u.Kind == UnitKind.Verify)
+            ? (await ledger.GetCurrentFindingsAsync(cancellationToken)).ToDictionary(f => UnitIds.Verify(f.Id), f => f.Finding)
+            : [];
         var packs = new List<UnitPack>(units.Count);
         foreach (var unit in units)
         {
@@ -22,7 +31,13 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
                 .ThenBy(m => m.Path, StringComparer.Ordinal)
                 .ThenBy(m => m.Range?.StartLine ?? 0)
                 .ToList();
-            packs.Add(new UnitPack(unit.Id, unit.Fingerprint, Render(unit, await SelectAsync(unitMembers, cancellationToken))));
+            Finding? finding = null;
+            if (unit.Kind == UnitKind.Verify && !findings.TryGetValue(unit.Id, out finding))
+            {
+                throw new InvalidOperationException(Done.Replaced(unit.Id));
+            }
+
+            packs.Add(new UnitPack(unit.Id, unit.Fingerprint, Render(unit, await SelectAsync(unitMembers, cancellationToken), finding)));
         }
 
         return packs;
@@ -76,7 +91,7 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
         }));
     }
 
-    private string Render(Unit unit, IReadOnlyList<Part> parts)
+    private string Render(Unit unit, IReadOnlyList<Part> parts, Finding? finding)
     {
         var lenses = config.LensesFor(parts.Select(p => (p.Member.Path, Languages.FromPath(p.Member.Path))));
         var outlined = parts.Count(p => p.Outlined);
@@ -97,12 +112,19 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
 
         lines.Add("");
         lines.Add("## Instructions");
-        foreach (var lens in lenses)
+        if (finding is null)
         {
-            lines.Add("");
-            lines.Add($"### {lens.Id}");
-            lines.Add("");
-            lines.Add(lens.Instructions);
+            foreach (var lens in lenses)
+            {
+                lines.Add("");
+                lines.Add($"### {lens.Id}");
+                lines.Add("");
+                lines.Add(lens.Instructions);
+            }
+        }
+        else
+        {
+            lines.AddRange(["", VerifyInstructions, "", "## Finding", "", "```json", JsonSerializer.Serialize(finding, DomainJson.Options), "```"]);
         }
 
         lines.Add("");
@@ -140,18 +162,21 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
         lines.Add("Reply with JSON only, in exactly this shape:");
         lines.Add("");
         lines.Add("```json");
-        lines.Add(AnalysisResponseJson.Sample);
+        lines.Add(finding is null ? AnalysisResponseJson.Sample : VerifyResponseJson.Sample);
         lines.Add("```");
         lines.Add("");
+        var rule = finding is null
+            ? "Every finding must cite a path listed under Files and set lens_id to the lens it came from."
+            : "The reason must point at the lines that settle it.";
         if (interactive)
         {
-            lines.Add("Every finding must cite a path listed under Files and set lens_id to the lens it came from. Then record it with:");
+            lines.Add(rule + " Then record it with:");
             lines.Add("");
             lines.Add($"    codemuster done {unit.Id} --fingerprint {unit.Fingerprint} --findings <path-to-your-json-file>");
         }
         else
         {
-            lines.Add("Every finding must cite a path listed under Files and set lens_id to the lens it came from. Print the JSON and nothing else; the driver records it for you.");
+            lines.Add(rule + " Print the JSON and nothing else; the driver records it for you.");
         }
 
         return string.Join('\n', lines) + "\n";

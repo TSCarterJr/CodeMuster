@@ -79,6 +79,93 @@ public class NextTests
     }
 
     [Fact]
+    public async Task VerifyPack_ShowsTheFindingAndTheCodeBehindIt_AndAsksForAVerdict()
+    {
+        var source = AddFileUnit("src/A.cs", "class A { }");
+        var finding = new Finding("src/A.cs", 1, 1, Severity.High, "security", "A leaks.", "Line 1 is public.", 0.8, "default");
+        await ledger.RecordAnalysisAsync(new Analysis(source.Id, source.Fingerprint, "lens", "2026-09-11T00:00:00.0000000Z", true, "A", null), [finding], CancellationToken.None);
+        var verify = AddUnit(UnitIds.Verify(1), UnitKind.Verify, "src/A.cs:1", new UnitMember(UnitIds.Verify(1), "src/A.cs", null, "hash-src/A.cs", 0));
+
+        var pack = Assert.Single(await RunAsync());
+
+        var expected = $$"""
+            # CodeMuster unit
+
+            - unit: verify:1
+            - kind: verify
+            - key: src/A.cs:1
+            - fingerprint: {{verify.Fingerprint}}
+            - lenses: default
+
+            ## Instructions
+
+            An earlier analysis reported the finding below. Try to refute it: check the claim against the code under Files and follow the calls it depends on. Answer refuted when the code shows the claim is wrong or the defect cannot happen, confirmed only when the code shows the defect is real, and unsure when the code shown cannot settle it.
+
+            ## Finding
+
+            ```json
+            {
+              "path": "src/A.cs",
+              "line_start": 1,
+              "line_end": 1,
+              "severity": "high",
+              "category": "security",
+              "claim": "A leaks.",
+              "evidence": "Line 1 is public.",
+              "confidence": 0.8,
+              "lens_id": "default"
+            }
+            ```
+
+            ## Files
+
+            ### src/A.cs (csharp)
+
+            ```csharp
+            class A { }
+            ```
+
+            ## Response
+
+            Reply with JSON only, in exactly this shape:
+
+            ```json
+            {{VerifyResponseJson.Sample}}
+            ```
+
+            The reason must point at the lines that settle it. Then record it with:
+
+                codemuster done verify:1 --fingerprint {{verify.Fingerprint}} --findings <path-to-your-json-file>
+
+            """;
+        Assert.Equal(expected, pack.Markdown);
+    }
+
+    [Fact]
+    public async Task HeadlessVerifyPack_AsksForTheVerdictOnly()
+    {
+        var source = AddFileUnit("src/A.cs", "class A { }");
+        var finding = new Finding("src/A.cs", 1, 1, Severity.High, "security", "A leaks.", "Line 1 is public.", 0.8, "default");
+        await ledger.RecordAnalysisAsync(new Analysis(source.Id, source.Fingerprint, "lens", "2026-09-11T00:00:00.0000000Z", true, "A", null), [finding], CancellationToken.None);
+        AddUnit(UnitIds.Verify(1), UnitKind.Verify, "src/A.cs:1", new UnitMember(UnitIds.Verify(1), "src/A.cs", null, "hash-src/A.cs", 0));
+
+        var pack = Assert.Single(await new Next(ledger, tree, Config.Default, interactive: false).RunAsync(1, CancellationToken.None));
+
+        Assert.EndsWith("The reason must point at the lines that settle it. Print the JSON and nothing else; the driver records it for you.\n", pack.Markdown);
+    }
+
+    [Fact]
+    public async Task VerifyUnit_WhoseFindingIsNoLongerCurrent_Throws_AndSaysToScan()
+    {
+        tree.Add("src/A.cs", "class A { }");
+        AddUnit(UnitIds.Verify(7), UnitKind.Verify, "src/A.cs:1", new UnitMember(UnitIds.Verify(7), "src/A.cs", null, "h", 0));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync());
+
+        Assert.Equal("verify:7 tests a finding that a later analysis replaced; run codemuster scan", error.Message);
+    }
+
+    [Fact]
     public async Task Pack_ContainsFileContentVerbatim_UnderPathHeading()
     {
         var content = "namespace A;\n\npublic class Thing\n{\n    public int X => 1;\n}\n";

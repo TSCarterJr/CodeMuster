@@ -6,5 +6,5 @@ namespace CodeMuster.Application;
 /// <param name="Outcome">What <see cref="Done"/> did with the response; Rejected when the adapter itself failed.</param>
 /// <param name="Message">One line for the console: the Done message, the adapter error, or why the run gave up.</param>
 /// <param name="Completed">Units recorded so far this run.</param>
-/// <param name="Total">Units that needed work when the run started.</param>
+/// <param name="Total">Units recorded so far plus those still needing work when the current batch started; grows as recorded findings add verify units.</param>
 public sealed record RunProgress(string UnitId, int Attempt, DoneOutcome Outcome, string Message, int Completed, int Total);

@@ -9,7 +9,12 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
     /// <summary>Runs until nothing needs work or every remaining unit has used its attempts, reporting after every attempt.</summary>
     public async Task<RunResult> RunAsync(RunOptions options, CancellationToken cancellationToken)
     {
-        var total = await CountPendingAsync(options.Force, cancellationToken);
+        if (options.Force)
+        {
+            await RestaleDoneUnitsAsync(cancellationToken);
+        }
+
+        var total = 0;
         var next = new Next(ledger, tree, config, interactive: false);
         var done = new Done(ledger, clock, config);
         using var turn = new SemaphoreSlim(1, 1);
@@ -30,6 +35,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                     return new RunResult(completed, gaveUp, false);
                 }
 
+                total = completed + (await ledger.GetUnitsAsync(cancellationToken)).Count(u => u.Status is UnitStatus.Pending or UnitStatus.Stale or UnitStatus.Failed);
                 await Task.WhenAll(packs.Select(AttemptAsync));
             }
         }
@@ -83,23 +89,15 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
         }
     }
 
-    private async Task<int> CountPendingAsync(bool force, CancellationToken cancellationToken)
+    private async Task RestaleDoneUnitsAsync(CancellationToken cancellationToken)
     {
-        var units = await ledger.GetUnitsAsync(cancellationToken);
-        var pending = units.Count(u => u.Status is UnitStatus.Pending or UnitStatus.Stale or UnitStatus.Failed);
-        if (!force)
-        {
-            return pending;
-        }
-
-        var stale = units.Where(u => u.Status == UnitStatus.Done).Select(u => u with { Status = UnitStatus.Stale }).ToList();
+        var stale = (await ledger.GetUnitsAsync(cancellationToken)).Where(u => u.Status == UnitStatus.Done).Select(u => u with { Status = UnitStatus.Stale }).ToList();
         if (stale.Count == 0)
         {
-            return pending;
+            return;
         }
 
         var members = await ledger.GetMembersAsync(stale.Select(u => u.Id).ToList(), cancellationToken);
         await ledger.UpsertUnitsAsync(stale, members, cancellationToken);
-        return pending + stale.Count;
     }
 }
