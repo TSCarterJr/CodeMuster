@@ -4,6 +4,12 @@ namespace CodeMuster.Infrastructure;
 
 public sealed class GitSourceTree(string repoRoot) : ISourceTree
 {
+    public static async Task<string> FindTopLevelAsync(string directory, CancellationToken cancellationToken)
+    {
+        var output = await GitProcess.RunAsync(directory, ["rev-parse", "--show-toplevel"], null, cancellationToken).ConfigureAwait(false);
+        return Path.GetFullPath(output.Trim());
+    }
+
     public async Task<string> HeadCommitAsync(CancellationToken cancellationToken)
     {
         var output = await GitProcess.RunAsync(repoRoot, ["rev-parse", "HEAD"], null, cancellationToken).ConfigureAwait(false);
