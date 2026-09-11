@@ -3,7 +3,7 @@ using CodeMuster.Domain;
 namespace CodeMuster.Application;
 
 /// <summary>Hands out the next units that need work, each as one markdown pack (D01).</summary>
-public sealed class Next(ILedger ledger, ISourceTree tree, Config config)
+public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool interactive = true)
 {
     /// <summary>Builds a pack for up to <paramref name="batch"/> units; empty when nothing needs work.</summary>
     public async Task<IReadOnlyList<UnitPack>> RunAsync(int batch, CancellationToken cancellationToken)
@@ -73,9 +73,16 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config)
         lines.Add(AnalysisResponseJson.Sample);
         lines.Add("```");
         lines.Add("");
-        lines.Add("Every finding must cite a path listed under Files and set lens_id to the lens it came from. Then record it with:");
-        lines.Add("");
-        lines.Add($"    codemuster done {unit.Id} --fingerprint {unit.Fingerprint} --findings <path-to-your-json-file>");
+        if (interactive)
+        {
+            lines.Add("Every finding must cite a path listed under Files and set lens_id to the lens it came from. Then record it with:");
+            lines.Add("");
+            lines.Add($"    codemuster done {unit.Id} --fingerprint {unit.Fingerprint} --findings <path-to-your-json-file>");
+        }
+        else
+        {
+            lines.Add("Every finding must cite a path listed under Files and set lens_id to the lens it came from. Print the JSON and nothing else; the driver records it for you.");
+        }
 
         return string.Join('\n', lines) + "\n";
     }

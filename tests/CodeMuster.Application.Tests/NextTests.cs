@@ -95,6 +95,18 @@ public class NextTests
     }
 
     [Fact]
+    public async Task HeadlessPack_AsksForJsonOnly_WithoutTheDoneCommand()
+    {
+        var unit = AddFileUnit("src/A.cs", "class A;");
+
+        var pack = Assert.Single(await new Next(ledger, tree, Config.Default, interactive: false).RunAsync(1, CancellationToken.None));
+
+        Assert.Contains("Print the JSON and nothing else; the driver records it for you.\n", pack.Markdown);
+        Assert.DoesNotContain("codemuster done", pack.Markdown);
+        Assert.Contains($"- fingerprint: {unit.Fingerprint}\n", pack.Markdown);
+    }
+
+    [Fact]
     public async Task Pack_IncludesDefaultLensInstructions()
     {
         AddFileUnit("src/A.cs", "class A;");

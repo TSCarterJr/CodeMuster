@@ -10,7 +10,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
     public async Task<RunResult> RunAsync(RunOptions options, CancellationToken cancellationToken)
     {
         var total = await CountPendingAsync(options.Force, cancellationToken);
-        var next = new Next(ledger, tree, config);
+        var next = new Next(ledger, tree, config, interactive: false);
         var done = new Done(ledger, clock, config);
         using var turn = new SemaphoreSlim(1, 1);
         var attempts = new Dictionary<string, int>(StringComparer.Ordinal);

@@ -69,15 +69,17 @@ public class RunTests
     }
 
     [Fact]
-    public async Task Pack_SentToAdapter_IsTheNextPack()
+    public async Task Pack_SentToAdapter_IsTheHeadlessNextPack()
     {
         AddFileUnit("src/a.cs");
-        var expected = Assert.Single(await new Next(ledger, tree, Config.Default).RunAsync(1, CancellationToken.None));
+        var expected = Assert.Single(await new Next(ledger, tree, Config.Default, interactive: false).RunAsync(1, CancellationToken.None));
         var adapter = Always(EmptyResponse);
 
         await RunAsync(adapter, new RunOptions(1, 1, false));
 
-        Assert.Equal(expected.Markdown, Assert.Single(adapter.Packs));
+        var sent = Assert.Single(adapter.Packs);
+        Assert.Equal(expected.Markdown, sent);
+        Assert.DoesNotContain("codemuster done", sent);
     }
 
     [Fact]
