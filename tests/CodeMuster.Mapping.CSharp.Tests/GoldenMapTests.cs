@@ -17,11 +17,25 @@ public class GoldenMapTests(FixtureMaps maps) : IClassFixture<FixtureMaps>
     [Theory]
     [InlineData("mixed-repo")]
     [InlineData("minimal-api")]
-    public void Call_edges_match_the_golden(string fixture)
+    public void Edges_match_the_golden(string fixture)
     {
+        Assert.Equal(Sorted(Fixtures.Golden(fixture).Edges), Sorted(maps[fixture].Edges));
+    }
+
+    [Fact]
+    public void IQuoteService_calls_bind_to_QuoteService_only()
+    {
+        var edges = maps["mixed-repo"].Edges;
+
+        Assert.DoesNotContain(edges, edge => edge.To.Contains(".EmptyQuoteService.", StringComparison.Ordinal));
         Assert.Equal(
-            Sorted(Fixtures.Golden(fixture).Edges.Where(edge => edge.Kind == EdgeKind.Call)),
-            Sorted(maps[fixture].Edges.Where(edge => edge.Kind == EdgeKind.Call)));
+            new[]
+            {
+                "M:MixedRepo.Api.Services.QuoteService.GetQuote(System.Int32,System.Int32)",
+                "M:MixedRepo.Api.Services.QuoteService.ListQuotes(System.Int32)",
+                "M:MixedRepo.Api.Services.QuoteService.ListQuotes(System.Int32)",
+            },
+            edges.Where(edge => edge.Kind == EdgeKind.Bound).Select(edge => edge.To).Order(StringComparer.Ordinal));
     }
 
     [Fact]

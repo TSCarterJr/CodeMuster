@@ -171,8 +171,9 @@ public class CallEdgeTests
 
     private static void AssertCalls(CodeMap map, params (string From, string To)[] expected)
     {
-        Assert.Equal(
-            expected.Select(edge => new Edge(edge.From, edge.To, EdgeKind.Call)),
-            map.Edges.OrderBy(edge => edge.From, StringComparer.Ordinal).ThenBy(edge => edge.To, StringComparer.Ordinal).ThenBy(edge => edge.Kind));
+        Assert.Equal(Sorted(expected.Select(edge => new Edge(edge.From, edge.To, EdgeKind.Call))), Sorted(map.Edges));
     }
+
+    private static IEnumerable<Edge> Sorted(IEnumerable<Edge> edges) =>
+        edges.OrderBy(edge => edge.From, StringComparer.Ordinal).ThenBy(edge => edge.To, StringComparer.Ordinal).ThenBy(edge => edge.Kind);
 }

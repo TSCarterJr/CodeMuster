@@ -15,6 +15,7 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
 
     public async Task AddAsync(Solution solution, CancellationToken cancellationToken)
     {
+        var dispatcher = new Dispatcher(solution, await Bindings.FindAsync(solution, cancellationToken));
         foreach (var document in solution.Projects.SelectMany(project => project.Documents))
         {
             var path = document.FilePath is null ? null : RepoPath.Normalize(Path.GetRelativePath(repoRoot, document.FilePath));
@@ -26,13 +27,25 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
             var root = await model.SyntaxTree.GetRootAsync(cancellationToken);
             foreach (var node in root.DescendantNodes())
             {
-                if (DeclaredMethod(node, model, cancellationToken) is not { } method || Id(method) is not { } id)
+                if (DeclaredMethod(node, model, cancellationToken) is not { } method || Id(method) is not { } from)
                 {
                     continue;
                 }
 
-                symbols.TryAdd(id, new Symbol(id, path, Lines(node), KindOf(node), Signature(node), BodyHash(node)));
-                AddCalls(id, node, model, cancellationToken);
+                symbols.TryAdd(from, new Symbol(from, path, Lines(node), KindOf(node), Signature(node), BodyHash(node)));
+                foreach (var callee in Callees(node, model, cancellationToken))
+                {
+                    if (Id(callee) is not { } to)
+                    {
+                        continue;
+                    }
+
+                    edges.Add(new Edge(from, to, EdgeKind.Call));
+                    foreach (var (target, kind) in await dispatcher.TargetsAsync(callee, to, cancellationToken))
+                    {
+                        edges.Add(new Edge(from, target, kind));
+                    }
+                }
             }
         }
     }
@@ -52,28 +65,29 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
             []);
     }
 
-    private void AddCalls(string from, SyntaxNode declaration, SemanticModel model, CancellationToken cancellationToken)
+    internal static string? Id(ISymbol symbol) =>
+        (symbol is IMethodSymbol { ReducedFrom: { } reduced } ? reduced : symbol).OriginalDefinition.GetDocumentationCommentId();
+
+    private static IEnumerable<IMethodSymbol> Callees(SyntaxNode declaration, SemanticModel model, CancellationToken cancellationToken)
     {
         foreach (var node in declaration.DescendantNodes(child => !IsNameOf(child)))
         {
-            switch (node)
+            IEnumerable<ISymbol?> callees = node switch
             {
-                case InvocationExpressionSyntax when !IsNameOf(node):
-                case BaseObjectCreationExpressionSyntax:
-                case ConstructorInitializerSyntax:
-                    AddTargets(from, model.GetSymbolInfo(node, cancellationToken).Symbol);
-                    break;
-                case SimpleNameSyntax name:
-                    AddNameTargets(from, name, model.GetSymbolInfo(name, cancellationToken).Symbol);
-                    break;
-                case ElementAccessExpressionSyntax element when model.GetSymbolInfo(element, cancellationToken).Symbol is IPropertySymbol indexer:
-                    AddAccessorTargets(from, element, indexer);
-                    break;
+                InvocationExpressionSyntax when !IsNameOf(node) => [model.GetSymbolInfo(node, cancellationToken).Symbol],
+                BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax => [model.GetSymbolInfo(node, cancellationToken).Symbol],
+                SimpleNameSyntax name => NameCallees(name, model.GetSymbolInfo(name, cancellationToken).Symbol),
+                ElementAccessExpressionSyntax element when model.GetSymbolInfo(element, cancellationToken).Symbol is IPropertySymbol indexer => Accessors(element, indexer),
+                _ => [],
+            };
+            foreach (var callee in callees.OfType<IMethodSymbol>())
+            {
+                yield return callee;
             }
         }
     }
 
-    private void AddNameTargets(string from, SimpleNameSyntax name, ISymbol? symbol)
+    private static IEnumerable<ISymbol?> NameCallees(SimpleNameSyntax name, ISymbol? symbol)
     {
         var outer = name.Parent switch
         {
@@ -81,45 +95,28 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
             MemberBindingExpressionSyntax binding => binding,
             _ => (ExpressionSyntax)name,
         };
-        switch (symbol)
+        return symbol switch
         {
-            case IPropertySymbol property:
-                AddAccessorTargets(from, outer, property);
-                break;
-            case IMethodSymbol method when outer.Parent is not InvocationExpressionSyntax invocation || invocation.Expression != outer:
-                AddTargets(from, method);
-                break;
-        }
-    }
-
-    private void AddAccessorTargets(string from, ExpressionSyntax expression, IPropertySymbol property)
-    {
-        var (read, write) = expression.Parent switch
-        {
-            AssignmentExpressionSyntax assignment when assignment.Left == expression => (!assignment.IsKind(SyntaxKind.SimpleAssignmentExpression), true),
-            PrefixUnaryExpressionSyntax or PostfixUnaryExpressionSyntax when expression.Parent.Kind() is SyntaxKind.PreIncrementExpression or SyntaxKind.PreDecrementExpression or SyntaxKind.PostIncrementExpression or SyntaxKind.PostDecrementExpression => (true, true),
-            _ => (true, false),
+            IPropertySymbol property => Accessors(outer, property),
+            IMethodSymbol method when outer.Parent is not InvocationExpressionSyntax invocation || invocation.Expression != outer => [method],
+            _ => [],
         };
-        if (read)
-        {
-            AddTargets(from, property.GetMethod);
-        }
-
-        if (write)
-        {
-            AddTargets(from, property.SetMethod);
-        }
     }
 
-    private void AddTargets(string from, ISymbol? symbol)
+    private static IEnumerable<ISymbol?> Accessors(ExpressionSyntax expression, IPropertySymbol property)
     {
-        if (symbol is IMethodSymbol method && Id(method) is { } id)
+        var assignment = expression.Parent as AssignmentExpressionSyntax;
+        var assigned = assignment is not null && assignment.Left == expression;
+        if (!assigned || !assignment!.IsKind(SyntaxKind.SimpleAssignmentExpression))
         {
-            edges.Add(new Edge(from, id, EdgeKind.Call));
+            yield return property.GetMethod;
+        }
+
+        if (assigned || expression.Parent?.Kind() is SyntaxKind.PreIncrementExpression or SyntaxKind.PreDecrementExpression or SyntaxKind.PostIncrementExpression or SyntaxKind.PostDecrementExpression)
+        {
+            yield return property.SetMethod;
         }
     }
-
-    private static string? Id(IMethodSymbol method) => (method.ReducedFrom ?? method).OriginalDefinition.GetDocumentationCommentId();
 
     private static bool IsNameOf(SyntaxNode node) =>
         node is InvocationExpressionSyntax { Expression: IdentifierNameSyntax { Identifier.Text: "nameof" } };
