@@ -54,7 +54,7 @@ public sealed class TempRepo : IDisposable
         }
     }
 
-    private static string FindRepoRoot()
+    public static string FindRepoRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "CodeMuster.sln")))
