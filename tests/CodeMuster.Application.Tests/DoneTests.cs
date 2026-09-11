@@ -6,7 +6,7 @@ namespace CodeMuster.Application.Tests;
 public class DoneTests
 {
     private const string MemberPath = "src/A.cs";
-    private static readonly string ValidResponse = AnalysisResponseJson.Sample.Replace("src/MixedRepo.Api/Data/QuoteRepository.cs", MemberPath, StringComparison.Ordinal);
+    private static readonly string ValidResponse = AnalysisResponseJson.Sample.Replace("src/Billing/InvoiceRepository.cs", MemberPath, StringComparison.Ordinal);
 
     private readonly FakeLedger ledger = new();
     private readonly FakeClock clock = new();

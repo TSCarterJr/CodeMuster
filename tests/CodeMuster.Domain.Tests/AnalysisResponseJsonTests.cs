@@ -9,14 +9,14 @@ public class AnalysisResponseJsonTests
     {
         var response = AnalysisResponseJson.Parse(AnalysisResponseJson.Sample);
 
-        Assert.Equal("Repository for quotes; every query is expected to be scoped to the caller's tenant.", response.Summary);
+        Assert.Equal("Repository for invoices; every query is expected to be scoped to the caller's tenant.", response.Summary);
         var finding = Assert.Single(response.Findings);
-        Assert.Equal("src/MixedRepo.Api/Data/QuoteRepository.cs", finding.Path);
+        Assert.Equal("src/Billing/InvoiceRepository.cs", finding.Path);
         Assert.Equal(18, finding.LineStart);
         Assert.Equal(21, finding.LineEnd);
         Assert.Equal(Severity.High, finding.Severity);
         Assert.Equal("security", finding.Category);
-        Assert.Equal("ListForTenant returns quotes for every tenant because the query has no TenantId filter.", finding.Claim);
+        Assert.Equal("ListOpen returns invoices for every tenant because the query has no TenantId filter.", finding.Claim);
         Assert.Equal("The Where clause filters on Status only; TenantId is never referenced.", finding.Evidence);
         Assert.Equal(0.9, finding.Confidence);
         Assert.Equal("default", finding.LensId);
