@@ -47,6 +47,22 @@ public class ResponseTextTests
     }
 
     [Fact]
+    public void ExtractJson_StopsAtTheObjectEnd_WhenProseAfterItHasBraces()
+    {
+        var text = "```json\n" + Json + "\n```\n\nI could not run `codemuster done {unit} --findings {path}` because this session has no shell.";
+
+        Assert.Equal(Json, ResponseText.ExtractJson(text));
+    }
+
+    [Fact]
+    public void ExtractJson_IgnoresBracesAndQuotesInsideStrings()
+    {
+        const string json = """{"summary": "if (x) { y } and a \"quoted\" } brace", "findings": []}""";
+
+        Assert.Equal(json, ResponseText.ExtractJson("Result:\n" + json + "\nThat is all {really}."));
+    }
+
+    [Fact]
     public void ExtractJson_ReturnsTrimmedInput_WhenNoBraces()
     {
         Assert.Equal("I could not analyze this unit.", ResponseText.ExtractJson("  I could not analyze this unit. \n"));
