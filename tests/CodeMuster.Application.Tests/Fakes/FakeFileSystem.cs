@@ -6,6 +6,8 @@ public sealed class FakeFileSystem : IFileSystem
 {
     public Dictionary<string, string> Files { get; } = [];
 
+    public int Writes { get; private set; }
+
     public bool FileExists(string path) => Files.ContainsKey(path);
 
     public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken) => Task.FromResult(Files[path]);
@@ -13,6 +15,7 @@ public sealed class FakeFileSystem : IFileSystem
     public Task WriteAllTextAsync(string path, string content, CancellationToken cancellationToken)
     {
         Files[path] = content;
+        Writes++;
         return Task.CompletedTask;
     }
 }

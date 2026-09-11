@@ -11,4 +11,8 @@
     <ProjectReference Include="../CodeMuster.Mapping.CSharp/CodeMuster.Mapping.CSharp.csproj" />
     <ProjectReference Include="../CodeMuster.Mapping.TypeScript/CodeMuster.Mapping.TypeScript.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="../../skill/SKILL.md" LogicalName="SKILL.md" />
+  </ItemGroup>
 </Project>
