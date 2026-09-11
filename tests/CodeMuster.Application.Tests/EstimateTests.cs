@@ -9,7 +9,7 @@ public class EstimateTests
 
     private readonly FakeLedger ledger = new();
 
-    private Task<EstimateReport> RunAsync() => new Estimate(ledger).RunAsync(CancellationToken.None);
+    private Task<EstimateReport> RunAsync(Config? config = null) => new Estimate(ledger, config ?? Config.Default).RunAsync(CancellationToken.None);
 
     private void AddUnit(string id, UnitKind kind, UnitStatus status, params string[] paths)
     {
@@ -49,6 +49,30 @@ public class EstimateTests
             report.Lines);
         Assert.Equal(5911, report.TotalTokens);
         Assert.Equal("file 4 units ~4010 tokens\nslice 1 units ~1901 tokens\ntotal ~5911 tokens", report.Render());
+    }
+
+    [Fact]
+    public async Task SymbolMembers_CountTokensPerLine_AndSlicesCapAtTheBudgetButNeverBelowTheEntryPoint()
+    {
+        ledger.Units.Add(new Unit("slice:M:Api.Get", UnitKind.Slice, "GET /x", "fp-slice", UnitStatus.Pending, Fidelity.Full, null, null, null));
+        ledger.Members.AddRange(
+        [
+            new UnitMember("slice:M:Api.Get", "src/Api.cs", "M:Api.Get", "h1", 0, new LineRange(1, 20), "s"),
+            new UnitMember("slice:M:Api.Get", "src/Svc.cs", "M:Svc.Run", "h2", 1, new LineRange(1, 50), "s"),
+            new UnitMember("slice:M:Api.Get", "src/Db.cs", "M:Db.Load", "h3", 2, new LineRange(1, 100), "s"),
+        ]);
+        ledger.Units.Add(new Unit("orphan:src/Svc.cs", UnitKind.Orphan, "src/Svc.cs", "fp-orphan", UnitStatus.Pending, Fidelity.Full, null, null, null));
+        ledger.Members.AddRange(
+        [
+            new UnitMember("orphan:src/Svc.cs", "src/Svc.cs", "M:Svc.Old", "h4", 0, new LineRange(60, 69), "s"),
+            new UnitMember("orphan:src/Svc.cs", "src/Svc.cs", "M:Svc.Older", "h5", 0, new LineRange(70, 74), "s"),
+        ]);
+
+        var report = await RunAsync(Config.Default with { SliceTokenBudget = 600 });
+
+        Assert.Equal(10, Estimate.TokensPerLine);
+        Assert.Equal([new EstimateLine(UnitKind.Slice, 1, 600 + 700), new EstimateLine(UnitKind.Orphan, 1, 150 + 700)], report.Lines);
+        Assert.Equal(200 + 700, (await RunAsync(Config.Default with { SliceTokenBudget = 100 })).Lines[0].Tokens);
     }
 
     [Fact]

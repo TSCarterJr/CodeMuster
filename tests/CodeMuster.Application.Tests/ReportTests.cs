@@ -11,7 +11,7 @@ public class ReportTests
 
     private readonly FakeLedger ledger = new();
 
-    private Task<string> RunAsync() => new Report(ledger).RunAsync(CancellationToken.None);
+    private Task<string> RunAsync() => new Report(ledger, Config.Default).RunAsync(CancellationToken.None);
 
     private Unit AddUnit(string path, UnitStatus status = UnitStatus.Pending, Fidelity fidelity = Fidelity.Full)
     {

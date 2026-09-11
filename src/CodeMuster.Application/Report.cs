@@ -4,12 +4,12 @@ using CodeMuster.Domain;
 namespace CodeMuster.Application;
 
 /// <summary>Renders the ledger as markdown: the coverage header, current findings grouped by severity, and the unit inventory (D11, D12).</summary>
-public sealed class Report(ILedger ledger)
+public sealed class Report(ILedger ledger, Config config)
 {
     /// <summary>Builds the report; lines are joined with LF and the text ends with one newline.</summary>
     public async Task<string> RunAsync(CancellationToken cancellationToken)
     {
-        var status = await new Status(ledger).RunAsync(cancellationToken);
+        var status = await new Status(ledger, config).RunAsync(cancellationToken);
         var units = (await ledger.GetUnitsAsync(cancellationToken))
             .Where(u => u.Status != UnitStatus.Retired)
             .OrderBy(u => u.Key, StringComparer.Ordinal)

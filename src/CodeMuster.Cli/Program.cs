@@ -114,10 +114,10 @@ public static class Program
                 Console.WriteLine($"scanned {scan.FilesIncluded} files ({scan.FilesExcluded} excluded) at {scan.HeadCommit[..7]}: {scan.UnitsCreated} new, {scan.UnitsStale} stale, {scan.UnitsTotal} total units");
                 return 0;
             case "status":
-                Console.WriteLine((await new Status(ledger).RunAsync(cancellationToken)).Render());
+                Console.WriteLine((await new Status(ledger, config).RunAsync(cancellationToken)).Render());
                 return 0;
             case "estimate":
-                Console.WriteLine((await new Estimate(ledger).RunAsync(cancellationToken)).Render());
+                Console.WriteLine((await new Estimate(ledger, config).RunAsync(cancellationToken)).Render());
                 return 0;
             case "next":
                 return await NextAsync(command, ledger, tree, config, cancellationToken);
@@ -129,7 +129,7 @@ public static class Program
             case "run":
                 return await RunAgentAsync(command, ledger, tree, clock, config, cancellationToken);
             default:
-                var markdown = await new Report(ledger).RunAsync(cancellationToken);
+                var markdown = await new Report(ledger, config).RunAsync(cancellationToken);
                 if (command.Options.TryGetValue("out", out var reportPath))
                 {
                     await File.WriteAllTextAsync(reportPath, markdown, cancellationToken);
