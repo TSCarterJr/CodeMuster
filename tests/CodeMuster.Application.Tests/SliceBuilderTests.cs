@@ -7,7 +7,7 @@ namespace CodeMuster.Application.Tests;
 public class SliceBuilderTests
 {
     private static IReadOnlyList<PlannedUnit> Build(CodeMap map, params string[] failedLanguages) =>
-        SliceBuilder.Build(new CompositeMap(map, failedLanguages), Included());
+        SliceBuilder.Build(new CompositeMap(map, failedLanguages, [Languages.TypeScript]), Included());
 
     private static List<PlannedUnit> Slices(CodeMap map) =>
         Build(map).Where(u => u.Kind == UnitKind.Slice).ToList();

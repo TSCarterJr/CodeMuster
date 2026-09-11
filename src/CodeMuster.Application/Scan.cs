@@ -2,10 +2,13 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
 
-/// <summary>Discovers the tree, refreshes file rows through the stat cache (D05), keeps one File unit per included file, and records a <see cref="ScanRun"/>.</summary>
-public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config)
+/// <summary>
+/// Discovers the tree, refreshes file rows through the stat cache (D05), plans units, retires every live unit the plan no longer holds, and records a <see cref="ScanRun"/>.
+/// With at least one mapper and <paramref name="fileMode"/> false the scan runs in slice mode: the mappers map the repository at <paramref name="repoRoot"/> and units are slices, orphans, and file units (D25). Otherwise every included file is one file unit.
+/// </summary>
+public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config, IReadOnlyList<ICodeMapper>? mappers = null, string repoRoot = "", bool fileMode = false)
 {
-    /// <summary>Runs one scan in file mode.</summary>
+    /// <summary>Runs one scan, in slice mode when mappers were given and file mode was not forced.</summary>
     public async Task<ScanResult> RunAsync(CancellationToken cancellationToken)
     {
         var now = Timestamps.Format(clock.UtcNow);
@@ -27,29 +30,32 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             .ToList();
         await ledger.UpsertFilesAsync([.. current, .. deleted], cancellationToken);
 
+        var included = current.Where(f => f.ExcludedReason is null).ToList();
+        IReadOnlyList<ICodeMapper> active = fileMode || mappers is null ? [] : mappers;
+        var mapped = await CompositeMapper.MapAsync(active, repoRoot, included, cancellationToken);
+        var planned = SliceBuilder.Build(mapped, included);
+
         var existingUnits = (await ledger.GetUnitsAsync(cancellationToken)).ToDictionary(u => u.Id, StringComparer.Ordinal);
-        var units = new List<Unit>();
-        var members = new List<UnitMember>();
+        var units = new List<Unit>(planned.Count);
         var created = 0;
-        foreach (var record in current.Where(f => f.ExcludedReason is null))
+        foreach (var plan in planned)
         {
-            var member = new UnitMember(UnitIds.File(record.Path), record.Path, null, record.ContentHash, 0);
-            var fingerprint = Fingerprints.Compute([member]);
-            var lensHash = Config.HashOf(config.LensesFor([(record.Path, record.Language)]));
-            existingUnits.TryGetValue(member.UnitId, out var previous);
+            var fingerprint = Fingerprints.Compute(plan.Members);
+            var lensHash = Config.HashOf(config.LensesFor(plan.Members.Select(m => (m.Path, Languages.FromPath(m.Path)))));
+            existingUnits.TryGetValue(plan.Id, out var previous);
             if (previous is null || previous.Status == UnitStatus.Retired)
             {
                 created++;
             }
 
             var status = StatusFor(previous, fingerprint, lensHash);
-            units.Add(new Unit(member.UnitId, UnitKind.File, record.Path, fingerprint, status, Fidelity.Full, previous?.LensHash, previous?.Summary, previous?.SummaryHash));
-            members.Add(member);
+            units.Add(new Unit(plan.Id, plan.Kind, plan.Key, fingerprint, status, plan.Fidelity, previous?.LensHash, previous?.Summary, previous?.SummaryHash));
         }
 
-        var included = units.Select(u => u.Key).ToHashSet(StringComparer.Ordinal);
+        var members = planned.SelectMany(p => p.Members).ToList();
+        var produced = units.Select(u => u.Id).ToHashSet(StringComparer.Ordinal);
         var retired = existingUnits.Values
-            .Where(u => u.Kind == UnitKind.File && u.Status != UnitStatus.Retired && !included.Contains(u.Key))
+            .Where(u => u.Status != UnitStatus.Retired && !produced.Contains(u.Id))
             .Select(u => u with { Status = UnitStatus.Retired })
             .ToList();
         if (retired.Count > 0)
@@ -66,8 +72,16 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
 
         var total = existingUnits.Values.Count(u => u.Status != UnitStatus.Retired);
         var excluded = current.Count - included.Count;
-        await ledger.RecordRunAsync(new ScanRun(now, head, included.Count, excluded, total, null), cancellationToken);
-        return new ScanResult(head, included.Count, excluded, created, units.Count(u => u.Status == UnitStatus.Stale), total);
+        await ledger.RecordRunAsync(new ScanRun(now, head, included.Count, excluded, total, mapped.ResolutionRate, mapped.TopUnresolvedNames), cancellationToken);
+        var sliceMode = active.Count == 0
+            ? null
+            : new SliceModeResult(
+                units.Count(u => u.Kind == UnitKind.Slice),
+                units.Count(u => u.Kind == UnitKind.Orphan),
+                units.Count(u => u.Kind == UnitKind.File),
+                mapped.ResolutionRate,
+                mapped.Map.Diagnostics);
+        return new ScanResult(head, included.Count, excluded, created, units.Count(u => u.Status == UnitStatus.Stale), total, sliceMode);
     }
 
     private async Task<FileRecord> RefreshAsync(SourceFile file, FileRecord? previous, string now, CancellationToken cancellationToken)

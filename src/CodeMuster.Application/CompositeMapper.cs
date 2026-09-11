@@ -12,6 +12,7 @@ public static class CompositeMapper
     {
         var paths = included.Select(f => f.Path).ToList();
         var maps = new List<CodeMap>();
+        var mapped = new List<string>();
         var failed = new List<string>();
         var diagnostics = new List<string>();
         foreach (var mapper in mappers.Where(m => included.Any(f => f.Language == m.Language)))
@@ -20,6 +21,7 @@ public static class CompositeMapper
             {
                 var map = await mapper.MapAsync(repoRoot, paths, cancellationToken);
                 maps.Add(map);
+                mapped.Add(mapper.Language);
                 diagnostics.AddRange(map.Diagnostics);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
@@ -42,6 +44,6 @@ public static class CompositeMapper
             maps.SelectMany(m => m.EntryPoints).ToList(),
             new ResolutionStats(maps.Sum(m => m.Resolution.Resolved), maps.Sum(m => m.Resolution.Unresolved), names),
             diagnostics);
-        return new CompositeMap(merged, failed);
+        return new CompositeMap(merged, failed, mapped);
     }
 }

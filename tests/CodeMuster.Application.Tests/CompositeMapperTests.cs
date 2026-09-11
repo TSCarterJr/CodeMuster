@@ -94,6 +94,47 @@ public class CompositeMapperTests
     }
 
     [Fact]
+    public async Task ResolutionRate_IsTheResolvedShareOfEveryCallSite_WithTheMergedNames()
+    {
+        var csharp = new FakeCodeMapper(Languages.CSharp, MixedRepo.CSharp() with { Resolution = new ResolutionStats(17, 3, ["GetService"]) });
+        var typescript = new FakeCodeMapper(Languages.TypeScript, MixedRepo.TypeScript() with { Resolution = new ResolutionStats(11, 1, []) });
+
+        var mapped = await MapAsync(csharp, typescript);
+
+        Assert.Equal(0.875, mapped.ResolutionRate);
+        Assert.Equal(new[] { "GetService" }, mapped.TopUnresolvedNames);
+        Assert.Equal(new[] { Languages.CSharp, Languages.TypeScript }, mapped.MappedLanguages);
+    }
+
+    [Fact]
+    public async Task ResolutionRate_IsOne_WhenTheMappersFoundNoCallSites()
+    {
+        var typescript = new FakeCodeMapper(Languages.TypeScript, MixedRepo.TypeScript() with { Resolution = new ResolutionStats(0, 0, []) });
+
+        var mapped = await MapAsync(typescript);
+
+        Assert.Equal(1.0, mapped.ResolutionRate);
+        Assert.Empty(mapped.TopUnresolvedNames!);
+    }
+
+    [Fact]
+    public async Task ResolutionRateAndNames_AreNull_WhenNoMapperReturnedAMap()
+    {
+        var go = new FakeCodeMapper(Languages.Go, MixedRepo.CSharp());
+        var csharp = new FakeCodeMapper(Languages.CSharp, MixedRepo.CSharp()) { Throws = new InvalidOperationException("no .NET SDK found") };
+
+        var none = await MapAsync(go);
+        var failed = await MapAsync(csharp);
+
+        Assert.Null(none.ResolutionRate);
+        Assert.Null(none.TopUnresolvedNames);
+        Assert.Empty(none.MappedLanguages);
+        Assert.Null(failed.ResolutionRate);
+        Assert.Null(failed.TopUnresolvedNames);
+        Assert.Empty(failed.MappedLanguages);
+    }
+
+    [Fact]
     public async Task Cancellation_Propagates_InsteadOfBeingRecordedAsAMapperFailure()
     {
         var csharp = new FakeCodeMapper(Languages.CSharp, MixedRepo.CSharp()) { Throws = new OperationCanceledException() };
