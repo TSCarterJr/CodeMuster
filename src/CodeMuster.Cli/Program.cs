@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using System.Text;
 using CodeMuster.Application;
 using CodeMuster.Domain;
@@ -12,6 +13,7 @@ public static class Program
 {
     public const string Usage = """
         usage: codemuster <verb> [options]
+               codemuster --version
 
         verbs:
           init [--yes] [--no-gitignore]                     set this repo up: write .codemuster/config.json, gitignore the ledger
@@ -50,6 +52,12 @@ public static class Program
         if (Console.IsErrorRedirected)
         {
             Console.SetError(new StreamWriter(Console.OpenStandardError(), new UTF8Encoding(false)) { AutoFlush = true });
+        }
+
+        if (args is ["--version"])
+        {
+            Console.WriteLine(Version);
+            return 0;
         }
 
         var command = CommandLine.Parse(args);
@@ -281,6 +289,9 @@ public static class Program
         && command.Flags.All(f => f == "force")
         && IsPositiveOrAbsent(command, "jobs")
         && IsPositiveOrAbsent(command, "attempts");
+
+    private static string Version =>
+        (typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0").Split('+')[0];
 
     private static string HomeDirectory() =>
         Environment.GetEnvironmentVariable(OperatingSystem.IsWindows() ? "USERPROFILE" : "HOME")
