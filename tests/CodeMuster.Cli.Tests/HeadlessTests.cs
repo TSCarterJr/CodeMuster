@@ -164,6 +164,9 @@ public class HeadlessTests
     [InlineData("verify")]
     [InlineData("verify --agent fake --kind file")]
     [InlineData("report --yes")]
+    [InlineData("doctor extra")]
+    [InlineData("doctor --yes")]
+    [InlineData("doctor --fix now")]
     [InlineData("report --include-refuted extra")]
     public async Task BadUsage_ForNewVerbs_Exits2(string arguments)
     {

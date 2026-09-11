@@ -15,6 +15,8 @@ public static class Program
 
         verbs:
           init [--yes] [--no-gitignore]                     set this repo up: write .codemuster/config.json, gitignore the ledger
+          doctor                                            check that git and the C# and TypeScript mappers work here;
+                                                            prints the command that fixes each problem
           scan [--mode file]                                build or refresh the ledger: one flow per entry point,
                                                             or one unit per file with --mode file
           status                                            print coverage
@@ -34,7 +36,7 @@ public static class Program
         every verb runs against the git repository containing the current directory.
         """;
 
-    private static readonly string[] Verbs = ["init", "scan", "status", "estimate", "next", "done", "run", "verify", "report", "skill"];
+    private static readonly string[] Verbs = ["init", "doctor", "scan", "status", "estimate", "next", "done", "run", "verify", "report", "skill"];
 
     private static readonly string[] KindNames = Enum.GetNames<UnitKind>().Select(name => name.ToLowerInvariant()).ToArray();
 
@@ -107,6 +109,11 @@ public static class Program
             return 0;
         }
 
+        if (command.Verb == "doctor")
+        {
+            return await DoctorAsync(cancellationToken);
+        }
+
         var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
         var tree = new GitSourceTree(repoRoot);
         if (command.Verb == "init")
@@ -156,7 +163,7 @@ public static class Program
 
     private static async Task<int> ScanAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, CancellationToken cancellationToken)
     {
-        IReadOnlyList<ICodeMapper> mappers = command.Options.GetValueOrDefault("mode") == "file" ? [] : [new RoslynMapper(), new TypeScriptMapper()];
+        var mappers = command.Options.GetValueOrDefault("mode") == "file" ? [] : Mappers();
         var scan = await new Scan(ledger, tree, new GitBlobHasher(repoRoot), clock, config, mappers, repoRoot).RunAsync(cancellationToken);
         Console.WriteLine($"scanned {scan.FilesIncluded} files ({scan.FilesExcluded} excluded) at {scan.HeadCommit[..7]}: {scan.UnitsCreated} new, {scan.UnitsStale} stale, {scan.UnitsTotal} total units");
         if (scan.SliceMode is { } slices)
@@ -171,6 +178,26 @@ public static class Program
 
         return 0;
     }
+
+    private static async Task<int> DoctorAsync(CancellationToken cancellationToken)
+    {
+        string repoRoot;
+        try
+        {
+            repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Console.WriteLine(DoctorReport.GitFailed(ex.Message).Render());
+            return 1;
+        }
+
+        var report = await new Doctor(new GitSourceTree(repoRoot), Mappers(), new SystemClock(), repoRoot).RunAsync(cancellationToken);
+        Console.WriteLine(report.Render());
+        return report.Ready ? 0 : 1;
+    }
+
+    private static IReadOnlyList<ICodeMapper> Mappers() => [new RoslynMapper(), new TypeScriptMapper()];
 
     private static async Task<int> NextAsync(Command command, SqliteLedger ledger, GitSourceTree tree, Config config, CancellationToken cancellationToken)
     {
@@ -236,6 +263,7 @@ public static class Program
     private static bool HasRequiredArguments(Command command) => command.Verb switch
     {
         "init" => command.Positionals.Count == 0 && command.Options.Count == 0,
+        "doctor" => command.Positionals.Count == 0 && command.Options.Count == 0 && command.Flags.Count == 0,
         "scan" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "mode") && command.Options.GetValueOrDefault("mode", "file") is "file" or "slice",
         "done" => command.Flags.Count == 0 && command.Positionals.Count == 1 && command.Options.ContainsKey("fingerprint") && command.Options.ContainsKey("findings"),
         "next" => command.Flags.Count == 0 && command.Positionals.Count == 0 && IsPositiveOrAbsent(command, "batch"),

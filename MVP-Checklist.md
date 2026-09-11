@@ -129,7 +129,7 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
 | T11.1 | `Doctor` use case: for each language present, a functional probe (D09): .NET SDK found and solution loads and one symbol resolves; `node` found and `typescript` resolves and program builds; git present. Reports `working / loaded-but-empty / failed`, time to ready, and the fix command for each failure. **Tests first (fakes):** each of the three states renders the expected line; never spawns an install. | `[x]` | claude 2026-09-11 | Each probe runs the real mapper over the repo's included files, so time to ready is what `scan` will pay. `working` means symbols came back with no diagnostics; `loaded-but-empty` means no error and no symbols, with what to check; `failed` means the mapper threw or reported diagnostics. A missing restore counts as failed because design-time builds still return symbols without one (T7.5), so its diagnostic is the only signal. If git cannot list files the report stops there. The use case has no process dependency, so it cannot install anything. |
-| T11.2 | CLI `doctor`. **Tests first (e2e):** exit 0 on a healthy fixture, exit 1 with the missing-restore message after deleting `obj/`. | `[ ]` | | |
+| T11.2 | CLI `doctor`. **Tests first (e2e):** exit 0 on a healthy fixture, exit 1 with the missing-restore message after deleting `obj/`. | `[x]` | claude 2026-09-11 | `doctor` needs no `init` (D24) and writes nothing. Outside a git repository it prints `git: failed` with git's message and exits 1. On the restored fixture both mappers report `working` in about 10 s. |
 
 ## Phase 12: Release
 

@@ -7,7 +7,7 @@ description: Audit a whole repository with provable coverage using the codemuste
 
 The CLI owns the state and the loop; you analyze one unit at a time, in this session, one after another. Run every command from inside the repository. Generated files, lockfiles, migrations, and binaries are excluded on purpose, so the unit count is lower than the file count.
 
-1. `codemuster init --yes` once per repo (safe to repeat), then `codemuster scan`.
+1. `codemuster init --yes` once per repo (safe to repeat), then `codemuster scan`. If `scan` prints warnings or `status` says incomplete, run `codemuster doctor`; it names the command that fixes each problem, such as `dotnet restore` or `npm ci`.
 2. `codemuster estimate` gives a rough lower bound on token cost before you start.
 3. Loop until `codemuster next` prints `nothing pending`:
    - `codemuster next` prints one unit pack. Read it whole.
