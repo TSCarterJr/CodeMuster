@@ -19,6 +19,17 @@ public sealed class TempRepo : IDisposable
         return repo;
     }
 
+    public void CopyRestoredFromFixture(string fixture, string relativeDirectory, string restoreCommand)
+    {
+        var source = Path.Combine(FindRepoRoot(), "fixtures", fixture, relativeDirectory);
+        if (!Directory.Exists(source))
+        {
+            throw new InvalidOperationException($"{source} is missing; run {restoreCommand} from the repo root first");
+        }
+
+        CopyAll(source, Path.Combine(Root, relativeDirectory));
+    }
+
     public string Git(params string[] args)
     {
         var start = new ProcessStartInfo("git")
@@ -63,6 +74,20 @@ public sealed class TempRepo : IDisposable
         }
 
         return directory?.FullName ?? throw new InvalidOperationException("CodeMuster.sln not found above " + AppContext.BaseDirectory);
+    }
+
+    private static void CopyAll(string source, string target)
+    {
+        Directory.CreateDirectory(target);
+        foreach (var file in Directory.GetFiles(source))
+        {
+            File.Copy(file, Path.Combine(target, Path.GetFileName(file)));
+        }
+
+        foreach (var directory in Directory.GetDirectories(source))
+        {
+            CopyAll(directory, Path.Combine(target, Path.GetFileName(directory)));
+        }
     }
 
     private static void Copy(string source, string target)

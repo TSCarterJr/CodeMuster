@@ -12,7 +12,7 @@ public class HeadlessTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
-        await CliProcess.RunAsync(repo.Root, "scan");
+        await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
         var template = Path.Combine(repo.Root, "template.json");
         var planted = AnalysisResponseJson.Parse(AnalysisResponseJson.Sample).Findings[0] with { Claim = PlantedClaim, Severity = Severity.Medium };
         await File.WriteAllTextAsync(template, AnalysisResponseJson.Serialize(new AnalysisResponse("fake summary", [planted])));
@@ -56,7 +56,7 @@ public class HeadlessTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
-        await CliProcess.RunAsync(repo.Root, "scan");
+        await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
 
         var run = await CliProcess.RunAsync(repo.Root, "run", "--agent", "fake");
         Assert.Equal(0, run.ExitCode);
@@ -71,7 +71,7 @@ public class HeadlessTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
-        await CliProcess.RunAsync(repo.Root, "scan");
+        await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
         var environment = new Dictionary<string, string> { ["CODEMUSTER_FAKE_RESPONSE"] = Path.Combine(repo.Root, "nope.json") };
 
         var run = await CliProcess.RunAsync(repo.Root, environment, "run", "--agent", "fake");
@@ -87,7 +87,7 @@ public class HeadlessTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
-        await CliProcess.RunAsync(repo.Root, "scan");
+        await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
 
         var run = await CliProcess.RunAsync(repo.Root, "run", "--agent", "gpt5");
 

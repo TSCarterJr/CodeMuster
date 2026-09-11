@@ -1,6 +1,9 @@
+using System.Globalization;
 using System.Text;
 using CodeMuster.Application;
+using CodeMuster.Domain;
 using CodeMuster.Infrastructure;
+using CodeMuster.Mapping.TypeScript;
 
 namespace CodeMuster.Cli;
 
@@ -11,7 +14,8 @@ public static class Program
 
         verbs:
           init [--yes] [--no-gitignore]                     set this repo up: write .codemuster/config.json, gitignore the ledger
-          scan                                              build or refresh the ledger for this repo
+          scan [--mode file]                                build or refresh the ledger: one flow per entry point,
+                                                            or one unit per file with --mode file
           status                                            print coverage
           estimate                                          approximate token cost of pending units
           next [--batch N] [--out <file>]                   print the next unit pack(s)
@@ -110,9 +114,7 @@ public static class Program
         switch (command.Verb)
         {
             case "scan":
-                var scan = await new Scan(ledger, tree, new GitBlobHasher(repoRoot), clock, config).RunAsync(cancellationToken);
-                Console.WriteLine($"scanned {scan.FilesIncluded} files ({scan.FilesExcluded} excluded) at {scan.HeadCommit[..7]}: {scan.UnitsCreated} new, {scan.UnitsStale} stale, {scan.UnitsTotal} total units");
-                return 0;
+                return await ScanAsync(command, repoRoot, ledger, tree, clock, config, cancellationToken);
             case "status":
                 Console.WriteLine((await new Status(ledger, config).RunAsync(cancellationToken)).Render());
                 return 0;
@@ -142,6 +144,24 @@ public static class Program
 
                 return 0;
         }
+    }
+
+    private static async Task<int> ScanAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<ICodeMapper> mappers = command.Options.GetValueOrDefault("mode") == "file" ? [] : [new TypeScriptMapper()];
+        var scan = await new Scan(ledger, tree, new GitBlobHasher(repoRoot), clock, config, mappers, repoRoot).RunAsync(cancellationToken);
+        Console.WriteLine($"scanned {scan.FilesIncluded} files ({scan.FilesExcluded} excluded) at {scan.HeadCommit[..7]}: {scan.UnitsCreated} new, {scan.UnitsStale} stale, {scan.UnitsTotal} total units");
+        if (scan.SliceMode is { } slices)
+        {
+            var resolution = slices.ResolutionRate is { } rate ? string.Create(CultureInfo.InvariantCulture, $", resolution {rate * 100:0.0}%") : "";
+            Console.WriteLine($"{slices.Slices} slices, {slices.Orphans} orphans, {slices.Files} files{resolution}");
+            foreach (var diagnostic in slices.Diagnostics)
+            {
+                Console.Error.WriteLine($"warning: {diagnostic}");
+            }
+        }
+
+        return 0;
     }
 
     private static async Task<int> NextAsync(Command command, SqliteLedger ledger, GitSourceTree tree, Config config, CancellationToken cancellationToken)
@@ -206,6 +226,7 @@ public static class Program
     private static bool HasRequiredArguments(Command command) => command.Verb switch
     {
         "init" => command.Positionals.Count == 0 && command.Options.Count == 0,
+        "scan" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "mode") && command.Options.GetValueOrDefault("mode", "file") is "file" or "slice",
         "done" => command.Flags.Count == 0 && command.Positionals.Count == 1 && command.Options.ContainsKey("fingerprint") && command.Options.ContainsKey("findings"),
         "next" => command.Flags.Count == 0 && command.Positionals.Count == 0 && IsPositiveOrAbsent(command, "batch"),
         "run" => command.Positionals.Count == 0 && command.Options.ContainsKey("agent") && command.Options.Keys.All(k => k is "agent" or "jobs" or "attempts") && command.Flags.All(f => f == "force") && IsPositiveOrAbsent(command, "jobs") && IsPositiveOrAbsent(command, "attempts"),

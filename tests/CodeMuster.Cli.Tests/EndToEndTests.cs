@@ -20,7 +20,7 @@ public class EndToEndTests
         Assert.Contains("created .codemuster/config.json", init.Stdout);
         Assert.Contains("already ignores", init.Stdout);
 
-        var scan = await CliProcess.RunAsync(repo.Root, "scan");
+        var scan = await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
         Assert.Equal(0, scan.ExitCode);
         Assert.True(File.Exists(Path.Combine(repo.Root, ".codemuster", "ledger.db")));
 
@@ -105,7 +105,7 @@ public class EndToEndTests
 
         Assert.Equal(0, init.ExitCode);
         Assert.Contains("added .codemuster/ledger.db to .gitignore", init.Stdout);
-        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "scan")).ExitCode);
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file")).ExitCode);
         Assert.DoesNotContain("ledger.db", repo.Git("status", "--porcelain", "-uall"));
     }
 
@@ -114,7 +114,7 @@ public class EndToEndTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
-        await CliProcess.RunAsync(repo.Root, "scan");
+        await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
 
         var next = await CliProcess.RunAsync(repo.Root, "next", "--batch", "2");
 
@@ -128,6 +128,8 @@ public class EndToEndTests
     [InlineData("next --batch")]
     [InlineData("init extra")]
     [InlineData("scan --yes")]
+    [InlineData("scan --mode files")]
+    [InlineData("scan --depth 2")]
     [InlineData("next --yes")]
     [InlineData("next --batch 2 --no-gitignore")]
     [InlineData("done u --fingerprint f --findings x --yes")]
