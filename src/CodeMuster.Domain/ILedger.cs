@@ -21,8 +21,8 @@ public interface ILedger
     /// <summary>Inserts or replaces unit rows by id and replaces the members of every unit in the list.</summary>
     Task UpsertUnitsAsync(IReadOnlyList<Unit> units, IReadOnlyList<UnitMember> members, CancellationToken cancellationToken);
 
-    /// <summary>Up to <paramref name="batch"/> units that need work (pending, stale, or failed), oldest first by insertion order.</summary>
-    Task<IReadOnlyList<Unit>> NextAsync(int batch, CancellationToken cancellationToken);
+    /// <summary>Up to <paramref name="batch"/> units that need work (pending, stale, or failed), only of <paramref name="kind"/> when it is given, oldest first by insertion order.</summary>
+    Task<IReadOnlyList<Unit>> NextAsync(int batch, UnitKind? kind, CancellationToken cancellationToken);
 
     /// <summary>Stores an analysis and its findings atomically and moves the unit to Done (with summary, summary hash, and lens hash) or Failed.</summary>
     Task RecordAnalysisAsync(Analysis analysis, IReadOnlyList<Finding> findings, CancellationToken cancellationToken);

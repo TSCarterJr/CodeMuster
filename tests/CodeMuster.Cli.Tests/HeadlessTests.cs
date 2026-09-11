@@ -159,6 +159,12 @@ public class HeadlessTests
     [InlineData("skill remove --for claude")]
     [InlineData("report extra")]
     [InlineData("run --agent fake --lens tenancy")]
+    [InlineData("run --agent fake --kind files")]
+    [InlineData("run --agent fake --kind 3")]
+    [InlineData("verify")]
+    [InlineData("verify --agent fake --kind file")]
+    [InlineData("report --yes")]
+    [InlineData("report --include-refuted extra")]
     public async Task BadUsage_ForNewVerbs_Exits2(string arguments)
     {
         var result = await CliProcess.RunAsync(Path.GetTempPath(), arguments.Split(' '));

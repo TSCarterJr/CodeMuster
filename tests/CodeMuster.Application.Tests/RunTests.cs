@@ -23,6 +23,17 @@ public class RunTests
         return unit;
     }
 
+    private Unit AddOrphanUnit(string path, UnitStatus status = UnitStatus.Pending)
+    {
+        tree.Add(path, $"// {path}");
+        var id = UnitIds.Orphan(path);
+        var member = new UnitMember(id, path, null, "hash-" + path, 0);
+        var unit = new Unit(id, UnitKind.Orphan, path, Fingerprints.Compute([member]), status, Fidelity.Full, null, null, null);
+        ledger.Units.Add(unit);
+        ledger.Members.Add(member);
+        return unit;
+    }
+
     private List<Unit> AddFileUnits(params string[] names) => names.Select(name => AddFileUnit($"src/{name}.cs")).ToList();
 
     private Task<RunResult> RunAsync(FakeAgentAdapter adapter, RunOptions options, CancellationToken cancellationToken = default, Action<RunProgress>? onReport = null) =>
@@ -320,6 +331,35 @@ public class RunTests
         Assert.Equal([("file:src/a.cs", 1, 1), ("verify:1", 2, 2)], reports.Select(r => (r.UnitId, r.Completed, r.Total)));
         Assert.Equal(UnitStatus.Done, Stored(UnitIds.Verify(1)).Status);
         Assert.Equal(Verdict.Confirmed, ledger.Verifications[1].Verdict);
+    }
+
+    [Fact]
+    public async Task Kind_WorksOnlyUnitsOfThatKind_AndCountsOnlyThem()
+    {
+        var file = AddFileUnit("src/a.cs");
+        var orphan = AddOrphanUnit("src/b.cs");
+        var adapter = Always(EmptyResponse);
+
+        var result = await RunAsync(adapter, new RunOptions(4, 1, false, UnitKind.Orphan));
+
+        Assert.Equal(1, result.Completed);
+        Assert.Equal([orphan.Id], adapter.Packs.Select(UnitIdOf));
+        Assert.Equal((1, 1), (reports.Single().Completed, reports.Single().Total));
+        Assert.Equal(UnitStatus.Pending, Stored(file.Id).Status);
+    }
+
+    [Fact]
+    public async Task ForceWithAKind_ReanalyzesOnlyThatKind()
+    {
+        var file = AddFileUnit("src/a.cs", UnitStatus.Done);
+        var orphan = AddOrphanUnit("src/b.cs", UnitStatus.Done);
+        var adapter = Always(EmptyResponse);
+
+        var result = await RunAsync(adapter, new RunOptions(4, 1, true, UnitKind.Orphan));
+
+        Assert.Equal(1, result.Completed);
+        Assert.Equal([orphan.Id], adapter.Packs.Select(UnitIdOf));
+        Assert.Equal(file, Stored(file.Id));
     }
 
     [Fact]

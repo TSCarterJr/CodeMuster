@@ -11,7 +11,7 @@ public class ReportTests
 
     private readonly FakeLedger ledger = new();
 
-    private Task<string> RunAsync() => new Report(ledger, Config.Default).RunAsync(CancellationToken.None);
+    private Task<string> RunAsync(bool includeRefuted = false) => new Report(ledger, Config.Default, includeRefuted).RunAsync(CancellationToken.None);
 
     private Unit AddUnit(string path, UnitStatus status = UnitStatus.Pending, Fidelity fidelity = Fidelity.Full)
     {
@@ -127,6 +127,35 @@ public class ReportTests
             "## Units\n";
         Assert.Contains(findings, markdown);
         Assert.DoesNotContain("Refuted claim", markdown);
+    }
+
+    [Fact]
+    public async Task IncludeRefuted_ShowsRefutedFindingsWithTheirReason()
+    {
+        ledger.Runs.Add(new ScanRun(At, Head, 1, 0, 1, null));
+        var a = AddUnit("src/a.cs");
+        await AnalyzeAsync(a, "Does A",
+            Finding("src/a.cs", 1, 1, Severity.High, "Confirmed claim", "Evidence one.", 0.9),
+            Finding("src/a.cs", 2, 2, Severity.High, "Refuted claim", "Evidence two.", 0.9));
+        ledger.Verifications[1] = new VerifyResponse(Verdict.Confirmed, "Line 1 shows it.");
+        ledger.Verifications[2] = new VerifyResponse(Verdict.Refuted, "Line 2 guards it.");
+
+        var markdown = await RunAsync(includeRefuted: true);
+
+        const string findings =
+            "## Findings (2)\n" +
+            "\n" +
+            "### high (2)\n" +
+            "\n" +
+            "- `src/a.cs:1` [tenant-scoping, confidence 0.90, confirmed] Confirmed claim\n" +
+            "  Evidence one.\n" +
+            "  confirmed: Line 1 shows it.\n" +
+            "- `src/a.cs:2` [tenant-scoping, confidence 0.90, refuted] Refuted claim\n" +
+            "  Evidence two.\n" +
+            "  refuted: Line 2 guards it.\n" +
+            "\n" +
+            "## Units\n";
+        Assert.Contains(findings, markdown);
     }
 
     [Fact]

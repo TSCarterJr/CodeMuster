@@ -39,7 +39,7 @@ public class SqliteLedgerRetentionTests
         var retired = unit with { Status = UnitStatus.Retired, Summary = "Summary", SummaryHash = "fp", LensHash = "lens" };
         await ledger.UpsertUnitsAsync([retired], [member], CancellationToken.None);
 
-        Assert.Empty(await ledger.NextAsync(10, CancellationToken.None));
+        Assert.Empty(await ledger.NextAsync(10, null, CancellationToken.None));
         Assert.Equal([retired], await ledger.GetUnitsAsync(CancellationToken.None));
         Assert.Equal(retired, await ledger.GetUnitAsync(unit.Id, CancellationToken.None));
         Assert.Equal([member], await ledger.GetMembersAsync([unit.Id], CancellationToken.None));
@@ -56,10 +56,10 @@ public class SqliteLedgerRetentionTests
         var second = first with { Id = UnitIds.File("src/Second.cs"), Key = "src/Second.cs", Fingerprint = "fp-2" };
         await ledger.UpsertUnitsAsync([first, second], [], CancellationToken.None);
         await ledger.UpsertUnitsAsync([first with { Status = UnitStatus.Retired }], [], CancellationToken.None);
-        Assert.Equal([second], await ledger.NextAsync(10, CancellationToken.None));
+        Assert.Equal([second], await ledger.NextAsync(10, null, CancellationToken.None));
 
         await ledger.UpsertUnitsAsync([first], [], CancellationToken.None);
 
-        Assert.Equal([first, second], await ledger.NextAsync(10, CancellationToken.None));
+        Assert.Equal([first, second], await ledger.NextAsync(10, null, CancellationToken.None));
     }
 }

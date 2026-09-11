@@ -11,11 +11,11 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
     {
         if (options.Force)
         {
-            await RestaleDoneUnitsAsync(cancellationToken);
+            await RestaleDoneUnitsAsync(options.Kind, cancellationToken);
         }
 
         var total = 0;
-        var next = new Next(ledger, tree, config, interactive: false);
+        var next = new Next(ledger, tree, config, interactive: false, options.Kind);
         var done = new Done(ledger, clock, config);
         using var turn = new SemaphoreSlim(1, 1);
         var attempts = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -35,7 +35,8 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                     return new RunResult(completed, gaveUp, false);
                 }
 
-                total = completed + (await ledger.GetUnitsAsync(cancellationToken)).Count(u => u.Status is UnitStatus.Pending or UnitStatus.Stale or UnitStatus.Failed);
+                total = completed + (await ledger.GetUnitsAsync(cancellationToken))
+                    .Count(u => (u.Status is UnitStatus.Pending or UnitStatus.Stale or UnitStatus.Failed) && (options.Kind is null || u.Kind == options.Kind));
                 await Task.WhenAll(packs.Select(AttemptAsync));
             }
         }
@@ -89,9 +90,12 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
         }
     }
 
-    private async Task RestaleDoneUnitsAsync(CancellationToken cancellationToken)
+    private async Task RestaleDoneUnitsAsync(UnitKind? kind, CancellationToken cancellationToken)
     {
-        var stale = (await ledger.GetUnitsAsync(cancellationToken)).Where(u => u.Status == UnitStatus.Done).Select(u => u with { Status = UnitStatus.Stale }).ToList();
+        var stale = (await ledger.GetUnitsAsync(cancellationToken))
+            .Where(u => u.Status == UnitStatus.Done && (kind is null || u.Kind == kind))
+            .Select(u => u with { Status = UnitStatus.Stale })
+            .ToList();
         if (stale.Count == 0)
         {
             return;

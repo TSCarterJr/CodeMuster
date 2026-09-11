@@ -69,7 +69,22 @@ public class SqliteLedgerUnitTests
         await ledger.UpsertUnitsAsync([changed], [], CancellationToken.None);
 
         Assert.Equal([changed, b, c], await ledger.GetUnitsAsync(CancellationToken.None));
-        Assert.Equal([changed, b, c], await ledger.NextAsync(10, CancellationToken.None));
+        Assert.Equal([changed, b, c], await ledger.NextAsync(10, null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Next_WithAKind_ReturnsOnlyUnitsOfThatKind()
+    {
+        using var temp = new TempDirectory();
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+        var file = Pending("src/A.cs");
+        var verify = new Unit(UnitIds.Verify(1), UnitKind.Verify, "src/A.cs:1", "fp", UnitStatus.Failed, Fidelity.Full, null, null, null);
+        var orphan = new Unit(UnitIds.Orphan("src/B.cs"), UnitKind.Orphan, "src/B.cs", "fp", UnitStatus.Pending, Fidelity.Full, null, null, null);
+        await ledger.UpsertUnitsAsync([file, verify, orphan], [], CancellationToken.None);
+
+        Assert.Equal([verify], await ledger.NextAsync(10, UnitKind.Verify, CancellationToken.None));
+        Assert.Equal([file], await ledger.NextAsync(10, UnitKind.File, CancellationToken.None));
+        Assert.Empty(await ledger.NextAsync(10, UnitKind.Slice, CancellationToken.None));
     }
 
     [Fact]
@@ -84,9 +99,9 @@ public class SqliteLedgerUnitTests
         var pending = Pending("src/Pending.cs");
         await ledger.UpsertUnitsAsync([done, stale, retired, failed, pending], [], CancellationToken.None);
 
-        Assert.Equal([stale, failed, pending], await ledger.NextAsync(10, CancellationToken.None));
-        Assert.Equal([stale, failed], await ledger.NextAsync(2, CancellationToken.None));
-        Assert.Empty(await ledger.NextAsync(0, CancellationToken.None));
+        Assert.Equal([stale, failed, pending], await ledger.NextAsync(10, null, CancellationToken.None));
+        Assert.Equal([stale, failed], await ledger.NextAsync(2, null, CancellationToken.None));
+        Assert.Empty(await ledger.NextAsync(0, null, CancellationToken.None));
     }
 
     [Fact]
@@ -153,7 +168,7 @@ public class SqliteLedgerUnitTests
         Assert.Equal(50, units.Count);
         Assert.All(units, u => Assert.Equal(UnitStatus.Done, u.Status));
         Assert.Equal(50, (await second.GetMembersAsync(units.Select(u => u.Id).ToList(), CancellationToken.None)).Count);
-        Assert.Empty(await second.NextAsync(100, CancellationToken.None));
+        Assert.Empty(await second.NextAsync(100, null, CancellationToken.None));
     }
 
     private static async Task AnalyzeManyAsync(SqliteLedger ledger, string prefix)

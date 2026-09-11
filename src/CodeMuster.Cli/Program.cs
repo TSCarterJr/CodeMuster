@@ -21,16 +21,22 @@ public static class Program
           estimate                                          approximate token cost of pending units
           next [--batch N] [--out <file>]                   print the next unit pack(s)
           done <unit> --fingerprint <fp> --findings <file>  record the model's response for a unit
-          run --agent <name> [-j N] [--attempts N] [--force]
-                                                            drive a headless agent over every pending unit
+          run --agent <name> [-j N] [--attempts N] [--force] [--kind <kind>]
+                                                            drive a headless agent over every pending unit, or only
+                                                            one kind: file, slice, orphan, verify
                                                             agents: claude, codex, gemini, opencode, fake
-          report [--out <file>]                             render findings and coverage as markdown
+          verify --agent <name> [-j N] [--attempts N] [--force]
+                                                            run --kind verify: try to refute recorded findings
+          report [--out <file>] [--include-refuted]         render findings and coverage as markdown;
+                                                            refuted findings are left out unless asked for
           skill install --for <agent> [--global]            install the skill for claude, codex, gemini, or opencode
 
         every verb runs against the git repository containing the current directory.
         """;
 
-    private static readonly string[] Verbs = ["init", "scan", "status", "estimate", "next", "done", "run", "report", "skill"];
+    private static readonly string[] Verbs = ["init", "scan", "status", "estimate", "next", "done", "run", "verify", "report", "skill"];
+
+    private static readonly string[] KindNames = Enum.GetNames<UnitKind>().Select(name => name.ToLowerInvariant()).ToArray();
 
     public static async Task<int> Main(string[] args)
     {
@@ -130,9 +136,10 @@ public static class Program
                 Console.WriteLine(done.Message);
                 return done.Outcome == DoneOutcome.Recorded ? 0 : 1;
             case "run":
+            case "verify":
                 return await RunAgentAsync(command, ledger, tree, clock, config, cancellationToken);
             default:
-                var markdown = await new Report(ledger, config).RunAsync(cancellationToken);
+                var markdown = await new Report(ledger, config, command.Flags.Contains("include-refuted")).RunAsync(cancellationToken);
                 if (command.Options.TryGetValue("out", out var reportPath))
                 {
                     await File.WriteAllTextAsync(reportPath, markdown, cancellationToken);
@@ -192,10 +199,12 @@ public static class Program
     {
         var template = Environment.GetEnvironmentVariable("CODEMUSTER_FAKE_RESPONSE");
         var adapter = AgentAdapters.Create(command.Options["agent"], template is null ? null : await File.ReadAllTextAsync(template, cancellationToken));
+        var kind = command.Verb == "verify" ? "verify" : command.Options.GetValueOrDefault("kind");
         var options = new RunOptions(
             int.Parse(command.Options.GetValueOrDefault("jobs", "1")),
             int.Parse(command.Options.GetValueOrDefault("attempts", "3")),
-            command.Flags.Contains("force"));
+            command.Flags.Contains("force"),
+            kind is null ? null : Enum.Parse<UnitKind>(kind, ignoreCase: true));
         var result = await new Run(ledger, tree, clock, config, adapter, new RunProgressWriter(Console.Out)).RunAsync(options, cancellationToken);
         foreach (var unitId in result.GaveUp)
         {
@@ -230,10 +239,20 @@ public static class Program
         "scan" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "mode") && command.Options.GetValueOrDefault("mode", "file") is "file" or "slice",
         "done" => command.Flags.Count == 0 && command.Positionals.Count == 1 && command.Options.ContainsKey("fingerprint") && command.Options.ContainsKey("findings"),
         "next" => command.Flags.Count == 0 && command.Positionals.Count == 0 && IsPositiveOrAbsent(command, "batch"),
-        "run" => command.Positionals.Count == 0 && command.Options.ContainsKey("agent") && command.Options.Keys.All(k => k is "agent" or "jobs" or "attempts") && command.Flags.All(f => f == "force") && IsPositiveOrAbsent(command, "jobs") && IsPositiveOrAbsent(command, "attempts"),
+        "run" => IsAgentRun(command, "kind") && (!command.Options.TryGetValue("kind", out var kind) || KindNames.Contains(kind)),
+        "verify" => IsAgentRun(command),
+        "report" => command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "out") && command.Flags.All(f => f == "include-refuted"),
         "skill" => command.Positionals.SequenceEqual(["install"]) && SkillInstaller.Harnesses.Contains(command.Options.GetValueOrDefault("for", "")) && command.Flags.All(f => f == "global"),
         _ => command.Flags.Count == 0 && command.Positionals.Count == 0,
     };
+
+    private static bool IsAgentRun(Command command, params string[] extraOptions) =>
+        command.Positionals.Count == 0
+        && command.Options.ContainsKey("agent")
+        && command.Options.Keys.All(k => k is "agent" or "jobs" or "attempts" || extraOptions.Contains(k))
+        && command.Flags.All(f => f == "force")
+        && IsPositiveOrAbsent(command, "jobs")
+        && IsPositiveOrAbsent(command, "attempts");
 
     private static string HomeDirectory() =>
         Environment.GetEnvironmentVariable(OperatingSystem.IsWindows() ? "USERPROFILE" : "HOME")

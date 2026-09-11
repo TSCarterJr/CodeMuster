@@ -43,7 +43,7 @@ The CLI owns the state and the loop; you analyze one unit at a time, in this ses
 ```
 
    - Run the `codemuster done ...` command printed at the end of the pack, pointing `--findings` at that file. If `done` rejects the response, fix what it names and run it again.
-4. `codemuster status` shows coverage at any time; `codemuster report` renders findings and coverage as markdown once everything is analyzed. Every finding you record queues a verify pack, and refuted findings stay out of the report.
+4. `codemuster status` shows coverage at any time; `codemuster report` renders findings and coverage as markdown once everything is analyzed. Every finding you record queues a verify pack, and refuted findings stay out of the report unless you add `--include-refuted`.
 
 Rules: never skip a unit or invent findings for code you did not read; `summary` is one line about the unit; `severity` is critical, high, medium, low, or info; `category` is a short free-form label such as security, correctness, reliability, or performance; `confidence` is 0 to 1; an empty `findings` array is a valid, common answer.
 

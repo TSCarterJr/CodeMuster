@@ -54,9 +54,9 @@ public sealed class FakeLedger : ILedger
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<Unit>> NextAsync(int batch, CancellationToken cancellationToken) =>
+    public Task<IReadOnlyList<Unit>> NextAsync(int batch, UnitKind? kind, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<Unit>>(Units
-            .Where(u => u.Status is UnitStatus.Pending or UnitStatus.Stale or UnitStatus.Failed)
+            .Where(u => (u.Status is UnitStatus.Pending or UnitStatus.Stale or UnitStatus.Failed) && (kind is null || u.Kind == kind))
             .Take(batch)
             .ToList());
 

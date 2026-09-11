@@ -260,9 +260,10 @@ public sealed class SqliteLedger : ILedger, IDisposable
         await transaction.CommitAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<Unit>> NextAsync(int batch, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<Unit>> NextAsync(int batch, UnitKind? kind, CancellationToken cancellationToken)
     {
-        await using var command = CreateCommand($"SELECT {UnitColumns} FROM units WHERE status IN ($pending, $stale, $failed) ORDER BY seq LIMIT $batch");
+        await using var command = CreateCommand($"SELECT {UnitColumns} FROM units WHERE status IN ($pending, $stale, $failed) AND ($kind IS NULL OR kind = $kind) ORDER BY seq LIMIT $batch");
+        command.Parameters.AddWithValue("$kind", Db(kind is { } k ? Name(k) : null));
         command.Parameters.AddWithValue("$pending", Name(UnitStatus.Pending));
         command.Parameters.AddWithValue("$stale", Name(UnitStatus.Stale));
         command.Parameters.AddWithValue("$failed", Name(UnitStatus.Failed));

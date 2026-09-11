@@ -3,8 +3,8 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
 
-/// <summary>Renders the ledger as markdown: the coverage header, current findings grouped by severity with their verdicts, and the unit inventory (D11, D12). Refuted findings are left out (D27).</summary>
-public sealed class Report(ILedger ledger, Config config)
+/// <summary>Renders the ledger as markdown: the coverage header, current findings grouped by severity with their verdicts, and the unit inventory (D11, D12). Refuted findings are left out unless <paramref name="includeRefuted"/> is set (D27).</summary>
+public sealed class Report(ILedger ledger, Config config, bool includeRefuted = false)
 {
     /// <summary>Builds the report; lines are joined with LF and the text ends with one newline.</summary>
     public async Task<string> RunAsync(CancellationToken cancellationToken)
@@ -15,7 +15,7 @@ public sealed class Report(ILedger ledger, Config config)
             .OrderBy(u => u.Key, StringComparer.Ordinal)
             .ToList();
         var current = await ledger.GetCurrentFindingsAsync(cancellationToken);
-        var findings = current.Where(f => f.Verification?.Verdict != Verdict.Refuted).ToList();
+        var findings = current.Where(f => includeRefuted || f.Verification?.Verdict != Verdict.Refuted).ToList();
         var refuted = current.Count - findings.Count;
         var fingerprints = units.ToDictionary(u => u.Id, u => u.Fingerprint);
         var at = status.HeadCommit is null ? "no scan yet" : status.HeadCommit[..Math.Min(7, status.HeadCommit.Length)];
