@@ -65,6 +65,10 @@ only the units whose code changed need another pass.
   `status` calls coverage complete. The default is 0.9.
 - `verify`: whether each finding gets a second pass that tries to refute it. That costs about one
   more agent call per finding. The default is `true`.
+- `exclude`: globs of files to leave out, on top of the built-in exclusions (generated code,
+  migrations, lock files, binaries). A glob without a slash matches file names anywhere, so a
+  folder needs `folder/**`. To audit one part of a large repository first, exclude the rest, then
+  `scan`.
 
 ## Updates
 

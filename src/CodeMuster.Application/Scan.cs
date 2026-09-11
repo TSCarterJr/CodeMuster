@@ -112,7 +112,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             now,
             file.LastCommit,
             file.LastCommitAt,
-            Exclusions.Reason(file.Path, file.LinguistGenerated),
+            config.ExcludedReason(file.Path, file.LinguistGenerated),
             null,
             unchanged ? previous!.Summary : null,
             unchanged ? previous!.SummaryHash : null);

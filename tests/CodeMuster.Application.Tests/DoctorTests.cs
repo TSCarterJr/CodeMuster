@@ -94,6 +94,18 @@ public class DoctorTests
     }
 
     [Fact]
+    public async Task ExcludeGlobsFromConfig_KeepFilesOutOfTheProbes()
+    {
+        var config = Config.Default with { Exclude = ["web/**"] };
+
+        var report = await new Doctor(tree, [csharp, typescript], clock, RepoRoot, config).RunAsync(CancellationToken.None);
+
+        Assert.Equal("git: working\ncsharp: working in 9.8 s, 2 symbol(s)\nready", report.Render());
+        Assert.Equal(["MixedRepo.sln", "src/A.cs"], Assert.Single(csharp.Calls).Paths);
+        Assert.Empty(typescript.Calls);
+    }
+
+    [Fact]
     public async Task GitThatCannotListFiles_IsFailed_AndNoMapperRuns()
     {
         var report = await RunAsync(new BrokenTree());

@@ -119,7 +119,7 @@ public static class Program
 
         if (command.Verb == "doctor")
         {
-            return await DoctorAsync(cancellationToken);
+            return await DoctorAsync(fileSystem, cancellationToken);
         }
 
         var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
@@ -187,7 +187,7 @@ public static class Program
         return 0;
     }
 
-    private static async Task<int> DoctorAsync(CancellationToken cancellationToken)
+    private static async Task<int> DoctorAsync(PhysicalFileSystem fileSystem, CancellationToken cancellationToken)
     {
         string repoRoot;
         try
@@ -200,7 +200,8 @@ public static class Program
             return 1;
         }
 
-        var report = await new Doctor(new GitSourceTree(repoRoot), Mappers(), new SystemClock(), repoRoot).RunAsync(cancellationToken);
+        var config = File.Exists(ConfigLoader.PathFor(repoRoot)) ? await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken) : null;
+        var report = await new Doctor(new GitSourceTree(repoRoot), Mappers(), new SystemClock(), repoRoot, config).RunAsync(cancellationToken);
         Console.WriteLine(report.Render());
         return report.Ready ? 0 : 1;
     }

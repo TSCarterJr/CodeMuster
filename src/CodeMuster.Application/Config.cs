@@ -9,6 +9,14 @@ namespace CodeMuster.Application;
 /// <param name="Verify">Whether every recorded finding gets a verify unit, costing about one more agent call per finding (D27, D28).</param>
 public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 24000, double ResolutionThreshold = 0.9, bool Verify = true)
 {
+    /// <summary>Repo-relative globs of files never analyzed, on top of the built-in <see cref="Exclusions"/> (D04). A glob without a slash matches file names, so a folder needs <c>folder/**</c>.</summary>
+    public IReadOnlyList<string> Exclude { get; init; } = [];
+
+    /// <summary>Why a file is not analyzed: the built-in reason first, then <c>exclude:&lt;glob&gt;</c> for the first exclude glob it matches; null when it is analyzed.</summary>
+    public string? ExcludedReason(string path, bool linguistGenerated) =>
+        Exclusions.Reason(path, linguistGenerated)
+        ?? Exclude.Where(glob => Glob.IsMatch(glob, path)).Select(glob => "exclude:" + glob).FirstOrDefault();
+
     /// <summary>Instructions of the lens every repo starts with.</summary>
     public const string DefaultInstructions =
         "Audit every file in this pack for defects a careful reviewer would flag: incorrect logic, unhandled failure paths, "

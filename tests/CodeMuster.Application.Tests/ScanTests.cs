@@ -242,6 +242,28 @@ public class ScanTests
     }
 
     [Fact]
+    public async Task ExcludeGlob_RecordsItselfAsTheReason_RetiresTheUnit_AndRemovingItBringsTheUnitBack()
+    {
+        AddThree();
+        await ScanAsync();
+
+        var result = await ScanAsync(Config.Default with { Exclude = ["web/**"] });
+
+        Assert.Equal(2, result.FilesIncluded);
+        Assert.Equal(1, result.FilesExcluded);
+        Assert.Equal(2, result.UnitsTotal);
+        Assert.Equal("exclude:web/**", ledger.Files["web/c.ts"].ExcludedReason);
+        Assert.Equal(UnitStatus.Retired, Unit("web/c.ts").Status);
+        Assert.Equal(UnitStatus.Pending, Unit("src/A.cs").Status);
+
+        result = await ScanAsync();
+
+        Assert.Equal(3, result.UnitsTotal);
+        Assert.Null(ledger.Files["web/c.ts"].ExcludedReason);
+        Assert.Equal(UnitStatus.Pending, Unit("web/c.ts").Status);
+    }
+
+    [Fact]
     public async Task RemovedFile_GetsDeletedAt_AndItsUnitIsRetired_WithRowsKept()
     {
         tree.Add("src/A.cs", "class A {}");

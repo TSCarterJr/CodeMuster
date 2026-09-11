@@ -88,6 +88,29 @@ public class ConfigTests
     }
 
     [Fact]
+    public void Json_WritesExclude_AndDefaultsItEmptyForOlderConfigs()
+    {
+        const string lenses = """ "lenses": [ { "id": "default", "instructions": "x", "globs": [], "languages": [] } ] """;
+
+        Assert.Contains("\"exclude\": []", ConfigJson.Serialize(Config.Default));
+        Assert.Empty(ConfigJson.Parse("{" + lenses + "}").Exclude);
+        Assert.Equal(["web/**"], ConfigJson.Parse("{" + lenses + ", \"exclude\": [\"web/**\"] }").Exclude);
+    }
+
+    [Fact]
+    public void ExcludedReason_PutsBuiltInRulesFirst_ThenTheFirstMatchingExcludeGlob()
+    {
+        var config = Config.Default with { Exclude = ["web/**", "*.ts"] };
+
+        Assert.Equal("migrations", config.ExcludedReason("web/Migrations/Initial.cs", linguistGenerated: false));
+        Assert.Equal("linguist-generated", config.ExcludedReason("web/lib/api.ts", linguistGenerated: true));
+        Assert.Equal("exclude:web/**", config.ExcludedReason("web/lib/api.ts", linguistGenerated: false));
+        Assert.Equal("exclude:*.ts", config.ExcludedReason("tools/gen.ts", linguistGenerated: false));
+        Assert.Null(config.ExcludedReason("src/A.cs", linguistGenerated: false));
+        Assert.Null(Config.Default.ExcludedReason("web/lib/api.ts", linguistGenerated: false));
+    }
+
+    [Fact]
     public async Task Loader_ThrowsNotInitialized_WhenNoConfigFile()
     {
         var loader = new ConfigLoader(new FakeFileSystem());
