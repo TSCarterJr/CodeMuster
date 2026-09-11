@@ -78,18 +78,35 @@ public class EndToEndTests
         Assert.Equal(config, await File.ReadAllTextAsync(Path.Combine(repo.Root, ".codemuster", "config.json")));
     }
 
-    [Fact]
-    public async Task Init_NoGitignore_LeavesGitignoreAlone()
+    [Theory]
+    [InlineData("init --no-gitignore")]
+    [InlineData("init --yes --no-gitignore")]
+    public async Task Init_NoGitignore_LeavesGitignoreAlone(string arguments)
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         File.Delete(Path.Combine(repo.Root, ".gitignore"));
 
-        var init = await CliProcess.RunAsync(repo.Root, "init", "--no-gitignore");
+        var init = await CliProcess.RunAsync(repo.Root, arguments.Split(' '));
 
         Assert.Equal(0, init.ExitCode);
         Assert.Contains("left .gitignore alone", init.Stdout);
         Assert.False(File.Exists(Path.Combine(repo.Root, ".gitignore")));
         Assert.True(File.Exists(Path.Combine(repo.Root, ".codemuster", "config.json")));
+    }
+
+    [Fact]
+    public async Task Init_TreatsALeadingSpacePatternAsNotIgnored()
+    {
+        using var repo = TempRepo.FromFixture("mixed-repo");
+        var gitignore = Path.Combine(repo.Root, ".gitignore");
+        await File.WriteAllTextAsync(gitignore, "  .codemuster/ledger.db\n");
+
+        var init = await CliProcess.RunAsync(repo.Root, "init", "--yes");
+
+        Assert.Equal(0, init.ExitCode);
+        Assert.Contains("added .codemuster/ledger.db to .gitignore", init.Stdout);
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "scan")).ExitCode);
+        Assert.DoesNotContain("ledger.db", repo.Git("status", "--porcelain", "-uall"));
     }
 
     [Fact]
@@ -111,6 +128,9 @@ public class EndToEndTests
     [InlineData("next --batch")]
     [InlineData("init extra")]
     [InlineData("scan --yes")]
+    [InlineData("next --yes")]
+    [InlineData("next --batch 2 --no-gitignore")]
+    [InlineData("done u --fingerprint f --findings x --yes")]
     public async Task BadUsage_PrintsUsage_AndExits2(string arguments)
     {
         var result = await CliProcess.RunAsync(Path.GetTempPath(), arguments.Split(' '));

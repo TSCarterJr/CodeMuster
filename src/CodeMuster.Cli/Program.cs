@@ -57,14 +57,14 @@ public static class Program
     {
         var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
         var fileSystem = new PhysicalFileSystem();
+        var tree = new GitSourceTree(repoRoot);
         if (command.Verb == "init")
         {
-            return await InitAsync(command, repoRoot, fileSystem, cancellationToken);
+            return await InitAsync(command, repoRoot, fileSystem, tree, cancellationToken);
         }
 
         var config = await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken);
         using var ledger = await SqliteLedger.OpenAsync(Path.Combine(repoRoot, ".codemuster", "ledger.db"), cancellationToken);
-        var tree = new GitSourceTree(repoRoot);
         var clock = new SystemClock();
 
         switch (command.Verb)
@@ -107,9 +107,14 @@ public static class Program
         }
     }
 
-    private static async Task<int> InitAsync(Command command, string repoRoot, PhysicalFileSystem fileSystem, CancellationToken cancellationToken)
+    private static async Task<int> InitAsync(Command command, string repoRoot, PhysicalFileSystem fileSystem, GitSourceTree tree, CancellationToken cancellationToken)
     {
-        var result = await new Init(fileSystem).RunAsync(repoRoot, _ => Task.FromResult(ConfirmGitignore(command)), cancellationToken);
+        var interactive = !Console.IsInputRedirected && !Console.IsOutputRedirected;
+        var result = await new Init(fileSystem, tree).RunAsync(repoRoot, _ => Task.FromResult(GitignorePrompt.Decide(command.Flags, interactive, () =>
+        {
+            Console.Write("add .codemuster/ledger.db to .gitignore? [Y/n] ");
+            return Console.ReadLine();
+        })), cancellationToken);
         Console.WriteLine(result.ConfigCreated ? "created .codemuster/config.json" : ".codemuster/config.json already present");
         Console.WriteLine(result.Gitignore switch
         {
@@ -118,23 +123,6 @@ public static class Program
             _ => "left .gitignore alone; make sure .codemuster/ledger.db is ignored",
         });
         return 0;
-    }
-
-    private static bool ConfirmGitignore(Command command)
-    {
-        if (command.Flags.Contains("no-gitignore"))
-        {
-            return false;
-        }
-
-        if (command.Flags.Contains("yes") || Console.IsInputRedirected || Console.IsOutputRedirected)
-        {
-            return true;
-        }
-
-        Console.Write("add .codemuster/ledger.db to .gitignore? [Y/n] ");
-        var answer = Console.ReadLine()?.Trim() ?? "";
-        return answer.Length == 0 || answer.StartsWith('y') || answer.StartsWith('Y');
     }
 
     private static bool HasRequiredArguments(Command command) => command.Verb switch

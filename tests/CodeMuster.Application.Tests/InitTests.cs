@@ -9,10 +9,11 @@ public class InitTests
     private static readonly string GitignorePath = Init.GitignorePathFor(Root);
 
     private readonly FakeFileSystem fileSystem = new();
+    private readonly FakeSourceTree tree = new();
     private int confirmations;
 
     private Task<InitResult> RunAsync(bool confirm = true) =>
-        new Init(fileSystem).RunAsync(Root, _ =>
+        new Init(fileSystem, tree).RunAsync(Root, _ =>
         {
             confirmations++;
             return Task.FromResult(confirm);
@@ -25,8 +26,7 @@ public class InitTests
 
         Assert.True(result.ConfigCreated);
         Assert.Equal(GitignoreOutcome.Appended, result.Gitignore);
-        Assert.Equal(Config.Default.Lenses[0].Hash(), ConfigJson.Parse(fileSystem.Files[ConfigPath]).Lenses[0].Hash());
-        Assert.EndsWith("\n", fileSystem.Files[ConfigPath]);
+        Assert.Equal(ConfigJson.Serialize(Config.Default) + "\n", fileSystem.Files[ConfigPath]);
         Assert.Equal(".codemuster/ledger.db\n.codemuster/ledger.db-*\n", fileSystem.Files[GitignorePath]);
         Assert.Equal(1, confirmations);
     }
@@ -35,6 +35,7 @@ public class InitTests
     public async Task SecondRun_ChangesNothing_AndDoesNotAsk()
     {
         await RunAsync();
+        tree.Ignored.Add(Init.LedgerPath);
         var before = new Dictionary<string, string>(fileSystem.Files);
 
         var result = await RunAsync();
@@ -45,19 +46,28 @@ public class InitTests
         Assert.Equal(1, confirmations);
     }
 
-    [Theory]
-    [InlineData("bin/\n.codemuster/ledger.db\n")]
-    [InlineData("bin/\n/.codemuster/ledger.db\n")]
-    [InlineData("  .codemuster/ledger.db  \r\nobj/\r\n")]
-    public async Task GitignoreAlreadyCoveringLedger_IsLeftByteIdentical(string existing)
+    [Fact]
+    public async Task LedgerAlreadyIgnoredByGit_LeavesGitignoreByteIdentical_AndDoesNotAsk()
     {
-        fileSystem.Files[GitignorePath] = existing;
+        fileSystem.Files[GitignorePath] = "bin/\r\n.codemuster/\r\n";
+        tree.Ignored.Add(Init.LedgerPath);
 
         var result = await RunAsync();
 
         Assert.Equal(GitignoreOutcome.AlreadyCovered, result.Gitignore);
-        Assert.Equal(existing, fileSystem.Files[GitignorePath]);
+        Assert.Equal("bin/\r\n.codemuster/\r\n", fileSystem.Files[GitignorePath]);
         Assert.Equal(0, confirmations);
+    }
+
+    [Fact]
+    public async Task GitignoreTextThatGitDoesNotHonour_StillGetsTheLines()
+    {
+        fileSystem.Files[GitignorePath] = "  .codemuster/ledger.db\n";
+
+        var result = await RunAsync();
+
+        Assert.Equal(GitignoreOutcome.Appended, result.Gitignore);
+        Assert.Equal("  .codemuster/ledger.db\n.codemuster/ledger.db\n.codemuster/ledger.db-*\n", fileSystem.Files[GitignorePath]);
     }
 
     [Fact]

@@ -7,6 +7,15 @@ internal static class GitProcess
 {
     public static async Task<string> RunAsync(string repoRoot, IReadOnlyList<string> arguments, string? standardInput, CancellationToken cancellationToken)
     {
+        var (exitCode, output, error) = await RunAllowingFailureAsync(repoRoot, arguments, standardInput, cancellationToken).ConfigureAwait(false);
+        return exitCode == 0 ? output : throw Failure(arguments, exitCode, error);
+    }
+
+    public static InvalidOperationException Failure(IReadOnlyList<string> arguments, int exitCode, string error) =>
+        new($"git {string.Join(' ', arguments)} exited with code {exitCode}: {error.Trim()}");
+
+    public static async Task<(int ExitCode, string Output, string Error)> RunAllowingFailureAsync(string repoRoot, IReadOnlyList<string> arguments, string? standardInput, CancellationToken cancellationToken)
+    {
         var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
         var startInfo = new ProcessStartInfo("git")
         {
@@ -40,13 +49,7 @@ internal static class GitProcess
             }
 
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            var error = await stderr.ConfigureAwait(false);
-            if (process.ExitCode != 0)
-            {
-                throw new InvalidOperationException($"git {string.Join(' ', arguments)} exited with code {process.ExitCode}: {error.Trim()}");
-            }
-
-            return await stdout.ConfigureAwait(false);
+            return (process.ExitCode, await stdout.ConfigureAwait(false), await stderr.ConfigureAwait(false));
         }
         catch (OperationCanceledException)
         {

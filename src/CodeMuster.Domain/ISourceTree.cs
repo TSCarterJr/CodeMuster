@@ -11,4 +11,7 @@ public interface ISourceTree
 
     /// <summary>The current working-tree content of a tracked file.</summary>
     Task<string> ReadFileAsync(string path, CancellationToken cancellationToken);
+
+    /// <summary>True when an ignore file inside the repo (not the user's global excludes or .git/info/exclude) ignores the path.</summary>
+    Task<bool> IsIgnoredAsync(string path, CancellationToken cancellationToken);
 }

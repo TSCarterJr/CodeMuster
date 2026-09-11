@@ -50,6 +50,26 @@ public sealed class GitSourceTree(string repoRoot) : ISourceTree
     public Task<string> ReadFileAsync(string path, CancellationToken cancellationToken) =>
         File.ReadAllTextAsync(Path.Combine(repoRoot, path), cancellationToken);
 
+    public async Task<bool> IsIgnoredAsync(string path, CancellationToken cancellationToken)
+    {
+        string[] arguments = ["check-ignore", "-v", "--", path];
+        var (exitCode, output, error) = await GitProcess.RunAllowingFailureAsync(repoRoot, arguments, null, cancellationToken).ConfigureAwait(false);
+        if (exitCode == 1)
+        {
+            return false;
+        }
+
+        if (exitCode != 0)
+        {
+            throw GitProcess.Failure(arguments, exitCode, error);
+        }
+
+        var fields = output.TrimEnd('\r', '\n').Split(':', 3);
+        var source = RepoPath.Normalize(fields[0]);
+        var pattern = fields[2][..fields[2].IndexOf('\t')];
+        return !pattern.StartsWith('!') && !Path.IsPathRooted(source) && !source.StartsWith(".git/", StringComparison.Ordinal);
+    }
+
     private static List<(string Path, string Sha)> ParseIndex(string output)
     {
         var entries = new List<(string Path, string Sha)>();
