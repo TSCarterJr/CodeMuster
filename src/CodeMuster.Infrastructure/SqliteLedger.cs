@@ -6,7 +6,9 @@ namespace CodeMuster.Infrastructure;
 
 public sealed class SqliteLedger : ILedger, IDisposable
 {
-    private const string Schema = """
+    internal const int SchemaVersion = 2;
+
+    internal const string Schema = """
         CREATE TABLE files (
             path TEXT PRIMARY KEY,
             language TEXT NOT NULL,
@@ -71,14 +73,21 @@ public sealed class SqliteLedger : ILedger, IDisposable
             lens_id TEXT NOT NULL);
         """;
 
+    private const string SchemaVersion2 = """
+        ALTER TABLE unit_members ADD COLUMN start_line INTEGER;
+        ALTER TABLE unit_members ADD COLUMN end_line INTEGER;
+        ALTER TABLE unit_members ADD COLUMN signature TEXT;
+        ALTER TABLE runs ADD COLUMN top_unresolved_names TEXT;
+        """;
+
     private const string FileColumns =
         "path, language, content_hash, size, mtime, first_seen, last_seen, last_commit, last_commit_at, excluded_reason, deleted_at, summary, summary_hash";
 
     private const string UnitColumns = "id, kind, key, fingerprint, status, fidelity, lens_hash, summary, summary_hash";
 
-    private const string MemberColumns = "unit_id, path, symbol, member_hash, distance";
+    private const string MemberColumns = "unit_id, path, symbol, member_hash, distance, start_line, end_line, signature";
 
-    private const string RunColumns = "started_at, head_commit, files_included, files_excluded, units_total, resolution_rate";
+    private const string RunColumns = "started_at, head_commit, files_included, files_excluded, units_total, resolution_rate, top_unresolved_names";
 
     private const string FindingColumns = "path, line_start, line_end, severity, category, claim, evidence, confidence, lens_id";
 
@@ -228,7 +237,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
             await clear.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        await using var insert = CreateCommand($"INSERT INTO unit_members ({MemberColumns}) VALUES ($unit_id, $path, $symbol, $member_hash, $distance)");
+        await using var insert = CreateCommand($"INSERT INTO unit_members ({MemberColumns}) VALUES ($unit_id, $path, $symbol, $member_hash, $distance, $start_line, $end_line, $signature)");
         foreach (var member in members)
         {
             insert.Parameters.Clear();
@@ -237,6 +246,9 @@ public sealed class SqliteLedger : ILedger, IDisposable
             insert.Parameters.AddWithValue("$symbol", Db(member.Symbol));
             insert.Parameters.AddWithValue("$member_hash", member.MemberHash);
             insert.Parameters.AddWithValue("$distance", member.Distance);
+            insert.Parameters.AddWithValue("$start_line", Db(member.Range?.StartLine));
+            insert.Parameters.AddWithValue("$end_line", Db(member.Range?.EndLine));
+            insert.Parameters.AddWithValue("$signature", Db(member.Signature));
             await insert.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -320,13 +332,14 @@ public sealed class SqliteLedger : ILedger, IDisposable
 
     public async Task RecordRunAsync(ScanRun run, CancellationToken cancellationToken)
     {
-        await using var command = CreateCommand($"INSERT INTO runs ({RunColumns}) VALUES ($started_at, $head_commit, $files_included, $files_excluded, $units_total, $resolution_rate)");
+        await using var command = CreateCommand($"INSERT INTO runs ({RunColumns}) VALUES ($started_at, $head_commit, $files_included, $files_excluded, $units_total, $resolution_rate, $top_unresolved_names)");
         command.Parameters.AddWithValue("$started_at", run.StartedAt);
         command.Parameters.AddWithValue("$head_commit", run.HeadCommit);
         command.Parameters.AddWithValue("$files_included", run.FilesIncluded);
         command.Parameters.AddWithValue("$files_excluded", run.FilesExcluded);
         command.Parameters.AddWithValue("$units_total", run.UnitsTotal);
         command.Parameters.AddWithValue("$resolution_rate", Db(run.ResolutionRate));
+        command.Parameters.AddWithValue("$top_unresolved_names", Db(run.TopUnresolvedNames is null ? null : string.Join('\n', run.TopUnresolvedNames)));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -339,12 +352,24 @@ public sealed class SqliteLedger : ILedger, IDisposable
     private async Task MigrateAsync(CancellationToken cancellationToken)
     {
         await using var transaction = await _connection.BeginTransactionAsync(cancellationToken);
-        if (await ReadPragmaAsync("user_version", cancellationToken) < 1)
+        var version = await ReadPragmaAsync("user_version", cancellationToken);
+        if (version > SchemaVersion)
         {
-            await ExecuteAsync(Schema, cancellationToken);
-            await ExecuteAsync("PRAGMA user_version = 1", cancellationToken);
+            throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
+                $"this ledger was written by a newer codemuster (schema {version}, this build reads up to {SchemaVersion}); update codemuster"));
         }
 
+        if (version < 1)
+        {
+            await ExecuteAsync(Schema, cancellationToken);
+        }
+
+        if (version < 2)
+        {
+            await ExecuteAsync(SchemaVersion2, cancellationToken);
+        }
+
+        await ExecuteAsync(string.Create(CultureInfo.InvariantCulture, $"PRAGMA user_version = {SchemaVersion}"), cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 
@@ -382,8 +407,9 @@ public sealed class SqliteLedger : ILedger, IDisposable
         Enum.Parse<UnitStatus>(reader.GetString(4), ignoreCase: true), Enum.Parse<Fidelity>(reader.GetString(5), ignoreCase: true),
         Text(reader, 6), Text(reader, 7), Text(reader, 8));
 
-    private static UnitMember ReadMember(SqliteDataReader reader) =>
-        new(reader.GetString(0), reader.GetString(1), Text(reader, 2), reader.GetString(3), reader.GetInt32(4));
+    private static UnitMember ReadMember(SqliteDataReader reader) => new(
+        reader.GetString(0), reader.GetString(1), Text(reader, 2), reader.GetString(3), reader.GetInt32(4),
+        reader.IsDBNull(5) ? null : new LineRange(reader.GetInt32(5), reader.GetInt32(6)), Text(reader, 7));
 
     private static UnitFinding ReadUnitFinding(SqliteDataReader reader) => new(
         reader.GetString(0), reader.GetString(1),
@@ -392,7 +418,8 @@ public sealed class SqliteLedger : ILedger, IDisposable
 
     private static ScanRun ReadRun(SqliteDataReader reader) => new(
         reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4),
-        reader.IsDBNull(5) ? null : reader.GetDouble(5));
+        reader.IsDBNull(5) ? null : reader.GetDouble(5),
+        Text(reader, 6) is { } names ? (names.Length == 0 ? [] : names.Split('\n')) : null);
 
     private static string? Text(SqliteDataReader reader, int ordinal) => reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
 

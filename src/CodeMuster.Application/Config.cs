@@ -4,7 +4,9 @@ namespace CodeMuster.Application;
 
 /// <summary>The committed per-repo configuration (D04).</summary>
 /// <param name="Lenses">Named lenses; at least one is expected.</param>
-public sealed record Config(IReadOnlyList<Lens> Lenses)
+/// <param name="SliceTokenBudget">Approximate tokens of code a slice pack may show in full before farther members shrink to signatures (D07).</param>
+/// <param name="ResolutionThreshold">Share of call sites, 0 to 1, the mappers must resolve before status calls slice coverage complete (D09).</param>
+public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 24000, double ResolutionThreshold = 0.9)
 {
     /// <summary>Instructions of the lens every repo starts with.</summary>
     public const string DefaultInstructions =

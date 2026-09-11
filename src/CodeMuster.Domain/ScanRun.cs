@@ -7,4 +7,5 @@ namespace CodeMuster.Domain;
 /// <param name="FilesExcluded">Files recorded with an exclusion reason.</param>
 /// <param name="UnitsTotal">Units present after the scan, retired ones excluded.</param>
 /// <param name="ResolutionRate">Mapper call-site resolution rate (D09), or null when no mapper ran.</param>
-public sealed record ScanRun(string StartedAt, string HeadCommit, int FilesIncluded, int FilesExcluded, int UnitsTotal, double? ResolutionRate);
+/// <param name="TopUnresolvedNames">Most frequent call names the mappers could not resolve, or null when no mapper ran.</param>
+public sealed record ScanRun(string StartedAt, string HeadCommit, int FilesIncluded, int FilesExcluded, int UnitsTotal, double? ResolutionRate, IReadOnlyList<string>? TopUnresolvedNames = null);

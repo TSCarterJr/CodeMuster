@@ -7,17 +7,18 @@ public class CodeMapJsonTests
     private static CodeMap SmallMap() => new(
         Symbols:
         [
-            new Symbol("src/Quotes.cs:QuoteService.Get", "src/Quotes.cs", new LineRange(10, 20), "method", "Quote Get(int id)", "a1"),
-            new Symbol("src/Quotes.cs:QuoteService", "src/Quotes.cs", new LineRange(5, 30), "class", "class QuoteService : IQuotes", "b2"),
-            new Symbol("src/IQuotes.cs:IQuotes", "src/IQuotes.cs", new LineRange(1, 8), "interface", "interface IQuotes", "c3"),
+            new Symbol("M:Api.QuotesController.Get(System.Int32)", "src/QuotesController.cs", new LineRange(10, 20), "method", "public sealed class QuotesController\n[HttpGet] public Quote Get(int id)", "a1"),
+            new Symbol("M:Api.QuoteService.Get(System.Int32)", "src/QuoteService.cs", new LineRange(5, 12), "method", "public sealed class QuoteService : IQuotes\npublic Quote Get(int id)", "b2"),
+            new Symbol("M:Api.Repo.Load(System.Int32)", "src/Repo.cs", new LineRange(1, 8), "method", "public sealed class Repo\npublic Quote Load(int id)", "c3"),
         ],
         Edges:
         [
-            new Edge("src/Quotes.cs:QuoteService.Get", "src/Repo.cs:Repo.Load", EdgeKind.Call),
-            new Edge("src/Quotes.cs:QuoteService", "src/IQuotes.cs:IQuotes", EdgeKind.Implements),
+            new Edge("M:Api.QuotesController.Get(System.Int32)", "M:Api.QuoteService.Get(System.Int32)", EdgeKind.Bound),
+            new Edge("M:Api.QuoteService.Get(System.Int32)", "M:Api.Repo.Load(System.Int32)", EdgeKind.Call),
         ],
-        EntryPoints: [new EntryPoint("src/Quotes.cs:QuoteService.Get", "http", "GET /quotes")],
-        Resolution: new ResolutionStats(5, 1, ["Logger.Log"]));
+        EntryPoints: [new EntryPoint("M:Api.QuotesController.Get(System.Int32)", "http", "GET /quotes/{id}")],
+        Resolution: new ResolutionStats(5, 1, ["Logger.Log"]),
+        Diagnostics: ["project.assets.json not found; run dotnet restore"]);
 
     [Fact]
     public void Round_trips_a_small_map()
@@ -32,6 +33,7 @@ public class CodeMapJsonTests
         Assert.Equal(map.Resolution.Resolved, parsed.Resolution.Resolved);
         Assert.Equal(map.Resolution.Unresolved, parsed.Resolution.Unresolved);
         Assert.Equal(map.Resolution.TopUnresolvedNames, parsed.Resolution.TopUnresolvedNames);
+        Assert.Equal(map.Diagnostics, parsed.Diagnostics);
     }
 
     [Fact]
@@ -42,7 +44,8 @@ public class CodeMapJsonTests
         Assert.Contains("\"body_hash\"", json);
         Assert.Contains("\"entry_points\"", json);
         Assert.Contains("\"top_unresolved_names\"", json);
-        Assert.Contains("\"kind\": \"implements\"", json);
+        Assert.Contains("\"kind\": \"bound\"", json);
+        Assert.Contains("\"diagnostics\"", json);
     }
 
     [Fact]
@@ -55,7 +58,8 @@ public class CodeMapJsonTests
               ],
               "edges": [],
               "entry_points": [],
-              "resolution": { "resolved": 0, "unresolved": 0, "top_unresolved_names": [] }
+              "resolution": { "resolved": 0, "unresolved": 0, "top_unresolved_names": [] },
+              "diagnostics": []
             }
             """;
 
@@ -73,7 +77,7 @@ public class CodeMapJsonTests
     [Fact]
     public void Round_trips_an_empty_map()
     {
-        var map = new CodeMap([], [], [], new ResolutionStats(0, 0, []));
+        var map = new CodeMap([], [], [], new ResolutionStats(0, 0, []), []);
 
         var parsed = CodeMapJson.Parse(CodeMapJson.Serialize(map));
 
@@ -83,5 +87,6 @@ public class CodeMapJsonTests
         Assert.Equal(0, parsed.Resolution.Resolved);
         Assert.Equal(0, parsed.Resolution.Unresolved);
         Assert.Empty(parsed.Resolution.TopUnresolvedNames);
+        Assert.Empty(parsed.Diagnostics);
     }
 }

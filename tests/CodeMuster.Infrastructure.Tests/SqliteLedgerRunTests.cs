@@ -30,6 +30,19 @@ public class SqliteLedgerRunTests
     }
 
     [Fact]
+    public async Task RecordRun_RoundTripsTopUnresolvedNames()
+    {
+        using var temp = new TempDirectory();
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+
+        await ledger.RecordRunAsync(new ScanRun("2026-09-10T00:00:00.0000000Z", "aaa111", 1, 0, 1, 0.5, ["Send", "Publish"]), CancellationToken.None);
+        Assert.Equal(["Send", "Publish"], (await ledger.GetLastRunAsync(CancellationToken.None))!.TopUnresolvedNames);
+
+        await ledger.RecordRunAsync(new ScanRun("2026-09-10T01:00:00.0000000Z", "bbb222", 1, 0, 1, 1.0, []), CancellationToken.None);
+        Assert.Equal([], (await ledger.GetLastRunAsync(CancellationToken.None))!.TopUnresolvedNames);
+    }
+
+    [Fact]
     public async Task RecordRun_RoundTripsANullResolutionRate()
     {
         using var temp = new TempDirectory();

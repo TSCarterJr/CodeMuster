@@ -32,9 +32,11 @@ public class ModelsTests
     }
 
     [Fact]
-    public void FileUnitId_IsKindPrefixedPath()
+    public void UnitIds_AreKindPrefixed()
     {
         Assert.Equal("file:src/A.cs", UnitIds.File("src/A.cs"));
+        Assert.Equal("orphan:src/A.cs", UnitIds.Orphan("src/A.cs"));
+        Assert.Equal("slice:M:Api.QuotesController.Get(System.Int32)", UnitIds.Slice("M:Api.QuotesController.Get(System.Int32)"));
     }
 
     [Fact]

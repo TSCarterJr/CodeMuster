@@ -21,5 +21,7 @@ jobs:
         with:
           node-version: 22
       - run: dotnet restore
+      - run: dotnet restore fixtures/mixed-repo/MixedRepo.sln
+      - run: npm ci --prefix fixtures/mixed-repo/web
       - run: dotnet build --no-restore
       - run: dotnet test --no-build

@@ -1,8 +1,11 @@
 namespace CodeMuster.Domain;
 
-/// <summary>A batch mapper for one language (D08).</summary>
+/// <summary>A batch mapper for one language (D08, D26).</summary>
 public interface ICodeMapper
 {
-    /// <summary>Maps the repository at <paramref name="repoRoot"/>.</summary>
-    Task<CodeMap> MapAsync(string repoRoot, CancellationToken cancellationToken);
+    /// <summary>The language this mapper covers, one of the <see cref="Languages"/> constants.</summary>
+    string Language { get; }
+
+    /// <summary>Maps the repository at <paramref name="repoRoot"/>. <paramref name="paths"/> are the repo's included files, repo-relative, used to find solutions, projects, and tsconfig files without walking ignored folders. Returns a partial map with diagnostics when some references cannot be resolved, and throws when the language cannot be mapped at all, with a message that says why.</summary>
+    Task<CodeMap> MapAsync(string repoRoot, IReadOnlyList<string> paths, CancellationToken cancellationToken);
 }

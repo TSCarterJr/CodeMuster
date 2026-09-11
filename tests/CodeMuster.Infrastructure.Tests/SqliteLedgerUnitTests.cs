@@ -27,8 +27,8 @@ public class SqliteLedgerUnitTests
         var file = Pending("src/A.cs");
         var members = new[]
         {
-            new UnitMember(slice.Id, "src/Api.cs", "Api.Run", "h1", 0),
-            new UnitMember(slice.Id, "src/Db.cs", "Db.Query", "h2", 1),
+            new UnitMember(slice.Id, "src/Api.cs", "Api.Run", "h1", 0, new LineRange(3, 9), "public sealed class Api\npublic void Run()"),
+            new UnitMember(slice.Id, "src/Db.cs", "Db.Query", "h2", 1, new LineRange(12, 20), "public sealed class Db\npublic int Query()"),
             Member(file, "h3"),
         };
 

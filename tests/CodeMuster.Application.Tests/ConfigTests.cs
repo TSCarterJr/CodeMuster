@@ -66,6 +66,18 @@ public class ConfigTests
     }
 
     [Fact]
+    public void Json_WritesBudgetAndThreshold_AndDefaultsThemForOlderConfigs()
+    {
+        var text = ConfigJson.Serialize(Config.Default);
+        var older = ConfigJson.Parse("""{ "lenses": [ { "id": "default", "instructions": "x", "globs": [], "languages": [] } ] }""");
+
+        Assert.Contains("\"slice_token_budget\": 24000", text);
+        Assert.Contains("\"resolution_threshold\": 0.9", text);
+        Assert.Equal(24000, older.SliceTokenBudget);
+        Assert.Equal(0.9, older.ResolutionThreshold);
+    }
+
+    [Fact]
     public async Task Loader_ThrowsNotInitialized_WhenNoConfigFile()
     {
         var loader = new ConfigLoader(new FakeFileSystem());

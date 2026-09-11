@@ -13,6 +13,16 @@ public static class RawSqlite
         return (T)(await command.ExecuteScalarAsync())!;
     }
 
+    public static async Task ExecuteAsync(string databasePath, string sql)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
+        await using var connection = Connect(databasePath);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync();
+    }
+
     public static async Task<List<string>> StringsAsync(string databasePath, string sql)
     {
         await using var connection = Connect(databasePath);
