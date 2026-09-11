@@ -5,7 +5,7 @@ description: Audit a whole repository with provable coverage using the codemuste
 
 # CodeMuster
 
-The CLI owns the state and the loop; you analyze one unit at a time in a fresh context. Run every command from inside the repository. Generated files, lockfiles, migrations, and binaries are excluded on purpose, so the unit count is lower than the file count.
+The CLI owns the state and the loop; you analyze one unit at a time, in this session, one after another. Run every command from inside the repository. Generated files, lockfiles, migrations, and binaries are excluded on purpose, so the unit count is lower than the file count.
 
 1. `codemuster init --yes` once per repo (safe to repeat), then `codemuster scan`.
 2. `codemuster estimate` gives a rough lower bound on token cost before you start.
