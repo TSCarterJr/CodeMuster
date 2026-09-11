@@ -114,18 +114,35 @@ public class HeadlessTests
     }
 
     [Fact]
-    public async Task SkillInstallGlobal_WritesUnderTheHomeDirectory()
+    public async Task SkillInstallGlobal_WorksOutsideARepo_AndUsesThePlatformHomeVariable()
     {
-        using var repo = TempRepo.FromFixture("mixed-repo");
-        var home = Path.Combine(repo.Root, "fake-home");
+        var outside = Path.Combine(Path.GetTempPath(), "codemuster-e2e-" + Guid.NewGuid().ToString("N"));
+        var home = Path.Combine(outside, "home");
+        var otherHome = Path.Combine(outside, "other-home");
+        var work = Path.Combine(outside, "work");
         Directory.CreateDirectory(home);
-        var environment = new Dictionary<string, string> { ["HOME"] = home, ["USERPROFILE"] = home };
+        Directory.CreateDirectory(otherHome);
+        Directory.CreateDirectory(work);
+        try
+        {
+            var environment = new Dictionary<string, string>
+            {
+                ["USERPROFILE"] = OperatingSystem.IsWindows() ? home : otherHome,
+                ["HOME"] = OperatingSystem.IsWindows() ? otherHome : home,
+                ["GIT_CEILING_DIRECTORIES"] = outside,
+            };
 
-        var install = await CliProcess.RunAsync(repo.Root, environment, "skill", "install", "--for", "opencode", "--global");
+            var install = await CliProcess.RunAsync(work, environment, "skill", "install", "--for", "opencode", "--global");
 
-        Assert.Equal(0, install.ExitCode);
-        Assert.True(Directory.GetFiles(home, "SKILL.md", SearchOption.AllDirectories).Length == 1, install.Stdout);
-        Assert.False(Directory.Exists(Path.Combine(repo.Root, ".opencode")));
+            Assert.Equal(0, install.ExitCode);
+            Assert.True(File.Exists(Path.Combine(home, ".config", "opencode", "skills", "codemuster", "SKILL.md")), install.Stdout + install.Stderr);
+            Assert.False(Directory.Exists(Path.Combine(otherHome, ".config", "opencode")));
+            Assert.Empty(Directory.GetFileSystemEntries(work));
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
     }
 
     [Theory]

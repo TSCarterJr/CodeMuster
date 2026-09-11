@@ -70,23 +70,26 @@ public static class Program
 
     private static async Task<int> RunAsync(Command command, CancellationToken cancellationToken)
     {
-        var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
         var fileSystem = new PhysicalFileSystem();
-        var tree = new GitSourceTree(repoRoot);
-        switch (command.Verb)
+        if (command.Verb == "skill")
         {
-            case "init":
-                return await InitAsync(command, repoRoot, fileSystem, tree, cancellationToken);
-            case "skill":
-                var path = await new SkillInstaller(fileSystem).InstallAsync(
-                    command.Options["for"],
-                    command.Flags.Contains("global"),
-                    repoRoot,
-                    Environment.GetEnvironmentVariable("HOME") ?? Environment.GetEnvironmentVariable("USERPROFILE") ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                    EmbeddedSkill.Text,
-                    cancellationToken);
-                Console.WriteLine($"installed skill to {path}");
-                return 0;
+            var global = command.Flags.Contains("global");
+            var path = await new SkillInstaller(fileSystem).InstallAsync(
+                command.Options["for"],
+                global,
+                global ? "" : await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken),
+                HomeDirectory(),
+                EmbeddedSkill.Text,
+                cancellationToken);
+            Console.WriteLine($"installed skill to {path}");
+            return 0;
+        }
+
+        var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
+        var tree = new GitSourceTree(repoRoot);
+        if (command.Verb == "init")
+        {
+            return await InitAsync(command, repoRoot, fileSystem, tree, cancellationToken);
         }
 
         var config = await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken);
@@ -205,6 +208,10 @@ public static class Program
         "skill" => command.Positionals.SequenceEqual(["install"]) && SkillInstaller.Harnesses.Contains(command.Options.GetValueOrDefault("for", "")) && command.Flags.All(f => f == "global"),
         _ => command.Flags.Count == 0 && command.Positionals.Count == 0,
     };
+
+    private static string HomeDirectory() =>
+        Environment.GetEnvironmentVariable(OperatingSystem.IsWindows() ? "USERPROFILE" : "HOME")
+        ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
     private static bool IsPositiveOrAbsent(Command command, string option) =>
         !command.Options.TryGetValue(option, out var value) || (int.TryParse(value, out var n) && n > 0);
