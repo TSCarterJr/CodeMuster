@@ -8,7 +8,7 @@ public sealed class FakeLedger : ILedger
     public List<Unit> Units { get; } = [];
     public List<UnitMember> Members { get; } = [];
     public List<(Analysis Analysis, IReadOnlyList<Finding> Findings)> Analyses { get; } = [];
-    public List<Domain.Run> Runs { get; } = [];
+    public List<ScanRun> Runs { get; } = [];
 
     public Task<IReadOnlyList<FileRecord>> GetFilesAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<FileRecord>>(Files.Values.ToList());
@@ -82,12 +82,12 @@ public sealed class FakeLedger : ILedger
         return Task.FromResult<IReadOnlyList<UnitFinding>>(current);
     }
 
-    public Task RecordRunAsync(Domain.Run run, CancellationToken cancellationToken)
+    public Task RecordRunAsync(ScanRun run, CancellationToken cancellationToken)
     {
         Runs.Add(run);
         return Task.CompletedTask;
     }
 
-    public Task<Domain.Run?> GetLastRunAsync(CancellationToken cancellationToken) =>
+    public Task<ScanRun?> GetLastRunAsync(CancellationToken cancellationToken) =>
         Task.FromResult(Runs.LastOrDefault());
 }

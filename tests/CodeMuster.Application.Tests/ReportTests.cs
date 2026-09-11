@@ -39,7 +39,7 @@ public class ReportTests
     [Fact]
     public async Task SeededLedger_RendersTheGoldenMarkdown()
     {
-        ledger.Runs.Add(new Run(At, Head, 3, 1, 3, null));
+        ledger.Runs.Add(new ScanRun(At, Head, 3, 1, 3, null));
         var a = AddUnit("src/a.cs");
         var b = AddUnit("src/b.cs");
         AddUnit("src/c.cs", UnitStatus.Pending, Fidelity.Low);
@@ -110,7 +110,7 @@ public class ReportTests
     [Fact]
     public async Task SingleLineRange_PrintsOneLineNumber_AndFindingsSortByLineWithinAPath()
     {
-        ledger.Runs.Add(new Run(At, Head, 1, 0, 1, null));
+        ledger.Runs.Add(new ScanRun(At, Head, 1, 0, 1, null));
         var a = AddUnit("src/a.cs");
         await AnalyzeAsync(a, "Does A",
             Finding("src/a.cs", 7, 7, Severity.Low, "Magic number", "7 is unexplained.", 0.3),

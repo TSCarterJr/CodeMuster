@@ -283,7 +283,7 @@ public class RunTests
     public async Task FencedJsonOutput_IsAccepted()
     {
         var unit = AddFileUnit("src/a.cs");
-        var response = AnalysisResponseJson.Sample.Replace("src/MixedRepo.Api/Data/QuoteRepository.cs", "src/a.cs", StringComparison.Ordinal);
+        var response = AnalysisResponseJson.Sample.Replace("src/Billing/InvoiceRepository.cs", "src/a.cs", StringComparison.Ordinal);
         var adapter = Always("Here is my analysis.\n\n```json\n" + response + "\n```\n\nDone.");
 
         var result = await RunAsync(adapter, new RunOptions(1, 1, false));

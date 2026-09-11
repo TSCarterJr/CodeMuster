@@ -31,8 +31,8 @@ public interface ILedger
     Task<IReadOnlyList<UnitFinding>> GetCurrentFindingsAsync(CancellationToken cancellationToken);
 
     /// <summary>Appends a run.</summary>
-    Task RecordRunAsync(Run run, CancellationToken cancellationToken);
+    Task RecordRunAsync(ScanRun run, CancellationToken cancellationToken);
 
     /// <summary>The most recent run, or null before the first scan.</summary>
-    Task<Run?> GetLastRunAsync(CancellationToken cancellationToken);
+    Task<ScanRun?> GetLastRunAsync(CancellationToken cancellationToken);
 }

@@ -318,7 +318,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
         return await ReadAllAsync(command, ReadUnitFinding, cancellationToken);
     }
 
-    public async Task RecordRunAsync(Run run, CancellationToken cancellationToken)
+    public async Task RecordRunAsync(ScanRun run, CancellationToken cancellationToken)
     {
         await using var command = CreateCommand($"INSERT INTO runs ({RunColumns}) VALUES ($started_at, $head_commit, $files_included, $files_excluded, $units_total, $resolution_rate)");
         command.Parameters.AddWithValue("$started_at", run.StartedAt);
@@ -330,7 +330,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task<Run?> GetLastRunAsync(CancellationToken cancellationToken)
+    public async Task<ScanRun?> GetLastRunAsync(CancellationToken cancellationToken)
     {
         await using var command = CreateCommand($"SELECT {RunColumns} FROM runs ORDER BY id DESC LIMIT 1");
         return (await ReadAllAsync(command, ReadRun, cancellationToken)).SingleOrDefault();
@@ -390,7 +390,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
         new Finding(reader.GetString(2), reader.GetInt32(3), reader.GetInt32(4), Enum.Parse<Severity>(reader.GetString(5), ignoreCase: true),
             reader.GetString(6), reader.GetString(7), reader.GetString(8), reader.GetDouble(9), reader.GetString(10)));
 
-    private static Run ReadRun(SqliteDataReader reader) => new(
+    private static ScanRun ReadRun(SqliteDataReader reader) => new(
         reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4),
         reader.IsDBNull(5) ? null : reader.GetDouble(5));
 

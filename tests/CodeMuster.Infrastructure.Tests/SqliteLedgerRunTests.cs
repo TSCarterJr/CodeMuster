@@ -19,8 +19,8 @@ public class SqliteLedgerRunTests
     {
         using var temp = new TempDirectory();
         using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
-        var first = new Run("2026-09-10T00:00:00.0000000Z", "aaa111", 10, 2, 8, null);
-        var second = new Run("2026-09-10T01:00:00.0000000Z", "bbb222", 11, 2, 9, 0.95);
+        var first = new ScanRun("2026-09-10T00:00:00.0000000Z", "aaa111", 10, 2, 8, null);
+        var second = new ScanRun("2026-09-10T01:00:00.0000000Z", "bbb222", 11, 2, 9, 0.95);
 
         await ledger.RecordRunAsync(first, CancellationToken.None);
         await ledger.RecordRunAsync(second, CancellationToken.None);
@@ -34,7 +34,7 @@ public class SqliteLedgerRunTests
     {
         using var temp = new TempDirectory();
         using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
-        var run = new Run("2026-09-10T00:00:00.0000000Z", "aaa111", 1, 0, 1, null);
+        var run = new ScanRun("2026-09-10T00:00:00.0000000Z", "aaa111", 1, 0, 1, null);
 
         await ledger.RecordRunAsync(run, CancellationToken.None);
 

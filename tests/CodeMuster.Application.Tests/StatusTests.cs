@@ -36,7 +36,7 @@ public class StatusTests
     public async Task Counts_MatchTheSeededLedger_IgnoringRetiredUnitsAndDeletedFiles()
     {
         Seed();
-        ledger.Runs.Add(new Domain.Run(At, Head, 4, 1, 5, 0.973));
+        ledger.Runs.Add(new ScanRun(At, Head, 4, 1, 5, 0.973));
 
         var report = await RunAsync();
 
@@ -47,7 +47,7 @@ public class StatusTests
     public async Task Render_IsTheExactPlainTextBlock()
     {
         Seed();
-        ledger.Runs.Add(new Domain.Run(At, Head, 4, 1, 5, 0.973));
+        ledger.Runs.Add(new ScanRun(At, Head, 4, 1, 5, 0.973));
 
         var text = (await RunAsync()).Render();
 
@@ -67,8 +67,8 @@ public class StatusTests
     public async Task ResolutionLine_IsOmitted_WhenTheRunHasNoRate()
     {
         Seed();
-        ledger.Runs.Add(new Domain.Run(At, Head, 4, 1, 5, 0.5));
-        ledger.Runs.Add(new Domain.Run(At, Head, 4, 1, 5, null));
+        ledger.Runs.Add(new ScanRun(At, Head, 4, 1, 5, 0.5));
+        ledger.Runs.Add(new ScanRun(At, Head, 4, 1, 5, null));
 
         var report = await RunAsync();
 
