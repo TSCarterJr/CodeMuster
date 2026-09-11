@@ -49,8 +49,8 @@ public sealed class Report(ILedger ledger)
             lines.Add("");
             foreach (var (unitId, fingerprint, finding) in group)
             {
-                lines.Add(string.Create(CultureInfo.InvariantCulture, $"- `{finding.Path}:{Range(finding)}` [{finding.LensId}, confidence {finding.Confidence:0.00}] {finding.Claim}"));
-                lines.Add("  " + finding.Evidence);
+                lines.Add(string.Create(CultureInfo.InvariantCulture, $"- `{finding.Path}:{Range(finding)}` [{finding.LensId}, confidence {finding.Confidence:0.00}] {Inline(finding.Claim)}"));
+                lines.Add("  " + Inline(finding.Evidence));
                 if (fingerprints[unitId] != fingerprint)
                 {
                     lines.Add("  (stale: unit changed since this analysis)");
@@ -65,11 +65,16 @@ public sealed class Report(ILedger ledger)
         lines.Add("|---|---|---|");
         foreach (var unit in units)
         {
-            lines.Add($"| {unit.Key} | {Name(unit.Status)} | {unit.Summary} |");
+            lines.Add($"| {Cell(unit.Key)} | {Name(unit.Status)} | {Cell(unit.Summary)} |");
         }
 
         return string.Join('\n', lines) + "\n";
     }
+
+    private static string Inline(string text) =>
+        string.Join(' ', text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+    private static string Cell(string? text) => Inline(text ?? "").Replace("|", "\\|", StringComparison.Ordinal);
 
     private static string Range(Finding finding) => finding.LineStart == finding.LineEnd
         ? finding.LineStart.ToString(CultureInfo.InvariantCulture)
