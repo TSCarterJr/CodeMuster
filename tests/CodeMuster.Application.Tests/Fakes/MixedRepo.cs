@@ -127,6 +127,18 @@ public static class MixedRepo
         new ResolutionStats(11, 0, []),
         []);
 
+    public static CodeMap Map()
+    {
+        var csharp = CSharp();
+        var typescript = TypeScript();
+        return new CodeMap(
+            [.. csharp.Symbols, .. typescript.Symbols],
+            [.. csharp.Edges, .. typescript.Edges],
+            [.. csharp.EntryPoints, .. typescript.EntryPoints],
+            new ResolutionStats(csharp.Resolution.Resolved + typescript.Resolution.Resolved, 0, []),
+            []);
+    }
+
     public static IReadOnlyList<FileRecord> Included() =>
         TrackedPaths
             .Where(path => Exclusions.Reason(path, false) is null)
