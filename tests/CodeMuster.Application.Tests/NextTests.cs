@@ -245,7 +245,7 @@ public class NextTests
         var pack = Assert.Single(await RunAsync());
 
         Assert.Contains("- key: GET /quotes\n", pack.Markdown);
-        Assert.Contains("### src/Quotes.cs :: M:Q.Get (csharp)\n\nlines 9-11\n\n```csharp\n 9 | line 9\n10 | line 10\n11 | line 11\n```\n", pack.Markdown);
+        Assert.Contains("### src/Quotes.cs :: M:Q.Get (csharp)\n\nlines 9-11, inside `class Q`\n\n```csharp\n 9 | line 9\n10 | line 10\n11 | line 11\n```\n", pack.Markdown);
         Assert.DoesNotContain("line 8", pack.Markdown);
         Assert.DoesNotContain("line 12", pack.Markdown);
         Assert.DoesNotContain("- outlined:", pack.Markdown);
@@ -264,7 +264,7 @@ public class NextTests
         var pack = Assert.Single(await RunAsync(config: Config.Default with { SliceTokenBudget = 10 }));
 
         Assert.Contains("- outlined: 2 of 3 members\n", pack.Markdown);
-        Assert.Contains("### src/Api.cs :: M:Api.Get (csharp)\n\nline 1\n\n```csharp\n1 | entry xxxx", pack.Markdown);
+        Assert.Contains("### src/Api.cs :: M:Api.Get (csharp)\n\nline 1, inside `class Api`\n\n```csharp\n1 | entry xxxx", pack.Markdown);
         Assert.Contains("### src/Svc.cs :: M:Svc.Run (csharp)\n\nline 1, outlined to its signature to fit the token budget\n\n```csharp\nclass Svc\nvoid Run()\n```\n", pack.Markdown);
         Assert.Contains("### src/Db.cs :: M:Db.Load (csharp)\n\nline 1, outlined to its signature to fit the token budget\n\n```csharp\nclass Db\nvoid Load()\n```\n", pack.Markdown);
         Assert.DoesNotContain("helper body", pack.Markdown);
@@ -291,6 +291,18 @@ public class NextTests
     }
 
     [Fact]
+    public async Task SymbolMember_WithoutAContainingType_ShowsOnlyItsLines()
+    {
+        tree.Add("web/lib/api.ts", "export function load() {\n  return 1;\n}");
+        const string id = "slice:web/lib/api.ts#load";
+        AddUnit(id, UnitKind.Slice, "/load", new UnitMember(id, "web/lib/api.ts", "web/lib/api.ts#load", "h", 0, new LineRange(1, 3), "export function load()"));
+
+        var pack = Assert.Single(await RunAsync());
+
+        Assert.Contains("### web/lib/api.ts :: web/lib/api.ts#load (typescript)\n\nlines 1-3\n\n```typescript\n", pack.Markdown);
+    }
+
+    [Fact]
     public async Task SymbolMember_ShowsTheLinesThatRemain_WhenTheFileShrankSinceTheScan()
     {
         tree.Add("src/A.cs", "line 1\nline 2");
@@ -299,6 +311,6 @@ public class NextTests
 
         var pack = Assert.Single(await RunAsync());
 
-        Assert.Contains("lines 2-5\n\n```csharp\n2 | line 2\n```\n", pack.Markdown);
+        Assert.Contains("lines 2-5, inside `class A`\n\n```csharp\n2 | line 2\n```\n", pack.Markdown);
     }
 }

@@ -122,7 +122,10 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
                 var span = range.StartLine == range.EndLine
                     ? string.Create(CultureInfo.InvariantCulture, $"line {range.StartLine}")
                     : string.Create(CultureInfo.InvariantCulture, $"lines {range.StartLine}-{range.EndLine}");
-                lines.Add(part.Outlined ? span + ", outlined to its signature to fit the token budget" : span);
+                var header = member.Signature?.IndexOf('\n') is > 0 and var end ? member.Signature[..end] : null;
+                lines.Add(part.Outlined ? span + ", outlined to its signature to fit the token budget"
+                    : header is null ? span
+                    : $"{span}, inside `{header}`");
                 lines.Add("");
             }
 
