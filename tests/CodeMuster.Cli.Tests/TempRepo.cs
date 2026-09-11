@@ -30,9 +30,13 @@ public sealed class TempRepo : IDisposable
         CopyAll(source, Path.Combine(Root, relativeDirectory));
     }
 
-    public string Git(params string[] args)
+    public string Git(params string[] args) => Run("git", args);
+
+    public string Dotnet(params string[] args) => Run("dotnet", args);
+
+    private string Run(string program, string[] args)
     {
-        var start = new ProcessStartInfo("git")
+        var start = new ProcessStartInfo(program)
         {
             WorkingDirectory = Root,
             RedirectStandardOutput = true,
@@ -48,7 +52,7 @@ public sealed class TempRepo : IDisposable
         var stdout = process.StandardOutput.ReadToEnd();
         var stderr = process.StandardError.ReadToEnd();
         process.WaitForExit();
-        return process.ExitCode == 0 ? stdout : throw new InvalidOperationException($"git {string.Join(' ', args)} failed: {stderr}");
+        return process.ExitCode == 0 ? stdout : throw new InvalidOperationException($"{program} {string.Join(' ', args)} failed: {stderr}{stdout}");
     }
 
     public void Dispose()

@@ -3,6 +3,7 @@ using System.Text;
 using CodeMuster.Application;
 using CodeMuster.Domain;
 using CodeMuster.Infrastructure;
+using CodeMuster.Mapping.CSharp;
 using CodeMuster.Mapping.TypeScript;
 
 namespace CodeMuster.Cli;
@@ -148,7 +149,7 @@ public static class Program
 
     private static async Task<int> ScanAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, CancellationToken cancellationToken)
     {
-        IReadOnlyList<ICodeMapper> mappers = command.Options.GetValueOrDefault("mode") == "file" ? [] : [new TypeScriptMapper()];
+        IReadOnlyList<ICodeMapper> mappers = command.Options.GetValueOrDefault("mode") == "file" ? [] : [new RoslynMapper(), new TypeScriptMapper()];
         var scan = await new Scan(ledger, tree, new GitBlobHasher(repoRoot), clock, config, mappers, repoRoot).RunAsync(cancellationToken);
         Console.WriteLine($"scanned {scan.FilesIncluded} files ({scan.FilesExcluded} excluded) at {scan.HeadCommit[..7]}: {scan.UnitsCreated} new, {scan.UnitsStale} stale, {scan.UnitsTotal} total units");
         if (scan.SliceMode is { } slices)
