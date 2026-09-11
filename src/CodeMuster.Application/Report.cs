@@ -3,7 +3,7 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
 
-/// <summary>Renders the ledger as markdown: the coverage header, current findings grouped by severity with their verdicts, and the unit inventory (D11, D12). Refuted findings are left out unless <paramref name="includeRefuted"/> is set (D27).</summary>
+/// <summary>Renders the ledger as markdown: the coverage header, current findings grouped by severity with their verdicts, and the inventory of every unit except verify units, whose verdicts show under their findings (D11, D12). Refuted findings are left out unless <paramref name="includeRefuted"/> is set (D27).</summary>
 public sealed class Report(ILedger ledger, Config config, bool includeRefuted = false)
 {
     /// <summary>Builds the report; lines are joined with LF and the text ends with one newline.</summary>
@@ -73,7 +73,7 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
         lines.Add("");
         lines.Add("| unit | status | summary |");
         lines.Add("|---|---|---|");
-        foreach (var unit in units)
+        foreach (var unit in units.Where(u => u.Kind != UnitKind.Verify))
         {
             lines.Add($"| {Cell(unit.Key)} | {Name(unit.Status)} | {Cell(unit.Summary)} |");
         }

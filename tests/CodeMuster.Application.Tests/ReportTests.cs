@@ -92,6 +92,24 @@ public class ReportTests
     }
 
     [Fact]
+    public async Task UnitInventory_LeavesOutVerifyUnits_WhileTheHeaderCountsThem()
+    {
+        ledger.Runs.Add(new ScanRun(At, Head, 1, 0, 2, null));
+        var a = AddUnit("src/a.cs");
+        await AnalyzeAsync(a, "Does A", Finding("src/a.cs", 1, 1, Severity.High, "Confirmed claim", "Evidence one.", 0.9));
+        var verify = new Unit(UnitIds.Verify(1), UnitKind.Verify, "src/a.cs:1", "fp-verify", UnitStatus.Pending, Fidelity.Full, null, null, null);
+        ledger.Units.Add(verify);
+        await AnalyzeAsync(verify, "confirmed: Line 1 shows it.");
+        ledger.Verifications[1] = new VerifyResponse(Verdict.Confirmed, "Line 1 shows it.");
+
+        var markdown = await RunAsync();
+
+        Assert.Contains("analyzed 2/2 units", markdown);
+        Assert.Contains("  confirmed: Line 1 shows it.\n", markdown);
+        Assert.EndsWith("## Units\n\n| unit | status | summary |\n|---|---|---|\n| src/a.cs | done | Does A |\n", markdown);
+    }
+
+    [Fact]
     public async Task RefutedFindings_AreLeftOut_AndTheRestShowTheirVerdict()
     {
         ledger.Runs.Add(new ScanRun(At, Head, 1, 0, 1, null));
