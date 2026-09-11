@@ -56,7 +56,7 @@ public class ScanTests
         Assert.Equal("src/A.cs", unit.Key);
 
         var run = Assert.Single(ledger.Runs);
-        Assert.Equal(new Run(Timestamps.Format(clock.UtcNow), "abcdef0123456789abcdef0123456789abcdef01", 3, 0, 3, null), run);
+        Assert.Equal(new Domain.Run(Timestamps.Format(clock.UtcNow), "abcdef0123456789abcdef0123456789abcdef01", 3, 0, 3, null), run);
     }
 
     [Fact]

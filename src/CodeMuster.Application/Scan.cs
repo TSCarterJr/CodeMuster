@@ -2,7 +2,7 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
 
-/// <summary>Discovers the tree, refreshes file rows through the stat cache (D05), keeps one File unit per included file, and records a <see cref="Run"/>.</summary>
+/// <summary>Discovers the tree, refreshes file rows through the stat cache (D05), keeps one File unit per included file, and records a <see cref="Domain.Run"/>.</summary>
 public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config)
 {
     /// <summary>Runs one scan in file mode.</summary>
@@ -66,7 +66,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
 
         var total = existingUnits.Values.Count(u => u.Status != UnitStatus.Retired);
         var excluded = current.Count - included.Count;
-        await ledger.RecordRunAsync(new Run(now, head, included.Count, excluded, total, null), cancellationToken);
+        await ledger.RecordRunAsync(new Domain.Run(now, head, included.Count, excluded, total, null), cancellationToken);
         return new ScanResult(head, included.Count, excluded, created, units.Count(u => u.Status == UnitStatus.Stale), total);
     }
 
