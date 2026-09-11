@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using CodeMuster.Domain;
 
 namespace CodeMuster.Mapping.TypeScript.Tests;
 
@@ -8,7 +7,7 @@ public class GoldenTests
     [Fact]
     public void Golden_is_a_consistent_code_map()
     {
-        var golden = CodeMapJson.Parse(File.ReadAllText(TestPaths.Golden));
+        var golden = GoldenAssert.Golden();
         var ids = golden.Symbols.Select(symbol => symbol.Id).ToHashSet(StringComparer.Ordinal);
 
         Assert.Equal(golden.Symbols.Count, ids.Count);
