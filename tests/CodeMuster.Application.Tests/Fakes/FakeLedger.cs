@@ -10,6 +10,7 @@ public sealed class FakeLedger : ILedger
     public List<(Analysis Analysis, IReadOnlyList<Finding> Findings)> Analyses { get; } = [];
     public List<ScanRun> Runs { get; } = [];
     public Dictionary<long, VerifyResponse> Verifications { get; } = [];
+    public Action<Analysis>? OnRecordAnalysis { get; set; }
 
     public Task<IReadOnlyList<FileRecord>> GetFilesAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<FileRecord>>(Files.Values.ToList());
@@ -62,6 +63,7 @@ public sealed class FakeLedger : ILedger
 
     public Task RecordAnalysisAsync(Analysis analysis, IReadOnlyList<Finding> findings, CancellationToken cancellationToken)
     {
+        OnRecordAnalysis?.Invoke(analysis);
         Analyses.Add((analysis, findings));
         var index = Units.FindIndex(u => u.Id == analysis.UnitId);
         var unit = Units[index];

@@ -5,6 +5,8 @@ namespace CodeMuster.Infrastructure;
 
 public sealed class FakeAgentAdapter : IAgentAdapter
 {
+    private const double RefutesBelowConfidence = 0.5;
+
     public static string DefaultTemplate { get; } = AnalysisResponseJson.Serialize(new AnalysisResponse("fake analysis", []));
 
     private readonly AnalysisResponse _template;
@@ -18,7 +20,7 @@ public sealed class FakeAgentAdapter : IAgentAdapter
     {
         if (FindingUnderTest(pack) is { } finding)
         {
-            var verdict = finding.Confidence < 0.5 ? Verdict.Refuted : Verdict.Confirmed;
+            var verdict = finding.Confidence < RefutesBelowConfidence ? Verdict.Refuted : Verdict.Confirmed;
             return Task.FromResult(VerifyResponseJson.Serialize(new VerifyResponse(verdict, "fake verification")));
         }
 

@@ -7,7 +7,7 @@ namespace CodeMuster.Application;
 /// <summary>Records the model's response for one unit: validates it against the unit, then stores an analysis with its findings, or for a verify unit the verdict on its finding.</summary>
 public sealed class Done(ILedger ledger, IClock clock, Config config)
 {
-    /// <summary>Stores the response for <paramref name="unitId"/> when it still has <paramref name="fingerprint"/>. An analysis must cite only member paths, and each finding it records gets a pending verify unit in place of the verify units of the findings it replaces.</summary>
+    /// <summary>Stores the response for <paramref name="unitId"/> when it still has <paramref name="fingerprint"/>. An analysis must cite only member paths; it retires the verify units of the findings it replaces before recording, then gives each finding it records a pending verify unit unless verification is off.</summary>
     public async Task<DoneResult> RunAsync(string unitId, string fingerprint, string responseJson, CancellationToken cancellationToken)
     {
         var unit = await ledger.GetUnitAsync(unitId, cancellationToken);
@@ -52,8 +52,13 @@ public sealed class Done(ILedger ledger, IClock clock, Config config)
             return new DoneResult(DoneOutcome.Rejected, $"finding cites {outside.Path}, which is not in unit {unit.Id}");
         }
 
+        await RetireVerifyUnitsAsync(current.Where(f => f.UnitId == unit.Id), cancellationToken);
         await ledger.RecordAnalysisAsync(analysis with { Summary = response.Summary }, findings, cancellationToken);
-        await ReplaceVerifyUnitsAsync(unit, members, current.Where(f => f.UnitId == unit.Id).ToList(), cancellationToken);
+        if (config.Verify)
+        {
+            await AddVerifyUnitsAsync(unit, members, cancellationToken);
+        }
+
         return new DoneResult(DoneOutcome.Recorded, string.Create(CultureInfo.InvariantCulture, $"recorded {findings.Count} finding(s) for {unit.Id}"));
     }
 
@@ -71,7 +76,7 @@ public sealed class Done(ILedger ledger, IClock clock, Config config)
         return new DoneResult(DoneOutcome.Recorded, $"recorded {verdict} for {unit.Id}");
     }
 
-    private async Task ReplaceVerifyUnitsAsync(Unit unit, IReadOnlyList<UnitMember> members, IReadOnlyList<UnitFinding> replaced, CancellationToken cancellationToken)
+    private async Task RetireVerifyUnitsAsync(IEnumerable<UnitFinding> replaced, CancellationToken cancellationToken)
     {
         var retired = new List<Unit>();
         foreach (var finding in replaced)
@@ -82,17 +87,22 @@ public sealed class Done(ILedger ledger, IClock clock, Config config)
             }
         }
 
+        if (retired.Count > 0)
+        {
+            await ledger.UpsertUnitsAsync(retired, await ledger.GetMembersAsync(retired.Select(u => u.Id).ToList(), cancellationToken), cancellationToken);
+        }
+    }
+
+    private async Task AddVerifyUnitsAsync(Unit unit, IReadOnlyList<UnitMember> members, CancellationToken cancellationToken)
+    {
         var planned = (await ledger.GetCurrentFindingsAsync(cancellationToken))
             .Where(f => f.UnitId == unit.Id)
             .Select(f => PlannedUnit.Verify(f, members, unit.Fidelity))
             .ToList();
-        if (planned.Count == 0 && retired.Count == 0)
+        if (planned.Count > 0)
         {
-            return;
+            var created = planned.Select(p => new Unit(p.Id, p.Kind, p.Key, Fingerprints.Compute(p.Members), UnitStatus.Pending, p.Fidelity, null, null, null)).ToList();
+            await ledger.UpsertUnitsAsync(created, planned.SelectMany(p => p.Members).ToList(), cancellationToken);
         }
-
-        var created = planned.Select(p => new Unit(p.Id, p.Kind, p.Key, Fingerprints.Compute(p.Members), UnitStatus.Pending, p.Fidelity, null, null, null));
-        var retiredMembers = await ledger.GetMembersAsync(retired.Select(u => u.Id).ToList(), cancellationToken);
-        await ledger.UpsertUnitsAsync([.. created, .. retired], [.. planned.SelectMany(p => p.Members), .. retiredMembers], cancellationToken);
     }
 }

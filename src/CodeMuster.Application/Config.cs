@@ -6,7 +6,8 @@ namespace CodeMuster.Application;
 /// <param name="Lenses">Named lenses; at least one is expected.</param>
 /// <param name="SliceTokenBudget">Approximate tokens of code a slice pack may show in full before farther members shrink to signatures (D07).</param>
 /// <param name="ResolutionThreshold">Share of call sites, 0 to 1, the mappers must resolve before status calls slice coverage complete (D09).</param>
-public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 24000, double ResolutionThreshold = 0.9)
+/// <param name="Verify">Whether every recorded finding gets a verify unit, costing about one more agent call per finding (D27, D28).</param>
+public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 24000, double ResolutionThreshold = 0.9, bool Verify = true)
 {
     /// <summary>Instructions of the lens every repo starts with.</summary>
     public const string DefaultInstructions =

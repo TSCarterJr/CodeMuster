@@ -78,6 +78,16 @@ public class ConfigTests
     }
 
     [Fact]
+    public void Json_WritesVerify_AndDefaultsItOnForOlderConfigs()
+    {
+        const string lenses = """ "lenses": [ { "id": "default", "instructions": "x", "globs": [], "languages": [] } ] """;
+
+        Assert.Contains("\"verify\": true", ConfigJson.Serialize(Config.Default));
+        Assert.True(ConfigJson.Parse("{" + lenses + "}").Verify);
+        Assert.False(ConfigJson.Parse("{" + lenses + ", \"verify\": false }").Verify);
+    }
+
+    [Fact]
     public async Task Loader_ThrowsNotInitialized_WhenNoConfigFile()
     {
         var loader = new ConfigLoader(new FakeFileSystem());

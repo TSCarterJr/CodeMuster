@@ -21,8 +21,8 @@ public class DoneTests
         ledger.Members.Add(member);
     }
 
-    private Task<DoneResult> RunAsync(string? unitId = null, string? fingerprint = null, string? responseJson = null) =>
-        new Done(ledger, clock, Config.Default).RunAsync(unitId ?? unit.Id, fingerprint ?? unit.Fingerprint, responseJson ?? ValidResponse, CancellationToken.None);
+    private Task<DoneResult> RunAsync(string? unitId = null, string? fingerprint = null, string? responseJson = null, Config? config = null) =>
+        new Done(ledger, clock, config ?? Config.Default).RunAsync(unitId ?? unit.Id, fingerprint ?? unit.Fingerprint, responseJson ?? ValidResponse, CancellationToken.None);
 
     private Unit Stored => ledger.Units.Single(u => u.Id == unit.Id);
 
@@ -49,6 +49,28 @@ public class DoneTests
             ],
             verify);
         Assert.Equal([new UnitMember(UnitIds.Verify(1), MemberPath, null, "hash-a", 0)], ledger.Members.Where(m => m.UnitId == UnitIds.Verify(1)));
+    }
+
+    [Fact]
+    public async Task VerifyOff_RecordsTheFindings_WithoutVerifyUnits()
+    {
+        var result = await RunAsync(responseJson: Respond((18, 21)), config: Config.Default with { Verify = false });
+
+        Assert.Equal(DoneOutcome.Recorded, result.Outcome);
+        Assert.Single(ledger.Analyses.Single().Findings);
+        Assert.DoesNotContain(ledger.Units, u => u.Kind == UnitKind.Verify);
+    }
+
+    [Fact]
+    public async Task Reanalysis_RetiresTheOldVerifyUnitsBeforeRecording_SoNoOtherWriterCanHandOutOneWhoseFindingIsGone()
+    {
+        await RecordOneFindingAsync();
+        UnitStatus? whenRecorded = null;
+        ledger.OnRecordAnalysis = _ => whenRecorded = ledger.Units.Single(u => u.Id == UnitIds.Verify(1)).Status;
+
+        await RunAsync(responseJson: Respond((18, 21)));
+
+        Assert.Equal(UnitStatus.Retired, whenRecorded);
     }
 
     [Fact]

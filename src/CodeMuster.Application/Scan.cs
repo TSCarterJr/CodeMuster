@@ -4,7 +4,7 @@ namespace CodeMuster.Application;
 
 /// <summary>
 /// Discovers the tree, refreshes file rows through the stat cache (D05), plans units, retires every live unit the plan no longer holds, and records a <see cref="ScanRun"/>.
-/// A current finding keeps its verify unit while the code of the unit that reported it is unchanged since that analysis (D27).
+/// A current finding keeps its verify unit while the code of the unit that reported it is unchanged since that analysis (D27), unless verification is off (D28).
 /// With at least one mapper the scan runs in slice mode: the mappers map the repository at <paramref name="repoRoot"/> and units are slices, orphans, and file units (D25). Without mappers every included file is one file unit.
 /// </summary>
 public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config, IReadOnlyList<ICodeMapper>? mappers = null, string repoRoot = "")
@@ -35,7 +35,10 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         IReadOnlyList<ICodeMapper> active = mappers ?? [];
         var mapped = await CompositeMapper.MapAsync(active, repoRoot, included, cancellationToken);
         var planned = SliceBuilder.Build(mapped, included);
-        planned = [.. planned, .. await PlanVerifyUnitsAsync(planned, cancellationToken)];
+        if (config.Verify)
+        {
+            planned = [.. planned, .. await PlanVerifyUnitsAsync(planned, cancellationToken)];
+        }
 
         var existingUnits = (await ledger.GetUnitsAsync(cancellationToken)).ToDictionary(u => u.Id, StringComparer.Ordinal);
         var units = new List<Unit>(planned.Count);

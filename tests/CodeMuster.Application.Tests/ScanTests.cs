@@ -189,6 +189,19 @@ public class ScanTests
     }
 
     [Fact]
+    public async Task VerifyOff_RetiresVerifyUnits_AndPlansNone()
+    {
+        tree.Add("src/A.cs", "class A {}");
+        await ScanAsync();
+        var verify = await RecordFindingAsync("src/A.cs");
+
+        var result = await ScanAsync(Config.Default with { Verify = false });
+
+        Assert.Equal(UnitStatus.Retired, ledger.Units.Single(u => u.Id == verify.Id).Status);
+        Assert.Equal((0, 1), (result.UnitsCreated, result.UnitsTotal));
+    }
+
+    [Fact]
     public async Task FindingsWithoutAVerifyUnit_GetOne()
     {
         tree.Add("src/A.cs", "class A {}");
