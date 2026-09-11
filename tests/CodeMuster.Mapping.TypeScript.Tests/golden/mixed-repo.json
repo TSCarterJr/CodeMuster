@@ -1,0 +1,64 @@
+{
+  "symbols": [
+    {
+      "id": "web/app/customers/page.tsx#CustomersPage",
+      "path": "web/app/customers/page.tsx",
+      "range": { "start_line": 4, "end_line": 19 },
+      "kind": "function",
+      "signature": "export default function CustomersPage()",
+      "body_hash": "c42c14d7e3ae47c4818e859e3a565b84a358634e09af1c638beb2456911a091f"
+    },
+    {
+      "id": "web/app/quotes/page.tsx#QuotesPage",
+      "path": "web/app/quotes/page.tsx",
+      "range": { "start_line": 4, "end_line": 12 },
+      "kind": "function",
+      "signature": "export default function QuotesPage()",
+      "body_hash": "afc6a673b5590ef1ed454ecdb9a3b191a7beca0a98f1295138d3f439c5acd766"
+    },
+    {
+      "id": "web/components/QuoteTable.tsx#QuoteTable",
+      "path": "web/components/QuoteTable.tsx",
+      "range": { "start_line": 3, "end_line": 17 },
+      "kind": "function",
+      "signature": "export function QuoteTable({ quotes }: { quotes: Quote[] })",
+      "body_hash": "3b64e0cf3c11e187da9d4237fbb746c75321c4f0142f859a7a3cf839e092f7b9"
+    },
+    {
+      "id": "web/hooks/useQuotes.ts#useQuotes",
+      "path": "web/hooks/useQuotes.ts",
+      "range": { "start_line": 4, "end_line": 10 },
+      "kind": "function",
+      "signature": "export function useQuotes(tenantId: number): Quote[]",
+      "body_hash": "7518c046853599d3d13996ecdd95e09ddf7c0b4c946500fe944783e0ccb24bdb"
+    },
+    {
+      "id": "web/lib/api.ts#fetchQuotes",
+      "path": "web/lib/api.ts",
+      "range": { "start_line": 8, "end_line": 11 },
+      "kind": "function",
+      "signature": "export async function fetchQuotes(tenantId: number): Promise<Quote[]>",
+      "body_hash": "9f3edb28984093bf88e816eff5a2b8936d52ad4a815d58a99b0070b7b82ef314"
+    },
+    {
+      "id": "web/lib/api.ts#fetchCustomers",
+      "path": "web/lib/api.ts",
+      "range": { "start_line": 13, "end_line": 16 },
+      "kind": "function",
+      "signature": "export async function fetchCustomers(): Promise<string[]>",
+      "body_hash": "ebbdb6011e95a07820e4d1f3c9b1d3ec1632964b91ab87471d60cbad5c5e04c0"
+    }
+  ],
+  "edges": [
+    { "from": "web/app/customers/page.tsx#CustomersPage", "to": "web/lib/api.ts#fetchCustomers", "kind": "call" },
+    { "from": "web/app/quotes/page.tsx#QuotesPage", "to": "web/hooks/useQuotes.ts#useQuotes", "kind": "call" },
+    { "from": "web/app/quotes/page.tsx#QuotesPage", "to": "web/components/QuoteTable.tsx#QuoteTable", "kind": "call" },
+    { "from": "web/hooks/useQuotes.ts#useQuotes", "to": "web/lib/api.ts#fetchQuotes", "kind": "call" }
+  ],
+  "entry_points": [
+    { "symbol_id": "web/app/quotes/page.tsx#QuotesPage", "kind": "page", "display": "/quotes" },
+    { "symbol_id": "web/app/customers/page.tsx#CustomersPage", "kind": "page", "display": "/customers" }
+  ],
+  "resolution": { "resolved": 16, "unresolved": 0, "top_unresolved_names": [] },
+  "diagnostics": []
+}
