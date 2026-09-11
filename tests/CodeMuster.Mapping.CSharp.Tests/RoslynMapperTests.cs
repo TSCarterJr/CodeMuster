@@ -56,6 +56,39 @@ public class RoslynMapperTests
 
         var golden = Fixtures.Golden("minimal-api");
         Assert.Equal(golden.Symbols.OrderBy(symbol => symbol.Id, StringComparer.Ordinal), map.Symbols.OrderBy(symbol => symbol.Id, StringComparer.Ordinal));
+        Assert.Equal(["src/MinimalApi/MinimalApi.csproj is not restored; run dotnet restore src/MinimalApi/MinimalApi.csproj"], map.Diagnostics);
+    }
+
+    [Fact]
+    public async Task An_unrestored_project_leaves_package_calls_unresolved_and_names_the_restore_command()
+    {
+        using var copy = new FixtureCopy("mixed-repo");
+        var project = copy.PathOf("src/MixedRepo.Api/MixedRepo.Api.csproj");
+        File.WriteAllText(project, File.ReadAllText(project).Replace(
+            "</Project>",
+            "  <ItemGroup>\n    <PackageReference Include=\"Humanizer.Core\" Version=\"2.14.1\" />\n  </ItemGroup>\n</Project>",
+            StringComparison.Ordinal));
+        File.WriteAllText(copy.PathOf("src/MixedRepo.Api/Shared/Words.cs"), """
+            using Humanizer;
+
+            namespace MixedRepo.Api.Shared;
+
+            public static class Words
+            {
+                public static string Title(string text)
+                {
+                    return text.Humanize(LetterCasing.Title);
+                }
+            }
+            """);
+
+        var map = await new RoslynMapper().MapAsync(copy.Root, Fixtures.IncludedPaths(copy.Root), CancellationToken.None);
+
+        Assert.Equal(["src/MixedRepo.Api/MixedRepo.Api.csproj is not restored; run dotnet restore MixedRepo.sln"], map.Diagnostics);
+        Assert.Equal(21, map.Resolution.Resolved);
+        Assert.Equal(1, map.Resolution.Unresolved);
+        Assert.Equal(["Humanize"], map.Resolution.TopUnresolvedNames);
+        Assert.Contains(map.Symbols, symbol => symbol.Id == "M:MixedRepo.Api.Shared.Words.Title(System.String)");
     }
 
     [Fact]

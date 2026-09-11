@@ -32,6 +32,20 @@ public class GoldenMapTests(FixtureMaps maps) : IClassFixture<FixtureMaps>
             maps[fixture].EntryPoints.OrderBy(entry => entry.Display, StringComparer.Ordinal));
     }
 
+    [Theory]
+    [InlineData("mixed-repo")]
+    [InlineData("minimal-api")]
+    public void Resolution_matches_the_golden_with_no_diagnostics(string fixture)
+    {
+        var golden = Fixtures.Golden(fixture);
+        var map = maps[fixture];
+
+        Assert.Equal(golden.Resolution.Resolved, map.Resolution.Resolved);
+        Assert.Equal(golden.Resolution.Unresolved, map.Resolution.Unresolved);
+        Assert.Equal(golden.Resolution.TopUnresolvedNames, map.Resolution.TopUnresolvedNames);
+        Assert.Equal(golden.Diagnostics, map.Diagnostics);
+    }
+
     [Fact]
     public void IQuoteService_calls_bind_to_QuoteService_only()
     {

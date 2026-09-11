@@ -13,6 +13,8 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
     private readonly Dictionary<string, Symbol> symbols = new(StringComparer.Ordinal);
     private readonly HashSet<Edge> edges = [];
     private readonly HashSet<EntryPoint> entryPoints = [];
+    private readonly Dictionary<string, int> unresolved = new(StringComparer.Ordinal);
+    private int resolved;
 
     public async Task AddAsync(Solution solution, CancellationToken cancellationToken)
     {
@@ -35,6 +37,7 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
                 }
 
                 symbols.TryAdd(from, new Symbol(from, path, Lines(node), KindOf(node), Signature(node), BodyHash(node)));
+                CountCallSites(node, model, cancellationToken);
                 foreach (var callee in Callees(node, model, cancellationToken))
                 {
                     if (Id(callee) is not { } to)
@@ -67,9 +70,55 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
                 .OrderBy(entry => entry.Display, StringComparer.Ordinal)
                 .ThenBy(entry => entry.SymbolId, StringComparer.Ordinal)
                 .ToList(),
-            new ResolutionStats(0, 0, []),
+            new ResolutionStats(
+                resolved,
+                unresolved.Values.Sum(),
+                unresolved.OrderByDescending(name => name.Value).ThenBy(name => name.Key, StringComparer.Ordinal).Take(20).Select(name => name.Key).ToList()),
             []);
     }
+
+    private void CountCallSites(SyntaxNode declaration, SemanticModel model, CancellationToken cancellationToken)
+    {
+        foreach (var node in declaration.DescendantNodes(child => !IsNameOf(child)))
+        {
+            var name = node switch
+            {
+                InvocationExpressionSyntax invocation when !IsNameOf(node) => InvokedName(invocation.Expression),
+                ObjectCreationExpressionSyntax creation => TypeName(creation.Type),
+                ImplicitObjectCreationExpressionSyntax => "new",
+                _ => null,
+            };
+            if (name is null)
+            {
+                continue;
+            }
+
+            if (model.GetSymbolInfo(node, cancellationToken).Symbol is null)
+            {
+                unresolved[name] = unresolved.GetValueOrDefault(name) + 1;
+            }
+            else
+            {
+                resolved++;
+            }
+        }
+    }
+
+    private static string InvokedName(ExpressionSyntax expression) => expression switch
+    {
+        MemberAccessExpressionSyntax access => access.Name.Identifier.Text,
+        MemberBindingExpressionSyntax binding => binding.Name.Identifier.Text,
+        SimpleNameSyntax name => name.Identifier.Text,
+        _ => expression.ToString(),
+    };
+
+    private static string TypeName(TypeSyntax type) => type switch
+    {
+        QualifiedNameSyntax qualified => qualified.Right.Identifier.Text,
+        AliasQualifiedNameSyntax alias => alias.Name.Identifier.Text,
+        SimpleNameSyntax name => name.Identifier.Text,
+        _ => type.ToString(),
+    };
 
     internal static string? Id(ISymbol symbol) =>
         (symbol is IMethodSymbol { ReducedFrom: { } reduced } ? reduced : symbol).OriginalDefinition.GetDocumentationCommentId();
