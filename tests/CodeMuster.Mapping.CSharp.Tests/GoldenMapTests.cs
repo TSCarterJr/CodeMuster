@@ -22,6 +22,16 @@ public class GoldenMapTests(FixtureMaps maps) : IClassFixture<FixtureMaps>
         Assert.Equal(Sorted(Fixtures.Golden(fixture).Edges), Sorted(maps[fixture].Edges));
     }
 
+    [Theory]
+    [InlineData("mixed-repo")]
+    [InlineData("minimal-api")]
+    public void Entry_points_match_the_golden(string fixture)
+    {
+        Assert.Equal(
+            Fixtures.Golden(fixture).EntryPoints.OrderBy(entry => entry.Display, StringComparer.Ordinal),
+            maps[fixture].EntryPoints.OrderBy(entry => entry.Display, StringComparer.Ordinal));
+    }
+
     [Fact]
     public void IQuoteService_calls_bind_to_QuoteService_only()
     {

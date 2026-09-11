@@ -12,6 +12,7 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
     private readonly HashSet<string> seen = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Symbol> symbols = new(StringComparer.Ordinal);
     private readonly HashSet<Edge> edges = [];
+    private readonly HashSet<EntryPoint> entryPoints = [];
 
     public async Task AddAsync(Solution solution, CancellationToken cancellationToken)
     {
@@ -25,6 +26,7 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
             }
 
             var root = await model.SyntaxTree.GetRootAsync(cancellationToken);
+            entryPoints.UnionWith(EntryPoints.Find(root, model, cancellationToken));
             foreach (var node in root.DescendantNodes())
             {
                 if (DeclaredMethod(node, model, cancellationToken) is not { } method || Id(method) is not { } from)
@@ -60,7 +62,11 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
                 .ThenBy(edge => edge.To, StringComparer.Ordinal)
                 .ThenBy(edge => edge.Kind)
                 .ToList(),
-            [],
+            entryPoints
+                .Where(entry => symbols.ContainsKey(entry.SymbolId))
+                .OrderBy(entry => entry.Display, StringComparer.Ordinal)
+                .ThenBy(entry => entry.SymbolId, StringComparer.Ordinal)
+                .ToList(),
             new ResolutionStats(0, 0, []),
             []);
     }
