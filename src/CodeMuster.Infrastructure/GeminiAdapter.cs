@@ -19,9 +19,16 @@ public sealed class GeminiAdapter(string executable) : IAgentAdapter
             throw new InvalidOperationException($"gemini printed no JSON envelope: {output.Trim()}");
         }
 
-        using var document = JsonDocument.Parse(output[start..(end + 1)]);
-        return document.RootElement.TryGetProperty("response", out var response)
-            ? response.GetString() ?? ""
-            : throw new InvalidOperationException($"gemini printed no response: {output.Trim()}");
+        try
+        {
+            using var document = JsonDocument.Parse(output[start..(end + 1)]);
+            return document.RootElement.TryGetProperty("response", out var response)
+                ? response.GetString() ?? ""
+                : throw new InvalidOperationException($"gemini printed no response: {output.Trim()}");
+        }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException($"gemini printed invalid JSON: {output.Trim()}");
+        }
     }
 }

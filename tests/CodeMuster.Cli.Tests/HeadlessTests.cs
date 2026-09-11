@@ -66,6 +66,22 @@ public class HeadlessTests
     }
 
     [Fact]
+    public async Task RunWithMissingFakeTemplate_PrintsOneLineError_InsteadOfAStackTrace()
+    {
+        using var repo = TempRepo.FromFixture("mixed-repo");
+        await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        await CliProcess.RunAsync(repo.Root, "scan");
+        var environment = new Dictionary<string, string> { ["CODEMUSTER_FAKE_RESPONSE"] = Path.Combine(repo.Root, "nope.json") };
+
+        var run = await CliProcess.RunAsync(repo.Root, environment, "run", "--agent", "fake");
+
+        Assert.Equal(1, run.ExitCode);
+        Assert.Contains("nope.json", run.Stderr);
+        Assert.DoesNotContain("Unhandled exception", run.Stderr);
+        Assert.Single(run.Stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    [Fact]
     public async Task RunWithUnknownAgent_FailsBeforeTouchingUnits()
     {
         using var repo = TempRepo.FromFixture("mixed-repo");

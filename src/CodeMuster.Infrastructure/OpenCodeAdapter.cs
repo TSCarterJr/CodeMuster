@@ -20,18 +20,34 @@ public sealed class OpenCodeAdapter(string executable) : IAgentAdapter
                 continue;
             }
 
-            using var document = JsonDocument.Parse(line);
+            using var document = Parse(line);
             var root = document.RootElement;
-            switch (root.GetProperty("type").GetString())
+            var type = root.TryGetProperty("type", out var typeElement) ? typeElement.GetString() : null;
+            if (type == "error")
             {
-                case "error":
-                    throw new InvalidOperationException($"opencode reported an error: {root.GetProperty("error").GetRawText()}");
-                case "text":
-                    text = root.GetProperty("part").GetProperty("text").GetString();
-                    break;
+                throw new InvalidOperationException($"opencode reported an error: {(root.TryGetProperty("error", out var error) ? error.GetRawText() : line.Trim())}");
+            }
+
+            if (type == "text")
+            {
+                text = root.TryGetProperty("part", out var part) && part.TryGetProperty("text", out var value)
+                    ? value.GetString()
+                    : throw new InvalidOperationException($"opencode printed a text event without text: {line.Trim()}");
             }
         }
 
         return text ?? throw new InvalidOperationException($"opencode printed no text: {output.Trim()}");
+    }
+
+    private static JsonDocument Parse(string line)
+    {
+        try
+        {
+            return JsonDocument.Parse(line);
+        }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException($"opencode printed an invalid JSON event: {line.Trim()}");
+        }
     }
 }

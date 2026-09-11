@@ -56,14 +56,14 @@ public static class Program
             Console.Error.WriteLine(ex.Message);
             return 2;
         }
-        catch (InvalidOperationException ex)
-        {
-            Console.Error.WriteLine(ex.Message);
-            return 1;
-        }
         catch (OperationCanceledException)
         {
             Console.Error.WriteLine("cancelled");
+            return 1;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex.Message);
             return 1;
         }
     }

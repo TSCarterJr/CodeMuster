@@ -46,7 +46,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
             {
                 text = await adapter.RunAsync(pack.Markdown, cancellationToken);
             }
-            catch (InvalidOperationException ex)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
                 failure = new DoneResult(DoneOutcome.Rejected, ex.Message);
             }

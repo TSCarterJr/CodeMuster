@@ -88,8 +88,9 @@ public class RunTests
         var bad = AddFileUnit("src/a.cs");
         AddFileUnits("b", "c");
         var adapter = new FakeAgentAdapter((pack, _) => Task.FromResult(UnitIdOf(pack) == bad.Id ? "I could not analyze this unit." : EmptyResponse));
+        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 
-        var result = await RunAsync(adapter, new RunOptions(2, 3, false));
+        var result = await RunAsync(adapter, new RunOptions(2, 3, false), guard.Token);
 
         Assert.Equal(2, result.Completed);
         Assert.Equal([bad.Id], result.GaveUp);
@@ -147,13 +148,35 @@ public class RunTests
     }
 
     [Fact]
+    public async Task AnyAdapterException_CountsAsAnAttempt_AndAGivenUpHeadUnitDoesNotBlockTheQueue()
+    {
+        var bad = AddFileUnit("src/a.cs");
+        var good = AddFileUnit("src/b.cs");
+        var adapter = new FakeAgentAdapter((pack, _) => UnitIdOf(pack) == bad.Id
+            ? throw new System.Text.Json.JsonException("'o' is an invalid start of a value.")
+            : Task.FromResult(EmptyResponse));
+        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        var result = await RunAsync(adapter, new RunOptions(1, 2, false), guard.Token);
+
+        Assert.False(result.Cancelled);
+        Assert.Equal([bad.Id], result.GaveUp);
+        Assert.Equal(1, result.Completed);
+        Assert.Equal(UnitStatus.Done, Stored(good.Id).Status);
+        Assert.Equal(UnitStatus.Pending, Stored(bad.Id).Status);
+        Assert.Equal("gave up after 2 attempt(s): 'o' is an invalid start of a value.", reports.Single(r => r.UnitId == bad.Id && r.Attempt == 2).Message);
+    }
+
+    [Fact]
     public async Task AdapterExceptionEveryTime_GivesUp_AndUnitStaysPending()
     {
         var unit = AddFileUnit("src/a.cs");
         var adapter = new FakeAgentAdapter((_, _) => throw new InvalidOperationException("boom"));
+        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 
-        var result = await RunAsync(adapter, new RunOptions(1, 2, false));
+        var result = await RunAsync(adapter, new RunOptions(1, 2, false), guard.Token);
 
+        Assert.False(result.Cancelled);
         Assert.Equal(0, result.Completed);
         Assert.Equal([unit.Id], result.GaveUp);
         Assert.Equal(2, adapter.Packs.Count);

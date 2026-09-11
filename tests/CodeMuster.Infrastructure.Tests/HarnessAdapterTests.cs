@@ -72,6 +72,24 @@ public class HarnessAdapterTests
     }
 
     [Fact]
+    public void Gemini_output_with_braces_that_are_not_json_throws_invalid_operation_with_the_output()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() => GeminiAdapter.FinalText("Loaded cached credentials {oops\n{\"response\":\"x\"}\n"));
+
+        Assert.Contains("{oops", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("{\"type\":\"text\",\"part\":{\"te\n")]
+    [InlineData("{\"foo\":1}\n")]
+    [InlineData("{\"type\":\"text\"}\n")]
+    [InlineData("{\"type\":\"error\"}\n")]
+    public void OpenCode_malformed_or_incomplete_events_throw_invalid_operation(string output)
+    {
+        Assert.Throws<InvalidOperationException>(() => OpenCodeAdapter.FinalText(output));
+    }
+
+    [Fact]
     public void OpenCode_final_text_is_the_last_text_event_and_skips_noise()
     {
         var output = string.Join("\r\n", [
