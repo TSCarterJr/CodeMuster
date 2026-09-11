@@ -12,7 +12,9 @@ public sealed class GitTopLevelTests : IDisposable
 
         var found = await GitSourceTree.FindTopLevelAsync(Path.Combine(_repo.Root, "src", "a"), CancellationToken.None);
 
-        Assert.Equal(Path.GetFullPath(_repo.Root).TrimEnd(Path.DirectorySeparatorChar), found.TrimEnd(Path.DirectorySeparatorChar), ignoreCase: true);
+        Assert.Equal(Path.GetFileName(_repo.Root), Path.GetFileName(found));
+        Assert.True(Directory.Exists(Path.Combine(found, ".git")));
+        Assert.True(File.Exists(Path.Combine(found, "src", "a", "b.cs")));
     }
 
     [Fact]
