@@ -89,7 +89,7 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
           VERSION: ${{ needs.build.outputs.version }}
         run: |
-          npm install -g "packages/codemuster-$PLATFORM-$VERSION.tgz" "packages/codemuster-$VERSION.tgz"
+          npm install -g "./packages/codemuster-$PLATFORM-$VERSION.tgz" "./packages/codemuster-$VERSION.tgz"
           actual="$(codemuster --version | tr -d '\r')"
           echo "codemuster --version printed $actual"
           test "$actual" = "$VERSION"
