@@ -54,6 +54,29 @@ public class AgentOptionsTests
         Assert.Equal(new AgentIdentity("fake", null, null), new FakeAgentAdapter(FakeAgentAdapter.DefaultTemplate).Identity);
     }
 
+    [Fact]
+    public void WriteMode_letsEachHarnessEditTheRepository_butNeverGivesItAShell()
+    {
+        var claude = new ClaudeAdapter("claude", null, null, write: true).Arguments;
+
+        Assert.Equal(["--permission-mode", "acceptEdits"], Pair(claude, "--permission-mode"));
+        Assert.Equal(["--tools", "Read,Glob,Grep,Edit,Write"], Pair(claude, "--tools"));
+        Assert.DoesNotContain("Bash", string.Join(" ", claude));
+        Assert.Equal(["--sandbox", "workspace-write"], Pair(new CodexAdapter("codex", null, null, write: true).Arguments, "--sandbox"));
+        Assert.Equal(["--approval-mode", "auto_edit"], Pair(new GeminiAdapter("gemini", null, null, write: true).Arguments, "--approval-mode"));
+        Assert.Equal(["--agent", "build"], Pair(new OpenCodeAdapter("opencode", null, null, write: true).Arguments, "--agent"));
+    }
+
+    [Fact]
+    public void ReadOnlyIsTheDefault_ForEveryHarness()
+    {
+        Assert.Equal(["--permission-mode", "dontAsk"], Pair(new ClaudeAdapter("claude").Arguments, "--permission-mode"));
+        Assert.Equal(["--tools", "Read,Glob,Grep"], Pair(new ClaudeAdapter("claude").Arguments, "--tools"));
+        Assert.Equal(["--sandbox", "read-only"], Pair(new CodexAdapter("codex").Arguments, "--sandbox"));
+        Assert.Equal(["--approval-mode", "default"], Pair(new GeminiAdapter("gemini").Arguments, "--approval-mode"));
+        Assert.Equal(["--agent", "plan"], Pair(new OpenCodeAdapter("opencode").Arguments, "--agent"));
+    }
+
     private static IReadOnlyList<string> Pair(IReadOnlyList<string> arguments, string flag)
     {
         var index = arguments.ToList().IndexOf(flag);

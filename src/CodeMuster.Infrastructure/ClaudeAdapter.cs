@@ -2,11 +2,14 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
 
-public sealed class ClaudeAdapter(string executable, string? model = null, string? effort = null) : IAgentAdapter
+public sealed class ClaudeAdapter(string executable, string? model = null, string? effort = null, bool write = false) : IAgentAdapter
 {
     public IReadOnlyList<string> Arguments { get; } =
     [
-        "--print", "--output-format", "text", "--permission-mode", "dontAsk", "--strict-mcp-config", "--no-session-persistence", "--tools", "Read,Glob,Grep",
+        "--print", "--output-format", "text",
+        "--permission-mode", write ? "acceptEdits" : "dontAsk",
+        "--strict-mcp-config", "--no-session-persistence",
+        "--tools", write ? "Read,Glob,Grep,Edit,Write" : "Read,Glob,Grep",
         .. model is null ? Array.Empty<string>() : ["--model", model],
         .. effort is null ? Array.Empty<string>() : ["--effort", effort],
     ];

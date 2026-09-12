@@ -2,7 +2,7 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
 
-public sealed class CodexAdapter(string executable, string? model = null, string? effort = null) : IAgentAdapter
+public sealed class CodexAdapter(string executable, string? model = null, string? effort = null, bool write = false) : IAgentAdapter
 {
     public IReadOnlyList<string> Arguments => ArgumentsFor(NewLastMessageFile());
 
@@ -29,7 +29,7 @@ public sealed class CodexAdapter(string executable, string? model = null, string
 
     private IReadOnlyList<string> ArgumentsFor(string lastMessageFile) =>
     [
-        "exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never",
+        "exec", "--sandbox", write ? "workspace-write" : "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never",
         .. model is null ? Array.Empty<string>() : ["-m", model],
         .. effort is null ? Array.Empty<string>() : ["-c", "model_reasoning_effort=" + Quoted(effort)],
         "--output-last-message", lastMessageFile, "-",

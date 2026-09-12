@@ -7,7 +7,7 @@ public sealed class GeminiAdapter : IAgentAdapter
 {
     private readonly string _executable;
 
-    public GeminiAdapter(string executable, string? model = null, string? effort = null)
+    public GeminiAdapter(string executable, string? model = null, string? effort = null, bool write = false)
     {
         if (effort is not null)
         {
@@ -15,7 +15,7 @@ public sealed class GeminiAdapter : IAgentAdapter
         }
 
         _executable = executable;
-        Arguments = ["--output-format", "json", "--approval-mode", "default", .. model is null ? Array.Empty<string>() : ["-m", model]];
+        Arguments = ["--output-format", "json", "--approval-mode", write ? "auto_edit" : "default", .. model is null ? Array.Empty<string>() : ["-m", model]];
         Identity = new AgentIdentity("gemini", model, null);
     }
 

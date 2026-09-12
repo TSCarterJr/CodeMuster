@@ -3,11 +3,11 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
 
-public sealed class OpenCodeAdapter(string executable, string? model = null, string? effort = null) : IAgentAdapter
+public sealed class OpenCodeAdapter(string executable, string? model = null, string? effort = null, bool write = false) : IAgentAdapter
 {
     public IReadOnlyList<string> Arguments { get; } =
     [
-        "run", "--agent", "plan", "--format", "json",
+        "run", "--agent", write ? "build" : "plan", "--format", "json",
         .. model is null ? Array.Empty<string>() : ["-m", model],
         .. effort is null ? Array.Empty<string>() : ["--variant", effort],
     ];
