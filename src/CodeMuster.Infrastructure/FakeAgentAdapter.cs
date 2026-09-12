@@ -21,6 +21,11 @@ public sealed class FakeAgentAdapter : IAgentAdapter
 
     public Task<string> RunAsync(string pack, CancellationToken cancellationToken)
     {
+        if (FixTargets(pack) is { Count: > 0 } targets)
+        {
+            return Task.FromResult(FixResponseJson.Serialize(new FixResponse("fake fix", targets, [])));
+        }
+
         if (FindingUnderTest(pack) is { } finding)
         {
             var verdict = finding.Confidence < RefutesBelowConfidence ? Verdict.Refuted : Verdict.Confirmed;
@@ -30,6 +35,21 @@ public sealed class FakeAgentAdapter : IAgentAdapter
         var path = FirstFilePath(pack);
         var findings = _template.Findings.Select(finding => finding with { Path = path }).ToList();
         return Task.FromResult(AnalysisResponseJson.Serialize(_template with { Findings = findings }));
+    }
+
+    private static IReadOnlyList<long> FixTargets(string pack)
+    {
+        var lines = pack.Split('\n').Select(line => line.TrimEnd('\r')).ToList();
+        if (!lines.Contains("- kind: fix"))
+        {
+            return [];
+        }
+
+        return lines
+            .Select(line => line.Trim())
+            .Where(line => line.StartsWith("\"id\":", StringComparison.Ordinal))
+            .Select(line => long.Parse(line["\"id\":".Length..].Trim().TrimEnd(','), System.Globalization.CultureInfo.InvariantCulture))
+            .ToList();
     }
 
     private static Finding? FindingUnderTest(string pack)

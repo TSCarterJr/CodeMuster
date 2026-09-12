@@ -32,6 +32,9 @@ public static class Program
                                                             model and effort go straight to the agent's own flags
           verify --agent <name> [-j N] [--attempts N] [--force] [--path <folder>] [--model <id>] [--effort <level>]
                                                             run --kind verify: try to refute recorded findings
+          fix --agent <name> [--attempts N] [--path <folder>] [--model <id>] [--effort <level>]
+                                                            fix the confirmed findings, one file at a time, and commit
+                                                            each file it changes; needs a clean working tree
           report [--out <file>] [--include-refuted]         render findings and coverage as markdown;
                                                             refuted findings are left out unless asked for
           skill install --for <agent> [--global]            install the skill for claude, codex, gemini, or opencode
@@ -39,7 +42,7 @@ public static class Program
         every verb runs against the git repository containing the current directory.
         """;
 
-    private static readonly string[] Verbs = ["init", "doctor", "scan", "status", "estimate", "next", "done", "run", "verify", "report", "skill"];
+    private static readonly string[] Verbs = ["init", "doctor", "scan", "status", "estimate", "next", "done", "run", "verify", "report", "skill", "fix"];
 
     private static readonly string[] KindNames = Enum.GetNames<UnitKind>().Select(name => name.ToLowerInvariant()).ToArray();
 
@@ -154,6 +157,8 @@ public static class Program
             case "run":
             case "verify":
                 return await RunAgentAsync(command, ledger, tree, clock, config, cancellationToken);
+            case "fix":
+                return await FixAsync(command, repoRoot, ledger, tree, clock, config, cancellationToken);
             default:
                 var markdown = await new Report(ledger, config, command.Flags.Contains("include-refuted")).RunAsync(cancellationToken);
                 if (command.Options.TryGetValue("out", out var reportPath))
@@ -186,6 +191,31 @@ public static class Program
         }
 
         return 0;
+    }
+
+    private static async Task<int> FixAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, CancellationToken cancellationToken)
+    {
+        var adapter = AgentAdapters.Create(
+            command.Options["agent"],
+            null,
+            command.Options.GetValueOrDefault("model"),
+            command.Options.GetValueOrDefault("effort"),
+            write: true);
+        var options = new FixOptions(
+            int.Parse(command.Options.GetValueOrDefault("attempts", "3"), CultureInfo.InvariantCulture),
+            command.Options.GetValueOrDefault("path"));
+        Console.WriteLine($"fixing with {command.Options["agent"]}, one file at a time; each file it changes becomes a commit");
+        var fix = new Fix(ledger, tree, clock, config, new GitWorkspace(repoRoot));
+        var result = await fix.RunAsync(adapter, options, new ProgressWriter(Console.Out), cancellationToken);
+        foreach (var unitId in result.GaveUp)
+        {
+            Console.Error.WriteLine($"gave up on {unitId} after {options.MaxAttempts} attempts");
+        }
+
+        Console.WriteLine(string.Create(
+            CultureInfo.InvariantCulture,
+            $"fixed {result.Fixed} finding(s) across {result.Units} file(s), declined {result.Declined}, {result.GaveUp.Count} gave up"));
+        return result.GaveUp.Count > 0 ? 1 : 0;
     }
 
     private static async Task<int> DoctorAsync(PhysicalFileSystem fileSystem, CancellationToken cancellationToken)
@@ -285,6 +315,10 @@ public static class Program
         "next" => command.Flags.Count == 0 && command.Positionals.Count == 0 && IsPositiveOrAbsent(command, "batch"),
         "run" => IsAgentRun(command, "kind") && (!command.Options.TryGetValue("kind", out var kind) || (KindNames.Contains(kind) && kind != "fix")),
         "verify" => IsAgentRun(command),
+        "fix" => command.Positionals.Count == 0
+            && command.Flags.Count == 0
+            && command.Options.ContainsKey("agent")
+            && command.Options.Keys.All(k => k is "agent" or "attempts" or "model" or "effort" or "path"),
         "estimate" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "path"),
         "report" => command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "out") && command.Flags.All(f => f == "include-refuted"),
         "skill" => command.Positionals.SequenceEqual(["install"]) && SkillInstaller.Harnesses.Contains(command.Options.GetValueOrDefault("for", "")) && command.Flags.All(f => f == "global"),
