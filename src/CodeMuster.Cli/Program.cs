@@ -22,15 +22,15 @@ public static class Program
           scan [--mode file]                                build or refresh the ledger: one flow per entry point,
                                                             or one unit per file with --mode file
           status                                            print coverage
-          estimate                                          approximate token cost of pending units
+          estimate [--path <folder>]                        approximate token cost of pending units
           next [--batch N] [--out <file>]                   print the next unit pack(s)
           done <unit> --fingerprint <fp> --findings <file>  record the model's response for a unit
-          run --agent <name> [-j N] [--attempts N] [--force] [--kind <kind>] [--model <id>] [--effort <level>]
+          run --agent <name> [-j N] [--attempts N] [--force] [--kind <kind>] [--path <folder>] [--model <id>] [--effort <level>]
                                                             drive a headless agent over every pending unit, or only
                                                             one kind: file, slice, orphan, verify
                                                             agents: claude, codex, gemini, opencode, fake
                                                             model and effort go straight to the agent's own flags
-          verify --agent <name> [-j N] [--attempts N] [--force] [--model <id>] [--effort <level>]
+          verify --agent <name> [-j N] [--attempts N] [--force] [--path <folder>] [--model <id>] [--effort <level>]
                                                             run --kind verify: try to refute recorded findings
           report [--out <file>] [--include-refuted]         render findings and coverage as markdown;
                                                             refuted findings are left out unless asked for
@@ -142,7 +142,7 @@ public static class Program
                 Console.WriteLine((await new Status(ledger, config).RunAsync(cancellationToken)).Render());
                 return 0;
             case "estimate":
-                Console.WriteLine((await new Estimate(ledger, config).RunAsync(cancellationToken)).Render());
+                Console.WriteLine((await new Estimate(ledger, config, command.Options.GetValueOrDefault("path")).RunAsync(cancellationToken)).Render());
                 return 0;
             case "next":
                 return await NextAsync(command, ledger, tree, config, cancellationToken);
@@ -245,7 +245,8 @@ public static class Program
             int.Parse(command.Options.GetValueOrDefault("jobs", "1")),
             int.Parse(command.Options.GetValueOrDefault("attempts", "3")),
             command.Flags.Contains("force"),
-            kind is null ? null : Enum.Parse<UnitKind>(kind, ignoreCase: true));
+            kind is null ? null : Enum.Parse<UnitKind>(kind, ignoreCase: true),
+            command.Options.GetValueOrDefault("path"));
         Console.WriteLine($"running {command.Options["agent"]} on up to {options.Parallelism} unit(s) at a time; a line prints as each unit finishes");
         var result = await new Run(ledger, tree, clock, config, adapter, new RunProgressWriter(Console.Out), new ProgressWriter(Console.Out)).RunAsync(options, cancellationToken);
         foreach (var unitId in result.GaveUp)
@@ -284,6 +285,7 @@ public static class Program
         "next" => command.Flags.Count == 0 && command.Positionals.Count == 0 && IsPositiveOrAbsent(command, "batch"),
         "run" => IsAgentRun(command, "kind") && (!command.Options.TryGetValue("kind", out var kind) || KindNames.Contains(kind)),
         "verify" => IsAgentRun(command),
+        "estimate" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "path"),
         "report" => command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "out") && command.Flags.All(f => f == "include-refuted"),
         "skill" => command.Positionals.SequenceEqual(["install"]) && SkillInstaller.Harnesses.Contains(command.Options.GetValueOrDefault("for", "")) && command.Flags.All(f => f == "global"),
         _ => command.Flags.Count == 0 && command.Positionals.Count == 0,
@@ -292,7 +294,7 @@ public static class Program
     private static bool IsAgentRun(Command command, params string[] extraOptions) =>
         command.Positionals.Count == 0
         && command.Options.ContainsKey("agent")
-        && command.Options.Keys.All(k => k is "agent" or "jobs" or "attempts" or "model" or "effort" || extraOptions.Contains(k))
+        && command.Options.Keys.All(k => k is "agent" or "jobs" or "attempts" or "model" or "effort" or "path" || extraOptions.Contains(k))
         && command.Flags.All(f => f == "force")
         && IsPositiveOrAbsent(command, "jobs")
         && IsPositiveOrAbsent(command, "attempts");

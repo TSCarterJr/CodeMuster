@@ -3,7 +3,7 @@ using CodeMuster.Domain;
 namespace CodeMuster.Application;
 
 /// <summary>Sizes the pending work: whole files at bytes over four, symbols at a fixed rate per line, capped for slices at the token budget (D07), plus a fixed allowance per unit for the pack scaffolding and the reply.</summary>
-public sealed class Estimate(ILedger ledger, Config config)
+public sealed class Estimate(ILedger ledger, Config config, string? path = null)
 {
     /// <summary>Tokens every unit costs on top of its code: the pack's instructions, sample, and response section, and the model's JSON reply.</summary>
     public const int PackOverheadTokens = 700;
@@ -18,6 +18,16 @@ public sealed class Estimate(ILedger ledger, Config config)
             .Where(u => u.Status is UnitStatus.Pending or UnitStatus.Stale or UnitStatus.Failed)
             .ToList();
         var members = await ledger.GetMembersAsync(pending.Select(u => u.Id).ToList(), cancellationToken);
+        if (path is { } folder)
+        {
+            var under = members
+                .Where(m => m.Path == RepoPath.Normalize(folder).TrimEnd('/') || m.Path.StartsWith(RepoPath.Normalize(folder).TrimEnd('/') + "/", StringComparison.Ordinal))
+                .Select(m => m.UnitId)
+                .ToHashSet(StringComparer.Ordinal);
+            pending = pending.Where(u => under.Contains(u.Id)).ToList();
+            members = members.Where(m => under.Contains(m.UnitId)).ToList();
+        }
+
         var sizes = (await ledger.GetFilesAsync(cancellationToken)).ToDictionary(f => f.Path, f => f.Size, StringComparer.Ordinal);
         var tokens = members
             .GroupBy(m => m.UnitId, StringComparer.Ordinal)

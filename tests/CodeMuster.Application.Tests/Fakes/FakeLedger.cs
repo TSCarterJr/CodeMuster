@@ -55,11 +55,16 @@ public sealed class FakeLedger : ILedger
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<Unit>> NextAsync(int batch, UnitKind? kind, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Unit>>(Units
-            .Where(u => (u.Status is UnitStatus.Pending or UnitStatus.Stale or UnitStatus.Failed) && (kind is null || u.Kind == kind))
+    public Task<IReadOnlyList<Unit>> NextAsync(int batch, UnitKind? kind, string? path, CancellationToken cancellationToken)
+    {
+        var folder = path is null ? null : RepoPath.Normalize(path).TrimEnd('/');
+        bool Under(Unit unit) => folder is null || Members.Any(m =>
+            m.UnitId == unit.Id && (m.Path == folder || m.Path.StartsWith(folder + "/", StringComparison.Ordinal)));
+        return Task.FromResult<IReadOnlyList<Unit>>(Units
+            .Where(u => (u.Status is UnitStatus.Pending or UnitStatus.Stale or UnitStatus.Failed) && (kind is null || u.Kind == kind) && Under(u))
             .Take(batch)
             .ToList());
+    }
 
     public Task RecordAnalysisAsync(Analysis analysis, IReadOnlyList<Finding> findings, CancellationToken cancellationToken)
     {

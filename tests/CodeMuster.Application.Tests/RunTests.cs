@@ -303,6 +303,24 @@ public class RunTests
     }
 
     [Fact]
+    public async Task WithAPath_OnlyUnitsUnderItAreWorked_AndForceLeavesTheRestAlone()
+    {
+        var web = AddFileUnit("web/a.ts");
+        var src = AddFileUnit("src/a.cs", UnitStatus.Done);
+        AddFileUnit("src/b.cs");
+
+        var adapter = Always(EmptyResponse);
+
+        var result = await RunAsync(adapter, new RunOptions(4, 1, true, null, "web"));
+
+        Assert.Equal(1, result.Completed);
+        Assert.Equal("file:web/a.ts", UnitIdOf(Assert.Single(adapter.Packs)));
+        Assert.Equal(UnitStatus.Done, Stored(web.Id).Status);
+        Assert.Equal(UnitStatus.Done, Stored(src.Id).Status);
+        Assert.Equal(UnitStatus.Pending, Stored("file:src/b.cs").Status);
+    }
+
+    [Fact]
     public async Task EachAttempt_SaysItStarted_BeforeItsResultIsKnown()
     {
         AddFileUnits("a", "b");

@@ -22,7 +22,7 @@ public interface ILedger
     Task UpsertUnitsAsync(IReadOnlyList<Unit> units, IReadOnlyList<UnitMember> members, CancellationToken cancellationToken);
 
     /// <summary>Up to <paramref name="batch"/> units that need work (pending, stale, or failed), only of <paramref name="kind"/> when it is given, oldest first by insertion order.</summary>
-    Task<IReadOnlyList<Unit>> NextAsync(int batch, UnitKind? kind, CancellationToken cancellationToken);
+    Task<IReadOnlyList<Unit>> NextAsync(int batch, UnitKind? kind, string? path, CancellationToken cancellationToken);
 
     /// <summary>Stores an analysis and its findings atomically and moves the unit to Done (with summary, summary hash, and lens hash) or Failed.</summary>
     Task RecordAnalysisAsync(Analysis analysis, IReadOnlyList<Finding> findings, CancellationToken cancellationToken);

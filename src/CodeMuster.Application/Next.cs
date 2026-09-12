@@ -5,7 +5,7 @@ using CodeMuster.Domain;
 namespace CodeMuster.Application;
 
 /// <summary>Hands out the next units that need work, each as one markdown pack (D01). A verify unit's pack asks the model to refute its finding instead of auditing (D27).</summary>
-public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool interactive = true, UnitKind? kind = null)
+public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool interactive = true, UnitKind? kind = null, string? path = null)
 {
     private const string VerifyInstructions =
         "An earlier analysis reported the finding below. Try to refute it: check the claim against the code under Files and follow the calls it depends on. "
@@ -19,7 +19,7 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
     /// <summary>Builds a pack for up to <paramref name="batch"/> units; empty when nothing needs work.</summary>
     public async Task<IReadOnlyList<UnitPack>> RunAsync(int batch, CancellationToken cancellationToken)
     {
-        var units = await ledger.NextAsync(batch, kind, cancellationToken);
+        var units = await ledger.NextAsync(batch, kind, path, cancellationToken);
         var members = await ledger.GetMembersAsync(units.Select(u => u.Id).ToList(), cancellationToken);
         var findings = units.Any(u => u.Kind == UnitKind.Verify)
             ? (await ledger.GetCurrentFindingsAsync(cancellationToken)).ToDictionary(f => UnitIds.Verify(f.Id), f => f.Finding)

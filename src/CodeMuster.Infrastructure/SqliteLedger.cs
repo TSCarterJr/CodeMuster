@@ -266,10 +266,21 @@ public sealed class SqliteLedger : ILedger, IDisposable
         await transaction.CommitAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<Unit>> NextAsync(int batch, UnitKind? kind, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<Unit>> NextAsync(int batch, UnitKind? kind, string? path, CancellationToken cancellationToken)
     {
-        await using var command = CreateCommand($"SELECT {UnitColumns} FROM units WHERE status IN ($pending, $stale, $failed) AND ($kind IS NULL OR kind = $kind) ORDER BY seq LIMIT $batch");
+        await using var command = CreateCommand($"""
+            SELECT {UnitColumns} FROM units
+            WHERE status IN ($pending, $stale, $failed)
+              AND ($kind IS NULL OR kind = $kind)
+              AND ($path IS NULL OR EXISTS (
+                    SELECT 1 FROM unit_members m
+                    WHERE m.unit_id = units.id AND (m.path = $path OR m.path LIKE $under)))
+            ORDER BY seq LIMIT $batch
+            """);
+        var folder = path is null ? null : RepoPath.Normalize(path).TrimEnd('/');
         command.Parameters.AddWithValue("$kind", Db(kind is { } k ? Name(k) : null));
+        command.Parameters.AddWithValue("$path", Db(folder));
+        command.Parameters.AddWithValue("$under", Db(folder is null ? null : folder + "/%"));
         command.Parameters.AddWithValue("$pending", Name(UnitStatus.Pending));
         command.Parameters.AddWithValue("$stale", Name(UnitStatus.Stale));
         command.Parameters.AddWithValue("$failed", Name(UnitStatus.Failed));
