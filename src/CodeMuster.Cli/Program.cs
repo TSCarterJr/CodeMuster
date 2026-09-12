@@ -283,7 +283,7 @@ public static class Program
         "scan" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "mode") && command.Options.GetValueOrDefault("mode", "file") is "file" or "slice",
         "done" => command.Flags.Count == 0 && command.Positionals.Count == 1 && command.Options.ContainsKey("fingerprint") && command.Options.ContainsKey("findings"),
         "next" => command.Flags.Count == 0 && command.Positionals.Count == 0 && IsPositiveOrAbsent(command, "batch"),
-        "run" => IsAgentRun(command, "kind") && (!command.Options.TryGetValue("kind", out var kind) || KindNames.Contains(kind)),
+        "run" => IsAgentRun(command, "kind") && (!command.Options.TryGetValue("kind", out var kind) || (KindNames.Contains(kind) && kind != "fix")),
         "verify" => IsAgentRun(command),
         "estimate" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "path"),
         "report" => command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "out") && command.Flags.All(f => f == "include-refuted"),

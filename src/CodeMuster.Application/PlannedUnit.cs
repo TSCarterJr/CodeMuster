@@ -10,6 +10,13 @@ namespace CodeMuster.Application;
 /// <param name="Members">The files or symbols the unit covers, each carrying this unit's id.</param>
 public sealed record PlannedUnit(string Id, UnitKind Kind, string Key, Fidelity Fidelity, IReadOnlyList<UnitMember> Members)
 {
+    /// <summary>The fix unit for one file: its whole content, so a change to the file marks the unit stale (D37).</summary>
+    public static PlannedUnit Fix(string path, string contentHash)
+    {
+        var id = UnitIds.Fix(path);
+        return new PlannedUnit(id, UnitKind.Fix, path, Fidelity.Full, [new UnitMember(id, path, null, contentHash, 0)]);
+    }
+
     /// <summary>The verify unit for <paramref name="finding"/>: the members of the unit that reported it, so it goes stale with that code, keyed by the lines the finding cites.</summary>
     public static PlannedUnit Verify(UnitFinding finding, IReadOnlyList<UnitMember> members, Fidelity fidelity)
     {

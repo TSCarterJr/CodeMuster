@@ -14,6 +14,9 @@ public static class UnitIds
     /// <summary>Id of the verify unit that tests one finding.</summary>
     public static string Verify(long findingId) => "verify:" + findingId.ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>Id of the fix unit for a repo-relative path (D37).</summary>
+    public static string Fix(string path) => "fix:" + path;
+
     /// <summary>Id of the slice unit that starts at an entry point's symbol.</summary>
     public static string Slice(string entrySymbolId) => "slice:" + entrySymbolId;
 }

@@ -11,4 +11,6 @@ public enum UnitKind
     Orphan,
     /// <summary>One finding to confirm or refute.</summary>
     Verify,
+    /// <summary>Every confirmed finding in one file, to be fixed (D37).</summary>
+    Fix,
 }
