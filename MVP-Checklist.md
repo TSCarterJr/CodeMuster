@@ -159,6 +159,16 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 | T13.8 | Smoke `codex`, `gemini`, and `opencode` on one real unit each and record what each needed. | `[ ]` | | None has ever launched from CodeMuster; the pool should not be built on untested adapters. |
 | T13.4 | Read every finding by hand and record precision in Notes. Feed lens and budget changes back as tasks. | `[ ]` | | |
 
+## Phase 14: Fix mode (D37)
+
+| ID | Task | Status | Owner / Date | Notes |
+|---|---|---|---|---|
+| T14.1 | Write-enabled adapters: `AgentAdapters.Create(..., write: true)` adds `--permission-mode acceptEdits` and edit tools for claude, `-s workspace-write` for codex, `--approval-mode auto_edit` for gemini, and the `build` agent for opencode. No adapter gets shell access. **Tests first:** each adapter's argument list in write mode and in read-only mode; the default stays read-only. | `[ ]` | | Flags confirmed from each CLI's own help on 2026-09-12. |
+| T14.2 | `fix` units: one per file that has at least one confirmed finding, holding that file's findings and the members of the units that reported them. Planned only by the `fix` verb, never by `scan` or `run`, so no other command can write to the repository. **Tests first (fakes):** a file with two confirmed findings plans one unit; refuted, unsure, and unverified findings plan none; a fixed unit is not planned again while its code is unchanged. | `[ ]` | | Adds `UnitKind.Fix`. `run` excludes it by kind, which keeps the loop kind-agnostic apart from the pack (D06, D27). |
+| T14.3 | Fix pack and response: the findings as JSON, the code, and the instruction to change what is wrong and say what it changed. Response: what was changed, which findings were addressed, and which were declined with a reason. `done` records `fix_status` and `fix_reason` per finding (ledger schema 5) and marks the unit done. **Tests first:** response round-trip; addressed and declined both persist; a response that addresses nothing is a failed attempt. | `[ ]` | | Findings schema itself is unchanged (D11): the verdict columns sit on the row, as verification's do. |
+| T14.4 | `codemuster fix --agent <name> [--model] [--effort] [-j N]`: refuses a dirty working tree, plans and runs fix units, commits one per unit naming the findings, and never pushes. **Tests first (e2e, fake agent):** a dirty tree stops it with what to do; each unit becomes one commit; a declined finding is recorded and still counted; `status` and `report` show fix coverage. | `[ ]` | | Needs a commit capability in Infrastructure; the working-tree check belongs beside it. |
+| T14.5 | `"test_command"` in config runs after each fix unit; a non-zero exit is a failed attempt with its output as the reason. **Tests first:** a passing command records the unit; a failing one retries and then gives up with the output. | `[ ]` | | Without a `test_command`, fix mode still runs and says it verified nothing. |
+
 ---
 
 ## Later (not MVP, in rough order)
