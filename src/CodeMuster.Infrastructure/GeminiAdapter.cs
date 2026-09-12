@@ -3,12 +3,28 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
 
-public sealed class GeminiAdapter(string executable) : IAgentAdapter
+public sealed class GeminiAdapter : IAgentAdapter
 {
-    public IReadOnlyList<string> Arguments { get; } = ["--output-format", "json", "--approval-mode", "default"];
+    private readonly string _executable;
+
+    public GeminiAdapter(string executable, string? model = null, string? effort = null)
+    {
+        if (effort is not null)
+        {
+            throw new ArgumentException("gemini has no effort level; drop --effort or run this kind with another agent", nameof(effort));
+        }
+
+        _executable = executable;
+        Arguments = ["--output-format", "json", "--approval-mode", "default", .. model is null ? Array.Empty<string>() : ["-m", model]];
+        Identity = new AgentIdentity("gemini", model, null);
+    }
+
+    public IReadOnlyList<string> Arguments { get; }
+
+    public AgentIdentity Identity { get; }
 
     public async Task<string> RunAsync(string pack, CancellationToken cancellationToken) =>
-        FinalText(await HeadlessProcess.RunAsync(executable, Arguments, pack, cancellationToken).ConfigureAwait(false));
+        FinalText(await HeadlessProcess.RunAsync(_executable, Arguments, pack, cancellationToken).ConfigureAwait(false));
 
     internal static string FinalText(string output)
     {

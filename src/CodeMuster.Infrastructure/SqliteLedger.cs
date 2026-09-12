@@ -6,7 +6,7 @@ namespace CodeMuster.Infrastructure;
 
 public sealed class SqliteLedger : ILedger, IDisposable
 {
-    internal const int SchemaVersion = 3;
+    internal const int SchemaVersion = 4;
 
     internal const string Schema = """
         CREATE TABLE files (
@@ -80,9 +80,15 @@ public sealed class SqliteLedger : ILedger, IDisposable
         ALTER TABLE runs ADD COLUMN top_unresolved_names TEXT;
         """;
 
-    private const string SchemaVersion3 = """
+    internal const string SchemaVersion3 = """
         ALTER TABLE findings ADD COLUMN verify_status TEXT;
         ALTER TABLE findings ADD COLUMN verify_reason TEXT;
+        """;
+
+    private const string SchemaVersion4 = """
+        ALTER TABLE analyses ADD COLUMN agent TEXT;
+        ALTER TABLE analyses ADD COLUMN model TEXT;
+        ALTER TABLE analyses ADD COLUMN effort TEXT;
         """;
 
     private const string FileColumns =
@@ -316,8 +322,8 @@ public sealed class SqliteLedger : ILedger, IDisposable
     private async Task<long> InsertAnalysisAsync(Analysis analysis, CancellationToken cancellationToken)
     {
         await using var insert = CreateCommand("""
-            INSERT INTO analyses (unit_id, fingerprint, lens_hash, created_at, succeeded, summary, error)
-            VALUES ($unit_id, $fingerprint, $lens_hash, $created_at, $succeeded, $summary, $error)
+            INSERT INTO analyses (unit_id, fingerprint, lens_hash, created_at, succeeded, summary, error, agent, model, effort)
+            VALUES ($unit_id, $fingerprint, $lens_hash, $created_at, $succeeded, $summary, $error, $agent, $model, $effort)
             RETURNING id
             """);
         insert.Parameters.AddWithValue("$unit_id", analysis.UnitId);
@@ -327,6 +333,9 @@ public sealed class SqliteLedger : ILedger, IDisposable
         insert.Parameters.AddWithValue("$succeeded", analysis.Succeeded);
         insert.Parameters.AddWithValue("$summary", Db(analysis.Summary));
         insert.Parameters.AddWithValue("$error", Db(analysis.Error));
+        insert.Parameters.AddWithValue("$agent", Db(analysis.By?.Agent));
+        insert.Parameters.AddWithValue("$model", Db(analysis.By?.Model));
+        insert.Parameters.AddWithValue("$effort", Db(analysis.By?.Effort));
         return Convert.ToInt64(await insert.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
     }
 
@@ -356,6 +365,21 @@ public sealed class SqliteLedger : ILedger, IDisposable
             """);
         command.Parameters.AddWithValue("$retired", Name(UnitStatus.Retired));
         return await ReadAllAsync(command, ReadUnitFinding, cancellationToken);
+    }
+
+    public async Task<IReadOnlyDictionary<string, AgentIdentity>> GetProvenanceAsync(CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand("""
+            SELECT a.unit_id, a.agent, a.model, a.effort
+            FROM analyses a
+            JOIN (SELECT unit_id, MAX(id) AS id FROM analyses WHERE succeeded = 1 GROUP BY unit_id) latest ON latest.id = a.id
+            WHERE a.agent IS NOT NULL
+            """);
+        var rows = await ReadAllAsync(
+            command,
+            reader => (UnitId: reader.GetString(0), Identity: new AgentIdentity(reader.GetString(1), Text(reader, 2), Text(reader, 3))),
+            cancellationToken);
+        return rows.ToDictionary(row => row.UnitId, row => row.Identity, StringComparer.Ordinal);
     }
 
     public async Task RecordRunAsync(ScanRun run, CancellationToken cancellationToken)
@@ -400,6 +424,11 @@ public sealed class SqliteLedger : ILedger, IDisposable
         if (version < 3)
         {
             await ExecuteAsync(SchemaVersion3, cancellationToken);
+        }
+
+        if (version < 4)
+        {
+            await ExecuteAsync(SchemaVersion4, cancellationToken);
         }
 
         await ExecuteAsync(string.Create(CultureInfo.InvariantCulture, $"PRAGMA user_version = {SchemaVersion}"), cancellationToken);

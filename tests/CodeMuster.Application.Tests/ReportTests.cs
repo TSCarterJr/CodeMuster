@@ -37,6 +37,20 @@ public class ReportTests
         new(path, lineStart, lineEnd, severity, "security", claim, evidence, confidence, Lens);
 
     [Fact]
+    public async Task WhenAnalysesRecordTheirAgent_TheHeaderSaysWhoAuditedHowMuch()
+    {
+        ledger.Runs.Add(new ScanRun(At, Head, 2, 0, 2, null));
+        var a = AddUnit("src/a.cs");
+        var b = AddUnit("src/b.cs");
+        await ledger.RecordAnalysisAsync(new Analysis(a.Id, a.Fingerprint, "lens", At, true, "A", null, new AgentIdentity("claude", "opus", "xhigh")), [], CancellationToken.None);
+        await ledger.RecordAnalysisAsync(new Analysis(b.Id, b.Fingerprint, "lens", At, true, "B", null, new AgentIdentity("codex", "luna", null)), [], CancellationToken.None);
+
+        var markdown = await RunAsync();
+
+        Assert.Contains("audited by claude opus/xhigh (1 unit), codex luna (1 unit)\n", markdown);
+    }
+
+    [Fact]
     public async Task SeededLedger_RendersTheGoldenMarkdown()
     {
         ledger.Runs.Add(new ScanRun(At, Head, 5, 4, 5, null));

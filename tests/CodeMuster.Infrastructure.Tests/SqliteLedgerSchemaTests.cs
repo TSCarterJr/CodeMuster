@@ -18,7 +18,7 @@ public class SqliteLedgerSchemaTests
     }
 
     [Fact]
-    public async Task Open_TwiceIsIdempotentAndLeavesUserVersionAtThree()
+    public async Task Open_TwiceIsIdempotentAndLeavesUserVersionAtFour()
     {
         using var temp = new TempDirectory();
         using (await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None))
@@ -27,8 +27,8 @@ public class SqliteLedgerSchemaTests
 
         using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
 
-        Assert.Equal(3L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
-        Assert.Equal(3L, await RawSqlite.ScalarAsync<long>(temp.DatabasePath, "PRAGMA user_version"));
+        Assert.Equal(4L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
+        Assert.Equal(4L, await RawSqlite.ScalarAsync<long>(temp.DatabasePath, "PRAGMA user_version"));
         Assert.Equal(["analyses", "files", "findings", "runs", "unit_members", "units"], await RawSqlite.StringsAsync(temp.DatabasePath, Tables));
     }
 
@@ -44,7 +44,7 @@ public class SqliteLedgerSchemaTests
 
         using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
 
-        Assert.Equal(3L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
+        Assert.Equal(4L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
         Assert.Equal([new UnitMember("file:src/A.cs", "src/A.cs", null, "h1", 0)], await ledger.GetMembersAsync(["file:src/A.cs"], CancellationToken.None));
         var run = await ledger.GetLastRunAsync(CancellationToken.None);
         Assert.NotNull(run);
@@ -64,22 +64,39 @@ public class SqliteLedgerSchemaTests
 
         using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
 
-        Assert.Equal(3L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
+        Assert.Equal(4L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
         var finding = Assert.Single(await ledger.GetCurrentFindingsAsync(CancellationToken.None));
         Assert.Equal((1L, "claim"), (finding.Id, finding.Finding.Claim));
         Assert.Null(finding.Verification);
     }
 
     [Fact]
+    public async Task Open_MigratesAVersionThreeLedger_AndItsAnalysesHaveNoProvenance()
+    {
+        using var temp = new TempDirectory();
+        await RawSqlite.ExecuteAsync(temp.DatabasePath, SqliteLedger.Schema + SqliteLedger.SchemaVersion2 + SqliteLedger.SchemaVersion3 + """
+            INSERT INTO units (seq, id, kind, key, fingerprint, status, fidelity) VALUES (1, 'file:src/A.cs', 'file', 'src/A.cs', 'fp', 'done', 'full');
+            INSERT INTO analyses (unit_id, fingerprint, lens_hash, created_at, succeeded, summary) VALUES ('file:src/A.cs', 'fp', 'lens', '2026-09-10T00:00:00.0000000Z', 1, 'A');
+            PRAGMA user_version = 3;
+            """);
+
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+
+        Assert.Equal(4L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
+        Assert.Empty(await ledger.GetProvenanceAsync(CancellationToken.None));
+        Assert.Equal(UnitStatus.Done, Assert.Single(await ledger.GetUnitsAsync(CancellationToken.None)).Status);
+    }
+
+    [Fact]
     public async Task Open_RefusesALedgerWrittenByANewerVersion()
     {
         using var temp = new TempDirectory();
-        await RawSqlite.ExecuteAsync(temp.DatabasePath, "PRAGMA user_version = 4");
+        await RawSqlite.ExecuteAsync(temp.DatabasePath, "PRAGMA user_version = 5");
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None));
 
         Assert.Contains("newer codemuster", error.Message);
-        Assert.Equal(4L, await RawSqlite.ScalarAsync<long>(temp.DatabasePath, "PRAGMA user_version"));
+        Assert.Equal(5L, await RawSqlite.ScalarAsync<long>(temp.DatabasePath, "PRAGMA user_version"));
     }
 
     [Fact]

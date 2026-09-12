@@ -11,6 +11,7 @@ public class RunTests
     private readonly FakeSourceTree tree = new();
     private readonly FakeClock clock = new();
     private readonly List<RunProgress> reports = [];
+    private readonly ListProgress notes = new();
 
     private Unit AddFileUnit(string path, UnitStatus status = UnitStatus.Pending)
     {
@@ -37,7 +38,7 @@ public class RunTests
     private List<Unit> AddFileUnits(params string[] names) => names.Select(name => AddFileUnit($"src/{name}.cs")).ToList();
 
     private Task<RunResult> RunAsync(FakeAgentAdapter adapter, RunOptions options, CancellationToken cancellationToken = default, Action<RunProgress>? onReport = null) =>
-        new Run(ledger, tree, clock, Config.Default, adapter, new RecordingProgress(reports, onReport)).RunAsync(options, cancellationToken);
+        new Run(ledger, tree, clock, Config.Default, adapter, new RecordingProgress(reports, onReport), notes).RunAsync(options, cancellationToken);
 
     private static FakeAgentAdapter Always(string response) => new((_, _) => Task.FromResult(response));
 
@@ -299,6 +300,28 @@ public class RunTests
         Assert.Equal("file:src/a.cs", UnitIdOf(Assert.Single(adapter.Packs)));
         Assert.Equal(done, Stored(done.Id));
         Assert.Equal(new RunProgress("file:src/a.cs", 1, DoneOutcome.Recorded, "recorded 0 finding(s) for file:src/a.cs", 1, 1), Assert.Single(reports));
+    }
+
+    [Fact]
+    public async Task EachAttempt_SaysItStarted_BeforeItsResultIsKnown()
+    {
+        AddFileUnits("a", "b");
+
+        await RunAsync(Always(EmptyResponse), new RunOptions(1, 1, false));
+
+        Assert.Equal(["starting file:src/a.cs", "starting file:src/b.cs"], notes.Messages);
+    }
+
+    [Fact]
+    public async Task ARetriedUnit_SaysItStartedAgain()
+    {
+        var unit = AddFileUnit("src/a.cs");
+        var replies = 0;
+        var adapter = new FakeAgentAdapter((_, _) => Task.FromResult(replies++ == 0 ? "oops" : EmptyResponse));
+
+        await RunAsync(adapter, new RunOptions(1, 2, false));
+
+        Assert.Equal(["starting " + unit.Id, "starting " + unit.Id], notes.Messages);
     }
 
     [Fact]

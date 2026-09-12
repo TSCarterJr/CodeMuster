@@ -11,10 +11,13 @@ public sealed class FakeAgentAdapter : IAgentAdapter
 
     private readonly AnalysisResponse _template;
 
-    public FakeAgentAdapter(string templateJson)
+    public FakeAgentAdapter(string templateJson, string? model = null, string? effort = null)
     {
         _template = AnalysisResponseJson.Parse(templateJson);
+        Identity = new AgentIdentity("fake", model, effort);
     }
+
+    public AgentIdentity Identity { get; }
 
     public Task<string> RunAsync(string pack, CancellationToken cancellationToken)
     {

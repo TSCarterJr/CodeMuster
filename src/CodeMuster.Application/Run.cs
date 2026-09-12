@@ -3,8 +3,8 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
 
-/// <summary>Drives one headless agent over every unit that needs work (D10): hands out packs through <see cref="Next"/>, records each response through <see cref="Done"/>, retries failed attempts, and stops cleanly on cancellation. Adapter calls run concurrently; ledger calls are serialized because the ledger holds one connection.</summary>
-public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config config, IAgentAdapter adapter, IProgress<RunProgress> progress)
+/// <summary>Drives one headless agent over every unit that needs work (D10): hands out packs through <see cref="Next"/>, records each response through <see cref="Done"/>, retries failed attempts, and stops cleanly on cancellation. Adapter calls run concurrently; ledger calls are serialized because the ledger holds one connection. <paramref name="notes"/> hears about each attempt as it starts, since the first result of a long run can be minutes away.</summary>
+public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config config, IAgentAdapter adapter, IProgress<RunProgress> progress, IProgress<string>? notes = null)
 {
     /// <summary>Runs until nothing needs work or every remaining unit has used its attempts, reporting after every attempt.</summary>
     public async Task<RunResult> RunAsync(RunOptions options, CancellationToken cancellationToken)
@@ -16,7 +16,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
 
         var total = 0;
         var next = new Next(ledger, tree, config, interactive: false, options.Kind);
-        var done = new Done(ledger, clock, config);
+        var done = new Done(ledger, clock, config, adapter.Identity);
         using var turn = new SemaphoreSlim(1, 1);
         var attempts = new Dictionary<string, int>(StringComparer.Ordinal);
         var gaveUp = new List<string>();
@@ -49,6 +49,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
         {
             DoneResult? failure = null;
             var text = "";
+            notes?.Report($"starting {pack.UnitId}");
             try
             {
                 text = await adapter.RunAsync(pack.Markdown, cancellationToken);

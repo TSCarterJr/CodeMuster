@@ -3,9 +3,16 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
 
-public sealed class OpenCodeAdapter(string executable) : IAgentAdapter
+public sealed class OpenCodeAdapter(string executable, string? model = null, string? effort = null) : IAgentAdapter
 {
-    public IReadOnlyList<string> Arguments { get; } = ["run", "--agent", "plan", "--format", "json"];
+    public IReadOnlyList<string> Arguments { get; } =
+    [
+        "run", "--agent", "plan", "--format", "json",
+        .. model is null ? Array.Empty<string>() : ["-m", model],
+        .. effort is null ? Array.Empty<string>() : ["--variant", effort],
+    ];
+
+    public AgentIdentity Identity { get; } = new("opencode", model, effort);
 
     public async Task<string> RunAsync(string pack, CancellationToken cancellationToken) =>
         FinalText(await HeadlessProcess.RunAsync(executable, Arguments, pack, cancellationToken).ConfigureAwait(false));

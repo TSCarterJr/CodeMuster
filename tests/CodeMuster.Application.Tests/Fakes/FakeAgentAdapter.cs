@@ -11,6 +11,7 @@ public sealed class FakeAgentAdapter(Func<string, CancellationToken, Task<string
     public List<string> Packs { get; } = [];
     public int MaxInFlight => Volatile.Read(ref maxInFlight);
     public TaskCompletionSource? Gate { get; set; }
+    public AgentIdentity Identity { get; set; } = new("fake");
 
     public async Task<string> RunAsync(string pack, CancellationToken cancellationToken)
     {

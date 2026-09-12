@@ -25,11 +25,12 @@ public static class Program
           estimate                                          approximate token cost of pending units
           next [--batch N] [--out <file>]                   print the next unit pack(s)
           done <unit> --fingerprint <fp> --findings <file>  record the model's response for a unit
-          run --agent <name> [-j N] [--attempts N] [--force] [--kind <kind>]
+          run --agent <name> [-j N] [--attempts N] [--force] [--kind <kind>] [--model <id>] [--effort <level>]
                                                             drive a headless agent over every pending unit, or only
                                                             one kind: file, slice, orphan, verify
                                                             agents: claude, codex, gemini, opencode, fake
-          verify --agent <name> [-j N] [--attempts N] [--force]
+                                                            model and effort go straight to the agent's own flags
+          verify --agent <name> [-j N] [--attempts N] [--force] [--model <id>] [--effort <level>]
                                                             run --kind verify: try to refute recorded findings
           report [--out <file>] [--include-refuted]         render findings and coverage as markdown;
                                                             refuted findings are left out unless asked for
@@ -234,7 +235,11 @@ public static class Program
     private static async Task<int> RunAgentAsync(Command command, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, CancellationToken cancellationToken)
     {
         var template = Environment.GetEnvironmentVariable("CODEMUSTER_FAKE_RESPONSE");
-        var adapter = AgentAdapters.Create(command.Options["agent"], template is null ? null : await File.ReadAllTextAsync(template, cancellationToken));
+        var adapter = AgentAdapters.Create(
+            command.Options["agent"],
+            template is null ? null : await File.ReadAllTextAsync(template, cancellationToken),
+            command.Options.GetValueOrDefault("model"),
+            command.Options.GetValueOrDefault("effort"));
         var kind = command.Verb == "verify" ? "verify" : command.Options.GetValueOrDefault("kind");
         var options = new RunOptions(
             int.Parse(command.Options.GetValueOrDefault("jobs", "1")),
@@ -242,7 +247,7 @@ public static class Program
             command.Flags.Contains("force"),
             kind is null ? null : Enum.Parse<UnitKind>(kind, ignoreCase: true));
         Console.WriteLine($"running {command.Options["agent"]} on up to {options.Parallelism} unit(s) at a time; a line prints as each unit finishes");
-        var result = await new Run(ledger, tree, clock, config, adapter, new RunProgressWriter(Console.Out)).RunAsync(options, cancellationToken);
+        var result = await new Run(ledger, tree, clock, config, adapter, new RunProgressWriter(Console.Out), new ProgressWriter(Console.Out)).RunAsync(options, cancellationToken);
         foreach (var unitId in result.GaveUp)
         {
             Console.Error.WriteLine($"gave up on {unitId} after {options.MaxAttempts} attempts");
@@ -287,7 +292,7 @@ public static class Program
     private static bool IsAgentRun(Command command, params string[] extraOptions) =>
         command.Positionals.Count == 0
         && command.Options.ContainsKey("agent")
-        && command.Options.Keys.All(k => k is "agent" or "jobs" or "attempts" || extraOptions.Contains(k))
+        && command.Options.Keys.All(k => k is "agent" or "jobs" or "attempts" or "model" or "effort" || extraOptions.Contains(k))
         && command.Flags.All(f => f == "force")
         && IsPositiveOrAbsent(command, "jobs")
         && IsPositiveOrAbsent(command, "attempts");

@@ -15,6 +15,7 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
             .OrderBy(u => u.Key, StringComparer.Ordinal)
             .ToList();
         var current = await ledger.GetCurrentFindingsAsync(cancellationToken);
+        var provenance = await ledger.GetProvenanceAsync(cancellationToken);
         var findings = current.Where(f => includeRefuted || f.Verification?.Verdict != Verdict.Refuted).ToList();
         var refuted = current.Count - findings.Count;
         var fingerprints = units.ToDictionary(u => u.Id, u => u.Fingerprint);
@@ -34,6 +35,12 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
         {
             lines.Add("");
             lines.Add("nothing recorded.");
+        }
+
+        if (AuditedBy(units, provenance) is { } audited)
+        {
+            lines.Insert(3, audited);
+            lines.Insert(4, "");
         }
 
         foreach (var severity in Enum.GetValues<Severity>())
@@ -80,6 +87,21 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
 
         return string.Join('\n', lines) + "\n";
     }
+
+    private static string? AuditedBy(IReadOnlyList<Unit> units, IReadOnlyDictionary<string, AgentIdentity> provenance)
+    {
+        var counted = units
+            .Select(unit => provenance.GetValueOrDefault(unit.Id))
+            .OfType<AgentIdentity>()
+            .GroupBy(Label, StringComparer.Ordinal)
+            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .Select(group => string.Create(CultureInfo.InvariantCulture, $"{group.Key} ({group.Count()} unit{(group.Count() == 1 ? "" : "s")})"))
+            .ToList();
+        return counted.Count == 0 ? null : "audited by " + string.Join(", ", counted);
+    }
+
+    private static string Label(AgentIdentity identity) =>
+        identity.Agent + (identity.Model is null ? "" : " " + identity.Model) + (identity.Effort is null ? "" : "/" + identity.Effort);
 
     private static string Inline(string text) =>
         string.Join(' ', text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));

@@ -79,6 +79,15 @@ public sealed class FakeLedger : ILedger
         return RecordAnalysisAsync(analysis, [], cancellationToken);
     }
 
+    public Task<IReadOnlyDictionary<string, AgentIdentity>> GetProvenanceAsync(CancellationToken cancellationToken)
+    {
+        var provenance = Analyses
+            .Where(a => a.Analysis.Succeeded && a.Analysis.By is not null)
+            .GroupBy(a => a.Analysis.UnitId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Last().Analysis.By!, StringComparer.Ordinal);
+        return Task.FromResult<IReadOnlyDictionary<string, AgentIdentity>>(provenance);
+    }
+
     public Task<IReadOnlyList<UnitFinding>> GetCurrentFindingsAsync(CancellationToken cancellationToken)
     {
         var live = Units.Where(u => u.Status != UnitStatus.Retired).Select(u => u.Id).ToHashSet();

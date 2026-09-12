@@ -36,6 +36,27 @@ public class DoneTests
     }
 
     [Fact]
+    public async Task RecordedAnalysis_KeepsTheAgentModelAndEffortThatProducedIt()
+    {
+        var by = new AgentIdentity("codex", "luna", "low");
+
+        var result = await new Done(ledger, clock, Config.Default, by).RunAsync(unit.Id, unit.Fingerprint, ValidResponse, CancellationToken.None);
+
+        Assert.Equal(DoneOutcome.Recorded, result.Outcome);
+        Assert.Equal(by, Assert.Single(ledger.Analyses).Analysis.By);
+    }
+
+    [Fact]
+    public async Task AFailedAnalysis_KeepsItsProvenanceToo()
+    {
+        var by = new AgentIdentity("claude", null, "max");
+
+        await new Done(ledger, clock, Config.Default, by).RunAsync(unit.Id, unit.Fingerprint, "not json", CancellationToken.None);
+
+        Assert.Equal(by, Assert.Single(ledger.Analyses).Analysis.By);
+    }
+
+    [Fact]
     public async Task RecordedFindings_EachGetAPendingVerifyUnit_WithTheUnitsMembers()
     {
         var result = await RunAsync(responseJson: Respond((18, 21), (30, 30)));

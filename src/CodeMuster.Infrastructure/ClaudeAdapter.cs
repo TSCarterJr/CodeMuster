@@ -2,10 +2,16 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
 
-public sealed class ClaudeAdapter(string executable) : IAgentAdapter
+public sealed class ClaudeAdapter(string executable, string? model = null, string? effort = null) : IAgentAdapter
 {
     public IReadOnlyList<string> Arguments { get; } =
-        ["--print", "--output-format", "text", "--permission-mode", "dontAsk", "--strict-mcp-config", "--no-session-persistence", "--tools", "Read,Glob,Grep"];
+    [
+        "--print", "--output-format", "text", "--permission-mode", "dontAsk", "--strict-mcp-config", "--no-session-persistence", "--tools", "Read,Glob,Grep",
+        .. model is null ? Array.Empty<string>() : ["--model", model],
+        .. effort is null ? Array.Empty<string>() : ["--effort", effort],
+    ];
+
+    public AgentIdentity Identity { get; } = new("claude", model, effort);
 
     public Task<string> RunAsync(string pack, CancellationToken cancellationToken) =>
         HeadlessProcess.RunAsync(executable, Arguments, pack, cancellationToken);

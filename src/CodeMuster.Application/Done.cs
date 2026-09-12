@@ -5,7 +5,7 @@ using CodeMuster.Domain;
 namespace CodeMuster.Application;
 
 /// <summary>Records the model's response for one unit: validates it against the unit, then stores an analysis with its findings, or for a verify unit the verdict on its finding.</summary>
-public sealed class Done(ILedger ledger, IClock clock, Config config)
+public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdentity? by = null)
 {
     /// <summary>Stores the response for <paramref name="unitId"/> when it still has <paramref name="fingerprint"/>. An analysis must cite only member paths; it retires the verify units of the findings it replaces before recording, then gives each finding it records a pending verify unit unless verification is off.</summary>
     public async Task<DoneResult> RunAsync(string unitId, string fingerprint, string responseJson, CancellationToken cancellationToken)
@@ -25,7 +25,7 @@ public sealed class Done(ILedger ledger, IClock clock, Config config)
         var lensHash = Config.HashOf(config.LensesFor(members.Select(m => (m.Path, Languages.FromPath(m.Path)))));
         var now = Timestamps.Format(clock.UtcNow);
         var current = await ledger.GetCurrentFindingsAsync(cancellationToken);
-        var analysis = new Analysis(unitId, fingerprint, lensHash, now, true, null, null);
+        var analysis = new Analysis(unitId, fingerprint, lensHash, now, true, null, null, by);
         try
         {
             return unit.Kind == UnitKind.Verify

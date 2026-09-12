@@ -8,4 +8,5 @@ namespace CodeMuster.Domain;
 /// <param name="Succeeded">False when the response was unusable.</param>
 /// <param name="Summary">The one-line unit summary from the response, when it succeeded.</param>
 /// <param name="Error">Why the response was unusable, when it failed.</param>
-public sealed record Analysis(string UnitId, string Fingerprint, string LensHash, string CreatedAt, bool Succeeded, string? Summary, string? Error);
+/// <param name="By">What produced it (D35), or null when nothing recorded it, as when an agent drives the loop by hand.</param>
+public sealed record Analysis(string UnitId, string Fingerprint, string LensHash, string CreatedAt, bool Succeeded, string? Summary, string? Error, AgentIdentity? By = null);
