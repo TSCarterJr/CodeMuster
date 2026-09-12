@@ -49,7 +49,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
         {
             DoneResult? failure = null;
             var text = "";
-            notes?.Report($"starting {pack.UnitId}");
+            notes?.Report($"starting {Name(pack.Kind)} {pack.Key}");
             try
             {
                 text = await adapter.RunAsync(pack.Markdown, cancellationToken);
@@ -64,7 +64,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
             try
             {
                 var result = failure ?? await done.RunAsync(pack.UnitId, pack.Fingerprint, ResponseText.ExtractJson(text), cancellationToken);
-                Record(pack.UnitId, result);
+                Record(pack, result);
             }
             finally
             {
@@ -72,8 +72,9 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
             }
         }
 
-        void Record(string unitId, DoneResult result)
+        void Record(UnitPack pack, DoneResult result)
         {
+            var unitId = pack.UnitId;
             var attempt = attempts.GetValueOrDefault(unitId) + 1;
             attempts[unitId] = attempt;
             var message = result.Message;
@@ -87,7 +88,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                 message = string.Create(CultureInfo.InvariantCulture, $"gave up after {attempt} attempt(s): {result.Message}");
             }
 
-            progress.Report(new RunProgress(unitId, attempt, result.Outcome, message, completed, total));
+            progress.Report(new RunProgress(unitId, pack.Kind, pack.Key, attempt, result.Outcome, message, completed, total));
         }
     }
 
@@ -105,4 +106,6 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
         var members = await ledger.GetMembersAsync(stale.Select(u => u.Id).ToList(), cancellationToken);
         await ledger.UpsertUnitsAsync(stale, members, cancellationToken);
     }
+
+    private static string Name(UnitKind kind) => kind.ToString().ToLowerInvariant();
 }

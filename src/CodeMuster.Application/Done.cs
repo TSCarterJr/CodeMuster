@@ -59,7 +59,7 @@ public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdent
             await AddVerifyUnitsAsync(unit, members, cancellationToken);
         }
 
-        return new DoneResult(DoneOutcome.Recorded, string.Create(CultureInfo.InvariantCulture, $"recorded {findings.Count} finding(s) for {unit.Id}"));
+        return new DoneResult(DoneOutcome.Recorded, string.Create(CultureInfo.InvariantCulture, $"recorded {findings.Count} finding(s)"));
     }
 
     private async Task<DoneResult> RecordVerdictAsync(Unit unit, IReadOnlyList<UnitFinding> current, Analysis analysis, string responseJson, CancellationToken cancellationToken)
@@ -73,7 +73,7 @@ public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdent
         var response = VerifyResponseJson.Parse(responseJson);
         var verdict = response.Verdict.ToString().ToLowerInvariant();
         await ledger.RecordVerificationAsync(analysis with { Summary = $"{verdict}: {response.Reason}" }, finding.Id, response, cancellationToken);
-        return new DoneResult(DoneOutcome.Recorded, $"recorded {verdict} for {unit.Id}");
+        return new DoneResult(DoneOutcome.Recorded, $"recorded {verdict}");
     }
 
     private async Task RetireVerifyUnitsAsync(IEnumerable<UnitFinding> replaced, CancellationToken cancellationToken)

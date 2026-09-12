@@ -153,7 +153,7 @@ public class RunTests
 
         Assert.Equal(1, result.Completed);
         Assert.Empty(result.GaveUp);
-        Assert.Equal(new RunProgress(unit.Id, 1, DoneOutcome.Rejected, "claude exited with code 1", 0, 1), reports[0]);
+        Assert.Equal(new RunProgress(unit.Id, UnitKind.File, "src/a.cs", 1, DoneOutcome.Rejected, "claude exited with code 1", 0, 1), reports[0]);
         Assert.Equal(DoneOutcome.Recorded, reports[1].Outcome);
         Assert.True(Assert.Single(ledger.Analyses).Analysis.Succeeded);
         Assert.Equal(UnitStatus.Done, Stored(unit.Id).Status);
@@ -299,7 +299,7 @@ public class RunTests
         Assert.Equal(1, result.Completed);
         Assert.Equal("file:src/a.cs", UnitIdOf(Assert.Single(adapter.Packs)));
         Assert.Equal(done, Stored(done.Id));
-        Assert.Equal(new RunProgress("file:src/a.cs", 1, DoneOutcome.Recorded, "recorded 0 finding(s) for file:src/a.cs", 1, 1), Assert.Single(reports));
+        Assert.Equal(new RunProgress("file:src/a.cs", UnitKind.File, "src/a.cs", 1, DoneOutcome.Recorded, "recorded 0 finding(s)", 1, 1), Assert.Single(reports));
     }
 
     [Fact]
@@ -309,7 +309,7 @@ public class RunTests
 
         await RunAsync(Always(EmptyResponse), new RunOptions(1, 1, false));
 
-        Assert.Equal(["starting file:src/a.cs", "starting file:src/b.cs"], notes.Messages);
+        Assert.Equal(["starting file src/a.cs", "starting file src/b.cs"], notes.Messages);
     }
 
     [Fact]
@@ -321,7 +321,7 @@ public class RunTests
 
         await RunAsync(adapter, new RunOptions(1, 2, false));
 
-        Assert.Equal(["starting " + unit.Id, "starting " + unit.Id], notes.Messages);
+        Assert.Equal(["starting file src/a.cs", "starting file src/a.cs"], notes.Messages);
     }
 
     [Fact]

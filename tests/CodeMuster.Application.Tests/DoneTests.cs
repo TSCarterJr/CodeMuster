@@ -61,7 +61,7 @@ public class DoneTests
     {
         var result = await RunAsync(responseJson: Respond((18, 21), (30, 30)));
 
-        Assert.Equal($"recorded 2 finding(s) for {unit.Id}", result.Message);
+        Assert.Equal("recorded 2 finding(s)", result.Message);
         var verify = ledger.Units.Where(u => u.Kind == UnitKind.Verify).ToList();
         Assert.Equal(
             [
@@ -125,7 +125,7 @@ public class DoneTests
 
         var result = await RunAsync(verify.Id, verify.Fingerprint, VerifyResponseJson.Serialize(response));
 
-        Assert.Equal(new DoneResult(DoneOutcome.Recorded, $"recorded {name} for {verify.Id}"), result);
+        Assert.Equal(new DoneResult(DoneOutcome.Recorded, $"recorded {name}"), result);
         Assert.Equal(response, ledger.Verifications[1]);
         Assert.Equal(
             verify with { Status = UnitStatus.Done, Summary = $"{name}: Line 19 settles it.", SummaryHash = verify.Fingerprint, LensHash = Config.HashOf(Config.Default.Lenses) },
@@ -164,7 +164,7 @@ public class DoneTests
         var result = await RunAsync();
 
         Assert.Equal(DoneOutcome.Recorded, result.Outcome);
-        Assert.Equal($"recorded 1 finding(s) for {unit.Id}", result.Message);
+        Assert.Equal("recorded 1 finding(s)", result.Message);
 
         var expected = AnalysisResponseJson.Parse(ValidResponse);
         var (analysis, findings) = Assert.Single(ledger.Analyses);
@@ -257,7 +257,7 @@ public class DoneTests
         var result = await RunAsync(responseJson: """{ "summary": "Nothing to report.", "findings": [] }""");
 
         Assert.Equal(DoneOutcome.Recorded, result.Outcome);
-        Assert.Equal($"recorded 0 finding(s) for {unit.Id}", result.Message);
+        Assert.Equal("recorded 0 finding(s)", result.Message);
         Assert.Empty(Assert.Single(ledger.Analyses).Findings);
         Assert.Equal(UnitStatus.Done, Stored.Status);
         Assert.Equal("Nothing to report.", Stored.Summary);

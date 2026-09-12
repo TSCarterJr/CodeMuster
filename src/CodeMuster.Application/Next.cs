@@ -39,7 +39,7 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
                 throw new InvalidOperationException(Done.Replaced(unit.Id));
             }
 
-            packs.Add(new UnitPack(unit.Id, unit.Fingerprint, Render(unit, await SelectAsync(unitMembers, cancellationToken), finding)));
+            packs.Add(new UnitPack(unit.Id, unit.Kind, unit.Key, unit.Fingerprint, Render(unit, await SelectAsync(unitMembers, cancellationToken), finding)));
         }
 
         return packs;
