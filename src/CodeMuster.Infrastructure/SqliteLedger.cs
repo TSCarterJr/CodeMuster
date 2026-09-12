@@ -6,7 +6,7 @@ namespace CodeMuster.Infrastructure;
 
 public sealed class SqliteLedger : ILedger, IDisposable
 {
-    internal const int SchemaVersion = 4;
+    internal const int SchemaVersion = 5;
 
     internal const string Schema = """
         CREATE TABLE files (
@@ -85,10 +85,15 @@ public sealed class SqliteLedger : ILedger, IDisposable
         ALTER TABLE findings ADD COLUMN verify_reason TEXT;
         """;
 
-    private const string SchemaVersion4 = """
+    internal const string SchemaVersion4Sql = """
         ALTER TABLE analyses ADD COLUMN agent TEXT;
         ALTER TABLE analyses ADD COLUMN model TEXT;
         ALTER TABLE analyses ADD COLUMN effort TEXT;
+        """;
+
+    internal const string SchemaVersion5 = """
+        ALTER TABLE findings ADD COLUMN fix_status TEXT;
+        ALTER TABLE findings ADD COLUMN fix_reason TEXT;
         """;
 
     private const string FileColumns =
@@ -366,7 +371,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
     public async Task<IReadOnlyList<UnitFinding>> GetCurrentFindingsAsync(CancellationToken cancellationToken)
     {
         await using var command = CreateCommand($"""
-            SELECT f.id, a.unit_id, a.fingerprint, {FindingColumns}, f.verify_status, f.verify_reason
+            SELECT f.id, a.unit_id, a.fingerprint, {FindingColumns}, f.verify_status, f.verify_reason, f.fix_status, f.fix_reason
             FROM findings f
             JOIN analyses a ON a.id = f.analysis_id
             JOIN (SELECT unit_id, MAX(id) AS id FROM analyses WHERE succeeded = 1 GROUP BY unit_id) latest ON latest.id = a.id
@@ -376,6 +381,24 @@ public sealed class SqliteLedger : ILedger, IDisposable
             """);
         command.Parameters.AddWithValue("$retired", Name(UnitStatus.Retired));
         return await ReadAllAsync(command, ReadUnitFinding, cancellationToken);
+    }
+
+    public async Task RecordFixAsync(Analysis analysis, IReadOnlyList<(long FindingId, FixOutcome Outcome)> outcomes, CancellationToken cancellationToken)
+    {
+        await using var transaction = await _connection.BeginTransactionAsync(cancellationToken);
+        await InsertAnalysisAsync(analysis, cancellationToken);
+        await using var update = CreateCommand("UPDATE findings SET fix_status = $status, fix_reason = $reason WHERE id = $id");
+        foreach (var (findingId, outcome) in outcomes)
+        {
+            update.Parameters.Clear();
+            update.Parameters.AddWithValue("$id", findingId);
+            update.Parameters.AddWithValue("$status", Name(outcome.State));
+            update.Parameters.AddWithValue("$reason", outcome.Reason);
+            await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await UpdateUnitAsync(analysis, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyDictionary<string, AgentIdentity>> GetProvenanceAsync(CancellationToken cancellationToken)
@@ -439,7 +462,12 @@ public sealed class SqliteLedger : ILedger, IDisposable
 
         if (version < 4)
         {
-            await ExecuteAsync(SchemaVersion4, cancellationToken);
+            await ExecuteAsync(SchemaVersion4Sql, cancellationToken);
+        }
+
+        if (version < 5)
+        {
+            await ExecuteAsync(SchemaVersion5, cancellationToken);
         }
 
         await ExecuteAsync(string.Create(CultureInfo.InvariantCulture, $"PRAGMA user_version = {SchemaVersion}"), cancellationToken);
@@ -488,7 +516,8 @@ public sealed class SqliteLedger : ILedger, IDisposable
         reader.GetInt64(0), reader.GetString(1), reader.GetString(2),
         new Finding(reader.GetString(3), reader.GetInt32(4), reader.GetInt32(5), Enum.Parse<Severity>(reader.GetString(6), ignoreCase: true),
             reader.GetString(7), reader.GetString(8), reader.GetString(9), reader.GetDouble(10), reader.GetString(11)),
-        Text(reader, 12) is { } verdict ? new VerifyResponse(Enum.Parse<Verdict>(verdict, ignoreCase: true), reader.GetString(13)) : null);
+        Text(reader, 12) is { } verdict ? new VerifyResponse(Enum.Parse<Verdict>(verdict, ignoreCase: true), reader.GetString(13)) : null,
+        Text(reader, 14) is { } fix ? new FixOutcome(Enum.Parse<FixState>(fix, ignoreCase: true), reader.GetString(15)) : null);
 
     private static ScanRun ReadRun(SqliteDataReader reader) => new(
         reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4),

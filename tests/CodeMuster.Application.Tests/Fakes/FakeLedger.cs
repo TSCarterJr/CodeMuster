@@ -10,6 +10,7 @@ public sealed class FakeLedger : ILedger
     public List<(Analysis Analysis, IReadOnlyList<Finding> Findings)> Analyses { get; } = [];
     public List<ScanRun> Runs { get; } = [];
     public Dictionary<long, VerifyResponse> Verifications { get; } = [];
+    public Dictionary<long, FixOutcome> Fixes { get; } = [];
     public Action<Analysis>? OnRecordAnalysis { get; set; }
 
     public Task<IReadOnlyList<FileRecord>> GetFilesAsync(CancellationToken cancellationToken) =>
@@ -78,6 +79,16 @@ public sealed class FakeLedger : ILedger
         return Task.CompletedTask;
     }
 
+    public Task RecordFixAsync(Analysis analysis, IReadOnlyList<(long FindingId, FixOutcome Outcome)> outcomes, CancellationToken cancellationToken)
+    {
+        foreach (var (findingId, outcome) in outcomes)
+        {
+            Fixes[findingId] = outcome;
+        }
+
+        return RecordAnalysisAsync(analysis, [], cancellationToken);
+    }
+
     public Task RecordVerificationAsync(Analysis analysis, long findingId, VerifyResponse verification, CancellationToken cancellationToken)
     {
         Verifications[findingId] = verification;
@@ -102,7 +113,7 @@ public sealed class FakeLedger : ILedger
             .Where(a => a.Analysis.Succeeded && live.Contains(a.Analysis.UnitId))
             .GroupBy(a => a.Analysis.UnitId)
             .Select(g => g.Last())
-            .SelectMany(a => a.Findings.Select(f => new UnitFinding(f.Id, a.Analysis.UnitId, a.Analysis.Fingerprint, f.Finding, Verifications.GetValueOrDefault(f.Id))))
+            .SelectMany(a => a.Findings.Select(f => new UnitFinding(f.Id, a.Analysis.UnitId, a.Analysis.Fingerprint, f.Finding, Verifications.GetValueOrDefault(f.Id), Fixes.GetValueOrDefault(f.Id))))
             .OrderBy(f => f.Id)
             .ToList();
         return Task.FromResult<IReadOnlyList<UnitFinding>>(current);

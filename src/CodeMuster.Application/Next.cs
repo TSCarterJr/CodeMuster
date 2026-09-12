@@ -7,6 +7,12 @@ namespace CodeMuster.Application;
 /// <summary>Hands out the next units that need work, each as one markdown pack (D01). A verify unit's pack asks the model to refute its finding instead of auditing (D27).</summary>
 public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool interactive = true, UnitKind? kind = null, string? path = null)
 {
+    private const string FixInstructions =
+        "Fix the confirmed findings below in the file under Files. Change only what a finding calls for, keep the file's existing style, "
+        + "and do not rewrite unrelated code, weaken a test, or delete a check to make a symptom go away. "
+        + "Answer with what you changed, the ids of the findings that change addresses, and the id and reason for any finding you decline; "
+        + "decline a finding rather than forcing a change you cannot justify from the code.";
+
     private const string VerifyInstructions =
         "An earlier analysis reported the finding below. Try to refute it: check the claim against the code under Files and follow the calls it depends on. "
         + "Answer refuted when the code shows the claim is wrong or the defect cannot happen, confirmed only when the code shows the defect is real, "
@@ -21,9 +27,10 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
     {
         var units = await ledger.NextAsync(batch, kind, path, cancellationToken);
         var members = await ledger.GetMembersAsync(units.Select(u => u.Id).ToList(), cancellationToken);
-        var findings = units.Any(u => u.Kind == UnitKind.Verify)
-            ? (await ledger.GetCurrentFindingsAsync(cancellationToken)).ToDictionary(f => UnitIds.Verify(f.Id), f => f.Finding)
+        IReadOnlyList<UnitFinding> current = units.Any(u => u.Kind is UnitKind.Verify or UnitKind.Fix)
+            ? await ledger.GetCurrentFindingsAsync(cancellationToken)
             : [];
+        var findings = current.ToDictionary(f => UnitIds.Verify(f.Id), f => f.Finding);
         var packs = new List<UnitPack>(units.Count);
         foreach (var unit in units)
         {
@@ -39,7 +46,8 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
                 throw new InvalidOperationException(Done.Replaced(unit.Id));
             }
 
-            packs.Add(new UnitPack(unit.Id, unit.Kind, unit.Key, unit.Fingerprint, Render(unit, await SelectAsync(unitMembers, cancellationToken), finding)));
+            var targets = unit.Kind == UnitKind.Fix ? Targets(current, unit.Key) : [];
+            packs.Add(new UnitPack(unit.Id, unit.Kind, unit.Key, unit.Fingerprint, Render(unit, await SelectAsync(unitMembers, cancellationToken), finding, targets)));
         }
 
         return packs;
@@ -93,7 +101,14 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
         }));
     }
 
-    private string Render(Unit unit, IReadOnlyList<Part> parts, Finding? finding)
+    private static IReadOnlyList<FixTarget> Targets(IReadOnlyList<UnitFinding> current, string path) =>
+        current
+            .Where(f => f.Finding.Path == path && f.Verification?.Verdict == Verdict.Confirmed)
+            .OrderBy(f => f.Finding.LineStart)
+            .Select(f => new FixTarget(f.Id, f.Finding, f.Verification?.Reason))
+            .ToList();
+
+    private string Render(Unit unit, IReadOnlyList<Part> parts, Finding? finding, IReadOnlyList<FixTarget> targets)
     {
         var lenses = config.LensesFor(parts.Select(p => (p.Member.Path, Languages.FromPath(p.Member.Path))));
         var outlined = parts.Count(p => p.Outlined);
@@ -114,7 +129,7 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
 
         lines.Add("");
         lines.Add("## Instructions");
-        if (finding is null)
+        if (unit.Kind is not (UnitKind.Verify or UnitKind.Fix))
         {
             foreach (var lens in lenses)
             {
@@ -124,9 +139,13 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
                 lines.Add(lens.Instructions);
             }
         }
-        else
+        else if (finding is not null)
         {
             lines.AddRange(["", VerifyInstructions, "", "## Finding", "", "```json", JsonSerializer.Serialize(finding, DomainJson.Options), "```"]);
+        }
+        else
+        {
+            lines.AddRange(["", FixInstructions, "", "## Findings", "", "```json", FixJson.SerializeTargets(targets), "```"]);
         }
 
         lines.Add("");
@@ -164,12 +183,14 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
         lines.Add("Reply with JSON only, in exactly this shape:");
         lines.Add("");
         lines.Add("```json");
-        lines.Add(finding is null ? AnalysisResponseJson.Sample : VerifyResponseJson.Sample);
+        lines.Add(unit.Kind == UnitKind.Fix ? FixResponseJson.Sample : finding is null ? AnalysisResponseJson.Sample : VerifyResponseJson.Sample);
         lines.Add("```");
         lines.Add("");
-        var rule = finding is null
-            ? "Every finding must cite a path listed under Files and set lens_id to the lens it came from."
-            : "The reason must point at the lines that settle it.";
+        var rule = unit.Kind == UnitKind.Fix
+            ? "Every id you answer with must be one of the findings above."
+            : finding is null
+                ? "Every finding must cite a path listed under Files and set lens_id to the lens it came from."
+                : "The reason must point at the lines that settle it.";
         if (interactive)
         {
             lines.Add(rule + " Then record it with:");

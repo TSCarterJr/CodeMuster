@@ -79,6 +79,26 @@ public class NextTests
     }
 
     [Fact]
+    public async Task FixPack_ShowsTheConfirmedFindingsAndTheWholeFile_AndAsksWhatChanged()
+    {
+        var source = AddFileUnit("src/A.cs", "class A { }");
+        var finding = new Finding("src/A.cs", 1, 1, Severity.High, "security", "A leaks.", "Line 1 is public.", 0.8, "default");
+        await ledger.RecordAnalysisAsync(new Analysis(source.Id, source.Fingerprint, "lens", "2026-09-11T00:00:00.0000000Z", true, "A", null), [finding], CancellationToken.None);
+        ledger.Verifications[1] = new VerifyResponse(Verdict.Confirmed, "Line 1 really is public.");
+        AddUnit(UnitIds.Fix("src/A.cs"), UnitKind.Fix, "src/A.cs", new UnitMember(UnitIds.Fix("src/A.cs"), "src/A.cs", null, "hash-src/A.cs", 0));
+
+        var pack = Assert.Single(await RunAsync());
+
+        Assert.Contains("- kind: fix", pack.Markdown);
+        Assert.Contains("Fix the confirmed findings below", pack.Markdown);
+        Assert.Contains("## Findings", pack.Markdown);
+        Assert.Contains("\"id\": 1", pack.Markdown);
+        Assert.Contains("\"confirmed_because\": \"Line 1 really is public.\"", pack.Markdown);
+        Assert.Contains("class A { }", pack.Markdown);
+        Assert.Contains(FixResponseJson.Sample, pack.Markdown);
+    }
+
+    [Fact]
     public async Task VerifyPack_ShowsTheFindingAndTheCodeBehindIt_AndAsksForAVerdict()
     {
         var source = AddFileUnit("src/A.cs", "class A { }");

@@ -33,6 +33,9 @@ public interface ILedger
     /// <summary>The findings of the most recent successful analysis of every non-retired unit, each with the fingerprint that analysis was made against, so a stale unit's findings still show and can be flagged, oldest first, each with its id and latest verdict.</summary>
     Task<IReadOnlyList<UnitFinding>> GetCurrentFindingsAsync(CancellationToken cancellationToken);
 
+    /// <summary>Records a fix unit's analysis and what it did about each finding, in one transaction, and moves the unit (D37).</summary>
+    Task RecordFixAsync(Analysis analysis, IReadOnlyList<(long FindingId, FixOutcome Outcome)> outcomes, CancellationToken cancellationToken);
+
     /// <summary>What produced the latest successful analysis of each unit, for units whose analysis recorded it (D35).</summary>
     Task<IReadOnlyDictionary<string, AgentIdentity>> GetProvenanceAsync(CancellationToken cancellationToken);
 

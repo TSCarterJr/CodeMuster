@@ -6,4 +6,5 @@ namespace CodeMuster.Domain;
 /// <param name="Fingerprint">Unit fingerprint the analysis was produced against; differs from the unit's current fingerprint once the unit is stale.</param>
 /// <param name="Finding">The finding itself (D11).</param>
 /// <param name="Verification">The latest verdict from its verify unit, or null while unverified.</param>
-public sealed record UnitFinding(long Id, string UnitId, string Fingerprint, Finding Finding, VerifyResponse? Verification);
+/// <param name="Fix">What fix mode did about it, or null while nothing has (D37).</param>
+public sealed record UnitFinding(long Id, string UnitId, string Fingerprint, Finding Finding, VerifyResponse? Verification, FixOutcome? Fix = null);

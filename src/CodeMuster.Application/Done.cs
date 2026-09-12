@@ -28,9 +28,12 @@ public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdent
         var analysis = new Analysis(unitId, fingerprint, lensHash, now, true, null, null, by);
         try
         {
-            return unit.Kind == UnitKind.Verify
-                ? await RecordVerdictAsync(unit, current, analysis, responseJson, cancellationToken)
-                : await RecordFindingsAsync(unit, members, current, analysis, responseJson, cancellationToken);
+            return unit.Kind switch
+            {
+                UnitKind.Verify => await RecordVerdictAsync(unit, current, analysis, responseJson, cancellationToken),
+                UnitKind.Fix => await RecordFixAsync(unit, current, analysis, responseJson, cancellationToken),
+                _ => await RecordFindingsAsync(unit, members, current, analysis, responseJson, cancellationToken),
+            };
         }
         catch (JsonException ex)
         {
@@ -74,6 +77,32 @@ public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdent
         var verdict = response.Verdict.ToString().ToLowerInvariant();
         await ledger.RecordVerificationAsync(analysis with { Summary = $"{verdict}: {response.Reason}" }, finding.Id, response, cancellationToken);
         return new DoneResult(DoneOutcome.Recorded, $"recorded {verdict}");
+    }
+
+    private async Task<DoneResult> RecordFixAsync(Unit unit, IReadOnlyList<UnitFinding> current, Analysis analysis, string responseJson, CancellationToken cancellationToken)
+    {
+        var response = FixResponseJson.Parse(responseJson);
+        var mine = current
+            .Where(f => f.Finding.Path == unit.Key && f.Verification?.Verdict == Verdict.Confirmed)
+            .Select(f => f.Id)
+            .ToHashSet();
+        var cited = response.Addressed.Concat(response.Declined.Select(d => d.Finding)).ToList();
+        if (cited.Count == 0)
+        {
+            return new DoneResult(DoneOutcome.Rejected, $"{unit.Id} addressed or declined nothing; every finding in the pack needs an answer");
+        }
+
+        if (cited.FirstOrDefault(id => !mine.Contains(id), -1) is var stray && stray >= 0)
+        {
+            return new DoneResult(DoneOutcome.Rejected, string.Create(CultureInfo.InvariantCulture, $"finding {stray} is not a confirmed finding in {unit.Key}"));
+        }
+
+        var outcomes = response.Addressed
+            .Select(id => (FindingId: id, Outcome: new FixOutcome(FixState.Fixed, response.Summary)))
+            .Concat(response.Declined.Select(d => (FindingId: d.Finding, Outcome: new FixOutcome(FixState.Declined, d.Reason))))
+            .ToList();
+        await ledger.RecordFixAsync(analysis with { Summary = response.Summary }, outcomes, cancellationToken);
+        return new DoneResult(DoneOutcome.Recorded, string.Create(CultureInfo.InvariantCulture, $"fixed {response.Addressed.Count} finding(s), declined {response.Declined.Count}"));
     }
 
     private async Task RetireVerifyUnitsAsync(IEnumerable<UnitFinding> replaced, CancellationToken cancellationToken)

@@ -46,6 +46,62 @@ public class FixTests
 
     private Unit Stored(string id) => ledger.Units.Single(u => u.Id == id);
 
+    private Task<DoneResult> DoneAsync(Unit fix, string responseJson) =>
+        new Done(ledger, new FakeClock(), Config.Default).RunAsync(fix.Id, fix.Fingerprint, responseJson, CancellationToken.None);
+
+    [Fact]
+    public async Task AFixResponse_MarksFindingsFixedOrDeclined_AndTheUnitDone()
+    {
+        var unit = AddUnit("src/a.cs");
+        var ids = await RecordAsync(unit, (10, Verdict.Confirmed), (20, Verdict.Confirmed));
+        await PlanAsync();
+        var fix = Stored(UnitIds.Fix("src/a.cs"));
+        var response = FixResponseJson.Serialize(new FixResponse(
+            "Added the tenant filter.",
+            [ids[0]],
+            [new DeclinedFix(ids[1], "The caller already checks this.")]));
+
+        var result = await DoneAsync(fix, response);
+
+        Assert.Equal(DoneOutcome.Recorded, result.Outcome);
+        Assert.Equal("fixed 1 finding(s), declined 1", result.Message);
+        Assert.Equal(UnitStatus.Done, Stored(fix.Id).Status);
+        var outcomes = (await ledger.GetCurrentFindingsAsync(CancellationToken.None)).ToDictionary(f => f.Id, f => f.Fix);
+        Assert.Equal(new FixOutcome(FixState.Fixed, "Added the tenant filter."), outcomes[ids[0]]);
+        Assert.Equal(new FixOutcome(FixState.Declined, "The caller already checks this."), outcomes[ids[1]]);
+    }
+
+    [Fact]
+    public async Task AFixResponse_CitingAFindingFromAnotherFile_IsRejected()
+    {
+        var a = AddUnit("src/a.cs");
+        var b = AddUnit("src/b.cs");
+        var mine = await RecordAsync(a, (10, Verdict.Confirmed));
+        var theirs = await RecordAsync(b, (10, Verdict.Confirmed));
+        await PlanAsync();
+        var fix = Stored(UnitIds.Fix("src/a.cs"));
+        var response = FixResponseJson.Serialize(new FixResponse("Fixed both.", [mine[0], theirs[0]], []));
+
+        var result = await DoneAsync(fix, response);
+
+        Assert.Equal(DoneOutcome.Rejected, result.Outcome);
+        Assert.Contains(theirs[0].ToString(System.Globalization.CultureInfo.InvariantCulture), result.Message);
+    }
+
+    [Fact]
+    public async Task AFixResponse_ThatNeitherFixesNorDeclines_IsAFailedAttempt()
+    {
+        var unit = AddUnit("src/a.cs");
+        await RecordAsync(unit, (10, Verdict.Confirmed));
+        await PlanAsync();
+        var fix = Stored(UnitIds.Fix("src/a.cs"));
+
+        var result = await DoneAsync(fix, FixResponseJson.Serialize(new FixResponse("Had a look.", [], [])));
+
+        Assert.Equal(DoneOutcome.Rejected, result.Outcome);
+        Assert.Contains("addressed or declined", result.Message);
+    }
+
     [Fact]
     public async Task ConfirmedFindingsInOneFile_BecomeOneFixUnitForThatFile()
     {
