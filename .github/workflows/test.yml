@@ -10,8 +10,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+        include:
+          - name: linux
+            runner: ['self-hosted', 'Linux', 'X64']
+          - name: windows
+            runner: 'windows-latest'
+          - name: macos
+            runner: 'macos-latest'
+    name: test (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -19,7 +26,7 @@ jobs:
           dotnet-version: 10.0.x
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - run: dotnet restore
       - run: dotnet restore fixtures/mixed-repo/MixedRepo.sln
       - run: dotnet restore fixtures/minimal-api/MinimalApi.sln

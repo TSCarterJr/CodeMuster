@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -25,7 +25,7 @@ jobs:
           dotnet-version: 10.0.x
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - id: version
         env:
           EVENT: ${{ github.event_name }}
@@ -94,10 +94,36 @@ jobs:
           echo "codemuster --version printed $actual"
           test "$actual" = "$VERSION"
 
-  release:
+  publish:
     needs: [build, smoke]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: packages
+      - name: Publish to npm, platform packages before the launcher
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          npm --version
+          for platform in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-arm64 win32-x64; do
+            npm publish "./packages/codemuster-$platform-$VERSION.tgz" --access public
+          done
+          npm publish "./packages/codemuster-$VERSION.tgz" --access public
+
+  release:
+    needs: [build, smoke, publish]
+    if: github.event_name == 'push'
+    runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: write
     steps:
@@ -111,4 +137,4 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           gh release create "$TAG" packages/*.tgz --repo "$GITHUB_REPOSITORY" --title "$TAG" \
-            --notes "Publish to npm with npm publish <file> --access public: the six platform packages first, then codemuster."
+            --notes "Published to npm as ${TAG#v}."
