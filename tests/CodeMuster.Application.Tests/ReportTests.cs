@@ -37,6 +37,35 @@ public class ReportTests
         new(path, lineStart, lineEnd, severity, "security", claim, evidence, confidence, Lens);
 
     [Fact]
+    public async Task VulnerableDependencies_GetTheirOwnSection_AndStayOutOfTheCodeFindings()
+    {
+        ledger.Runs.Add(new ScanRun(At, Head, 1, 0, 2, null));
+        var code = AddUnit("src/a.cs");
+        await AnalyzeAsync(code, "Does A", Finding("src/a.cs", 1, 1, Severity.High, "A code defect", "Evidence.", 0.9));
+        var manifest = new Unit(UnitIds.Dependency("web/package.json"), UnitKind.Dependency, "web/package.json", "fp-dep", UnitStatus.Done, Fidelity.Full, null, null, null);
+        ledger.Units.Add(manifest);
+        var advisory = new Finding(
+            "web/package.json", 1, 1, Severity.Critical, DependencyFindings.Category,
+            "next 16.0.0 - 16.3.2 has a known critical severity vulnerability (GHSA-p293), declared here.",
+            "Next.js: Unauthenticated Remote Code Execution https://example.test/GHSA-p293. Fixed in 16.3.5.",
+            1.0, DependencyFindings.Lens);
+        await ledger.RecordAnalysisAsync(
+            new Analysis(manifest.Id, manifest.Fingerprint, "", At, true, "1 vulnerable package(s) reported by npm audit", null, new AgentIdentity("npm audit")),
+            [advisory],
+            CancellationToken.None,
+            new VerifyResponse(Verdict.Confirmed, "reported by npm audit"));
+
+        var markdown = await RunAsync();
+
+        Assert.Contains("## Vulnerable dependencies (1)\n", markdown);
+        Assert.Contains("- `web/package.json` [critical] next 16.0.0 - 16.3.2 has a known critical severity vulnerability", markdown);
+        Assert.Contains("Fixed in 16.3.5.", markdown);
+        Assert.Contains("## Findings (1)", markdown);
+        Assert.Contains("A code defect", markdown);
+        Assert.DoesNotContain("### critical", markdown);
+    }
+
+    [Fact]
     public async Task WhenAnalysesRecordTheirAgent_TheHeaderSaysWhoAuditedHowMuch()
     {
         ledger.Runs.Add(new ScanRun(At, Head, 2, 0, 2, null));

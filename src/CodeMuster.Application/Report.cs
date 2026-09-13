@@ -16,8 +16,10 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
             .ToList();
         var current = await ledger.GetCurrentFindingsAsync(cancellationToken);
         var provenance = await ledger.GetProvenanceAsync(cancellationToken);
-        var findings = current.Where(f => includeRefuted || f.Verification?.Verdict != Verdict.Refuted).ToList();
-        var refuted = current.Count - findings.Count;
+        var dependencies = current.Where(f => f.Finding.Category == DependencyFindings.Category).ToList();
+        var code = current.Where(f => f.Finding.Category != DependencyFindings.Category).ToList();
+        var findings = code.Where(f => includeRefuted || f.Verification?.Verdict != Verdict.Refuted).ToList();
+        var refuted = code.Count - findings.Count;
         var fingerprints = units.ToDictionary(u => u.Id, u => u.Fingerprint);
         var at = status.HeadCommit is null ? "no scan yet" : status.HeadCommit[..Math.Min(7, status.HeadCommit.Length)];
 
@@ -41,6 +43,22 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
         {
             lines.Insert(3, audited);
             lines.Insert(4, "");
+        }
+
+        if (dependencies.Count > 0)
+        {
+            lines.Add("");
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"## Vulnerable dependencies ({dependencies.Count})"));
+            lines.Add("");
+            foreach (var dependency in dependencies
+                .OrderBy(f => f.Finding.Severity)
+                .ThenBy(f => f.Finding.Path, StringComparer.Ordinal)
+                .ThenBy(f => f.Finding.Claim, StringComparer.Ordinal))
+            {
+                var fixedNote = dependency.Fix is { State: FixState.Fixed } ? " (fixed)" : "";
+                lines.Add($"- `{dependency.Finding.Path}` [{Name(dependency.Finding.Severity)}]{fixedNote} {Inline(dependency.Finding.Claim)}");
+                lines.Add("  " + Inline(dependency.Finding.Evidence));
+            }
         }
 
         foreach (var severity in Enum.GetValues<Severity>())

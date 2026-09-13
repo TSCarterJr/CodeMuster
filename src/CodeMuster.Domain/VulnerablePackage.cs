@@ -18,3 +18,13 @@ public sealed record VulnerablePackage(
     string Title,
     string? FixedVersion,
     bool Direct);
+
+/// <summary>How a dependency finding is labelled, so everything that reads findings agrees (D38).</summary>
+public static class DependencyFindings
+{
+    /// <summary>The <c>category</c> every dependency finding carries.</summary>
+    public const string Category = "dependency";
+
+    /// <summary>The <c>lens_id</c> every dependency finding carries; no lens text produced it.</summary>
+    public const string Lens = "dependencies";
+}

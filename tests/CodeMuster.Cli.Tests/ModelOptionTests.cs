@@ -7,6 +7,7 @@ public class ModelOptionTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
         await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
 
         var run = await CliProcess.RunAsync(repo.Root, "run", "--agent", "fake", "-j", "3", "--model", "test-model", "--effort", "low");
@@ -21,6 +22,7 @@ public class ModelOptionTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
         await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
 
         await CliProcess.RunAsync(repo.Root, "run", "--agent", "fake", "-j", "3");

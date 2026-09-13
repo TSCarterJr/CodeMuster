@@ -12,6 +12,7 @@ public class HeadlessTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
         await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
         var template = Path.Combine(repo.Root, "template.json");
         var planted = AnalysisResponseJson.Parse(AnalysisResponseJson.Sample).Findings[0] with { Claim = PlantedClaim, Severity = Severity.Medium };
@@ -60,6 +61,7 @@ public class HeadlessTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
         await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
 
         var run = await CliProcess.RunAsync(repo.Root, "run", "--agent", "fake");
@@ -75,6 +77,7 @@ public class HeadlessTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
         await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
         var environment = new Dictionary<string, string> { ["CODEMUSTER_FAKE_RESPONSE"] = Path.Combine(repo.Root, "nope.json") };
 
@@ -91,6 +94,7 @@ public class HeadlessTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
         await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
 
         var run = await CliProcess.RunAsync(repo.Root, "run", "--agent", "gpt5");

@@ -8,6 +8,7 @@ public class FixCommandTests
     {
         var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
         await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
         var template = Path.Combine(repo.Root, "template.json");
         var planted = AnalysisResponseJson.Parse(AnalysisResponseJson.Sample).Findings[0] with { Confidence = 0.9 };

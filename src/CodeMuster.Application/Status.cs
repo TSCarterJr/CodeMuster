@@ -11,6 +11,10 @@ public sealed class Status(ILedger ledger, Config config)
         var units = (await ledger.GetUnitsAsync(cancellationToken)).Where(u => u.Status != UnitStatus.Retired).ToList();
         var files = await ledger.GetFilesAsync(cancellationToken);
         var run = await ledger.GetLastRunAsync(cancellationToken);
+        var vulnerable = (await ledger.GetCurrentFindingsAsync(cancellationToken))
+            .Where(f => f.Finding.Category == DependencyFindings.Category && f.Fix?.State != FixState.Fixed)
+            .GroupBy(f => f.Finding.Severity)
+            .ToDictionary(group => group.Key, group => group.Count());
         var kinds = units
             .GroupBy(u => u.Kind)
             .OrderBy(g => g.Key)
@@ -26,6 +30,7 @@ public sealed class Status(ILedger ledger, Config config)
             run?.ResolutionRate,
             kinds,
             config.ResolutionThreshold,
-            run?.TopUnresolvedNames);
+            run?.TopUnresolvedNames,
+            vulnerable);
     }
 }

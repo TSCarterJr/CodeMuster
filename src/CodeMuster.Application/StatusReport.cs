@@ -21,6 +21,7 @@ public sealed record KindStatus(UnitKind Kind, int Done, int Total, int Stale);
 /// <param name="Kinds">Counts per unit kind present, in kind order.</param>
 /// <param name="ResolutionThreshold">The rate below which coverage is never complete (D09).</param>
 /// <param name="TopUnresolvedNames">Most frequent unresolved call names of the last scan, or null when no mapper ran.</param>
+/// <param name="VulnerablePackages">Outstanding vulnerable packages by severity, from the last dependency audit (D38).</param>
 public sealed record StatusReport(
     string? HeadCommit,
     int Analyzed,
@@ -31,7 +32,8 @@ public sealed record StatusReport(
     double? ResolutionRate,
     IReadOnlyList<KindStatus> Kinds,
     double ResolutionThreshold,
-    IReadOnlyList<string>? TopUnresolvedNames)
+    IReadOnlyList<string>? TopUnresolvedNames,
+    IReadOnlyDictionary<Severity, int>? VulnerablePackages = null)
 {
     /// <summary>The plain-text block the CLI prints, lines joined with LF and no trailing newline.</summary>
     public string Render()
@@ -44,6 +46,14 @@ public sealed record StatusReport(
             lines.Add(kind.Stale == 0
                 ? string.Create(CultureInfo.InvariantCulture, $"{name} {kind.Done}/{kind.Total}")
                 : string.Create(CultureInfo.InvariantCulture, $"{name} {kind.Done}/{kind.Total}, {kind.Stale} stale"));
+        }
+
+        if (VulnerablePackages is { Count: > 0 } vulnerable)
+        {
+            var byWorst = vulnerable
+                .OrderBy(entry => entry.Key)
+                .Select(entry => string.Create(CultureInfo.InvariantCulture, $"{entry.Value} {entry.Key.ToString().ToLowerInvariant()}"));
+            lines.Add("vulnerable packages " + string.Join(", ", byWorst));
         }
 
         lines.Add(string.Create(CultureInfo.InvariantCulture, $"stale {Stale}"));

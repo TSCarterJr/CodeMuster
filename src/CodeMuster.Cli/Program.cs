@@ -4,6 +4,7 @@ using System.Text;
 using CodeMuster.Application;
 using CodeMuster.Domain;
 using CodeMuster.Infrastructure;
+using CodeMuster.Infrastructure.Audits;
 using CodeMuster.Mapping.CSharp;
 using CodeMuster.Mapping.TypeScript;
 
@@ -178,8 +179,27 @@ public static class Program
     private static async Task<int> ScanAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, CancellationToken cancellationToken)
     {
         var mappers = command.Options.GetValueOrDefault("mode") == "file" ? [] : Mappers();
-        var scan = await new Scan(ledger, tree, new GitBlobHasher(repoRoot), clock, config, mappers, repoRoot, new ProgressWriter(Console.Error)).RunAsync(cancellationToken);
+        var scan = await new Scan(ledger, tree, new GitBlobHasher(repoRoot), clock, config, mappers, repoRoot, new ProgressWriter(Console.Error), new DependencyAuditor())
+            .RunAsync(cancellationToken);
         Console.WriteLine($"scanned {scan.FilesIncluded} files ({scan.FilesExcluded} excluded) at {scan.HeadCommit[..7]}: {scan.UnitsCreated} new, {scan.UnitsStale} stale, {scan.UnitsTotal} total units");
+        if (scan.Vulnerabilities is { } audit)
+        {
+            if (audit.Packages > 0)
+            {
+                var bySeverity = audit.BySeverity
+                    .OrderBy(entry => entry.Key)
+                    .Select(entry => string.Create(CultureInfo.InvariantCulture, $"{entry.Value} {entry.Key.ToString().ToLowerInvariant()}"));
+                Console.WriteLine(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{audit.Packages} vulnerable package(s) across {audit.Manifests} manifest(s): {string.Join(", ", bySeverity)}"));
+            }
+
+            foreach (var diagnostic in audit.Diagnostics)
+            {
+                Console.Error.WriteLine($"warning: {diagnostic}");
+            }
+        }
+
         if (scan.SliceMode is { } slices)
         {
             var resolution = slices.ResolutionRate is { } rate ? string.Create(CultureInfo.InvariantCulture, $", resolution {rate * 100:0.0}%") : "";

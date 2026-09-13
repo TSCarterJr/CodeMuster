@@ -11,6 +11,7 @@ public class SliceModeTests
         repo.CopyRestoredFromFixture("mixed-repo", Path.Combine("web", "node_modules"), "npm ci --prefix fixtures/mixed-repo/web");
         repo.Dotnet("restore", "MixedRepo.sln");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
 
         var scan = await CliProcess.RunAsync(repo.Root, "scan");
 

@@ -9,6 +9,7 @@ public class PathScopeTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
         await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
 
         var whole = Tokens((await CliProcess.RunAsync(repo.Root, "estimate")).Stdout);

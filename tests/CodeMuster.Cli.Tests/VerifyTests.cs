@@ -10,6 +10,7 @@ public class VerifyTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
         await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
         var sample = AnalysisResponseJson.Parse(AnalysisResponseJson.Sample).Findings[0];
         var template = Path.Combine(repo.Root, "template.json");

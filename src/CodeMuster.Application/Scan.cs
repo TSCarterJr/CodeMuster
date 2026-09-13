@@ -158,11 +158,11 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             1,
             1,
             package.Severity,
-            "dependency",
+            DependencyFindings.Category,
             $"{package.Package} {package.VulnerableVersions} has a known {package.Severity.ToString().ToLowerInvariant()} severity vulnerability ({package.AdvisoryId}), {reach}.",
             $"{package.Title} {package.AdvisoryUrl}.{fix}",
             1.0,
-            "dependencies");
+            DependencyFindings.Lens);
     }
 
     private async Task<FileRecord> RefreshAsync(SourceFile file, FileRecord? previous, string now, CancellationToken cancellationToken)

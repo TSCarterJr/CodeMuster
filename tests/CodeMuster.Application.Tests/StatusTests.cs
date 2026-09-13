@@ -138,4 +138,22 @@ public class StatusTests
         Assert.EndsWith("\nresolution 42.0%\nincomplete: resolution 42.0% is below the 90.0% threshold\ntop unresolved: Send, Publish", text);
         Assert.DoesNotContain("\ncomplete", text);
     }
+
+    [Fact]
+    public async Task OutstandingVulnerablePackages_AreCountedBySeverity()
+    {
+        var manifest = new Unit(UnitIds.Dependency("web/package.json"), UnitKind.Dependency, "web/package.json", "fp", UnitStatus.Done, Fidelity.Full, null, null, null);
+        ledger.Units.Add(manifest);
+        Finding Advisory(string package, Severity severity) => new(
+            "web/package.json", 1, 1, severity, DependencyFindings.Category, $"{package} is vulnerable", "evidence", 1.0, DependencyFindings.Lens);
+        await ledger.RecordAnalysisAsync(
+            new Analysis(manifest.Id, manifest.Fingerprint, "", "2026-09-13T00:00:00.0000000Z", true, "2 vulnerable package(s)", null),
+            [Advisory("next", Severity.Critical), Advisory("sharp", Severity.High)],
+            CancellationToken.None,
+            new VerifyResponse(Verdict.Confirmed, "reported by npm audit"));
+
+        var report = await new Status(ledger, Config.Default).RunAsync(CancellationToken.None);
+
+        Assert.Contains("vulnerable packages 1 critical, 1 high", report.Render());
+    }
 }

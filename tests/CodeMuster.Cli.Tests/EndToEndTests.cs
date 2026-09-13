@@ -16,6 +16,7 @@ public class EndToEndTests
         Assert.False(Directory.Exists(Path.Combine(repo.Root, ".codemuster")));
 
         var init = await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
         Assert.Equal(0, init.ExitCode);
         Assert.Contains("created .codemuster/config.json", init.Stdout);
         Assert.Contains("already ignores", init.Stdout);
@@ -70,6 +71,7 @@ public class EndToEndTests
         await File.WriteAllTextAsync(gitignore, "bin/\nobj/");
 
         var first = await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
         Assert.Equal(0, first.ExitCode);
         Assert.Contains("added .codemuster/ledger.db to .gitignore", first.Stdout);
         Assert.Equal("bin/\nobj/\n.codemuster/ledger.db\n.codemuster/ledger.db-*\n", await File.ReadAllTextAsync(gitignore));
@@ -107,6 +109,7 @@ public class EndToEndTests
         await File.WriteAllTextAsync(gitignore, "  .codemuster/ledger.db\n");
 
         var init = await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
 
         Assert.Equal(0, init.ExitCode);
         Assert.Contains("added .codemuster/ledger.db to .gitignore", init.Stdout);
@@ -119,6 +122,7 @@ public class EndToEndTests
     {
         using var repo = TempRepo.FromFixture("mixed-repo");
         await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
         await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
 
         var next = await CliProcess.RunAsync(repo.Root, "next", "--batch", "2");

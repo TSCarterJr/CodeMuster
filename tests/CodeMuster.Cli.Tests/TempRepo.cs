@@ -19,6 +19,14 @@ public sealed class TempRepo : IDisposable
         return repo;
     }
 
+    /// <summary>Turns the dependency audit off, so end-to-end tests never reach the network.</summary>
+    public void WithoutVulnerabilityScan()
+    {
+        var path = Path.Combine(Root, ".codemuster", "config.json");
+        var config = File.ReadAllText(path);
+        File.WriteAllText(path, config.TrimEnd().TrimEnd('}').TrimEnd().TrimEnd(',') + ",\n  \"vulnerabilities\": false\n}\n");
+    }
+
     public void CopyRestoredFromFixture(string fixture, string relativeDirectory, string restoreCommand)
     {
         var source = Path.Combine(FindRepoRoot(), "fixtures", fixture, relativeDirectory);
