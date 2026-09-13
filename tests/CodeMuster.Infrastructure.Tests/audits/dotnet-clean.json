@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "parameters": "--vulnerable --include-transitive",
+  "sources": [
+    "https://api.nuget.org/v3/index.json",
+    "C:/Program Files (x86)/Microsoft SDKs/NuGetPackages/"
+  ],
+  "projects": [
+    {
+      "path": "E:/source/toolbagcrm/toolbagcrm-api/demo/ToolbagCRM.Demo/ToolbagCRM.Demo.csproj"
+    },
+    {
+      "path": "E:/source/toolbagcrm/toolbagcrm-api/src/ToolbagCRM.AdminMcp/ToolbagCRM.AdminMcp.csproj"
+    },
+    {
+      "path": "E:/source/toolbagcrm/toolbagcrm-api/src/ToolbagCRM.Api/ToolbagCRM.Api.csproj"
+    },
+    {
+      "path": "E:/source/toolbagcrm/toolbagcrm-api/src/ToolbagCRM.Contracts/ToolbagCRM.Contracts.csproj"
+    },
+    {
+      "path": "E:/source/toolbagcrm/toolbagcrm-api/src/ToolbagCRM.Core/ToolbagCRM.Core.csproj"
+    },
+    {
+      "path": "E:/source/toolbagcrm/toolbagcrm-api/src/ToolbagCRM.DemoApi/ToolbagCRM.DemoApi.csproj"
+    },
+    {
+      "path": "E:/source/toolbagcrm/toolbagcrm-api/src/ToolbagCRM.Infrastructure/ToolbagCRM.Infrastructure.csproj"
+    },
+    {
+      "path": "E:/source/toolbagcrm/toolbagcrm-api/src/ToolbagCRM.SupportAgent/ToolbagCRM.SupportAgent.csproj"
+    },
+    {
+      "path": "E:/source/toolbagcrm/toolbagcrm-api/tests/ToolbagCRM.AdminMcp.Tests/ToolbagCRM.AdminMcp.Tests.csproj"
+    },
+    {
+      "path": "E:/source/toolbagcrm/toolbagcrm-api/tests/ToolbagCRM.Api.Tests/ToolbagCRM.Api.Tests.csproj"
+    },
+    {
+      "path": "E:/source/toolbagcrm/toolbagcrm-api/tests/ToolbagCRM.Infrastructure.Tests/ToolbagCRM.Infrastructure.Tests.csproj"
+    }
+  ]
+}

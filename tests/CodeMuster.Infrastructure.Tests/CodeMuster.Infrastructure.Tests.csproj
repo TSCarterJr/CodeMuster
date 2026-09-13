@@ -2,4 +2,8 @@
   <ItemGroup>
     <ProjectReference Include="../../src/CodeMuster.Infrastructure/CodeMuster.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="audits/*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
