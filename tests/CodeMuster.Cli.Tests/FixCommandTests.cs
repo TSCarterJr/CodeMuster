@@ -95,6 +95,9 @@ public class FixCommandTests
         Assert.Equal(untracked, repo.Git("ls-files", "--others", "--exclude-standard"));
         Assert.Equal("keep my work\n", await File.ReadAllTextAsync(Path.Combine(repo.Root, "local notes.txt")));
         Assert.Contains("// fixture fix", repo.Git("show", "HEAD:" + target));
+        var report = await CliProcess.RunAsync(repo.Root, "report");
+        Assert.Equal(0, report.ExitCode);
+        Assert.Contains("  fix: fixed; ", report.Stdout);
     }
 
     [Fact]

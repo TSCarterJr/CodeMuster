@@ -36,6 +36,25 @@ public class ReportTests
     private static Finding Finding(string path, int lineStart, int lineEnd, Severity severity, string claim, string evidence, double confidence) =>
         new(path, lineStart, lineEnd, severity, "security", claim, evidence, confidence, Lens);
 
+    [Theory]
+    [InlineData(FixState.Fixed, "fixed")]
+    [InlineData(FixState.Declined, "declined")]
+    public async Task CodeFinding_ShowsRecordedFixOutcome_SeparatelyFromVerification(FixState state, string label)
+    {
+        var unit = AddUnit("src/a.cs");
+        await AnalyzeAsync(unit, "A", Finding("src/a.cs", 1, 1, Severity.High, "A defect", "Evidence.", 0.9));
+        var id = (await ledger.GetCurrentFindingsAsync(CancellationToken.None)).Single().Id;
+        ledger.Verifications[id] = new VerifyResponse(Verdict.Confirmed, "Defect verified.");
+        ledger.Fixes[id] = new FixOutcome(state, "First line.\nSecond line.");
+
+        var markdown = await RunAsync();
+
+        Assert.Contains("confidence 0.90, confirmed", markdown);
+        Assert.Contains("  confirmed: Defect verified.", markdown);
+        Assert.Contains("  fix: " + label + "; First line. Second line.", markdown);
+        Assert.Contains("A defect", markdown);
+    }
+
     [Fact]
     public async Task VulnerableDependencies_GetTheirOwnSection_AndStayOutOfTheCodeFindings()
     {

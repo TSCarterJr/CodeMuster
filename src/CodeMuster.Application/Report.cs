@@ -76,7 +76,7 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
             lines.Add("");
             lines.Add(string.Create(CultureInfo.InvariantCulture, $"### {Name(severity)} ({group.Count})"));
             lines.Add("");
-            foreach (var (_, unitId, fingerprint, finding, verification, _) in group)
+            foreach (var (_, unitId, fingerprint, finding, verification, fix) in group)
             {
                 var verdict = verification is null ? "unverified" : Name(verification.Verdict);
                 lines.Add(string.Create(CultureInfo.InvariantCulture, $"- `{FindingLocation.Of(finding)}` [{finding.LensId}, confidence {finding.Confidence:0.00}, {verdict}] {Inline(finding.Claim)}"));
@@ -84,6 +84,11 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
                 if (verification is not null)
                 {
                     lines.Add($"  {verdict}: {Inline(verification.Reason)}");
+                }
+
+                if (fix is not null)
+                {
+                    lines.Add($"  fix: {Name(fix.State)}; {Inline(fix.Reason)}");
                 }
 
                 if (fingerprints[unitId] != fingerprint)
