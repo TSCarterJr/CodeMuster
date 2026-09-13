@@ -231,3 +231,21 @@ test('update --check says what is available without installing it', async () => 
     registry.close();
   }
 });
+
+test('update says so plainly when the registry cannot be reached', async () => {
+  const stateDir = tempDir();
+  const said = [];
+
+  const code = await launcher.updateNow({
+    args: [],
+    stateDir,
+    platform: process.platform,
+    arch: process.arch,
+    currentVersion: '0.1.0',
+    registry: 'http://127.0.0.1:1',
+    out: { write: (line) => said.push(line) },
+  });
+
+  assert.equal(code, 1);
+  assert.match(said.join(''), /could not reach the npm registry/);
+});

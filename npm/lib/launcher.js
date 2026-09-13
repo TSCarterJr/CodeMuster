@@ -220,7 +220,13 @@ function bundledBuild(pkg) {
 
 async function updateNow({ args, stateDir, platform, arch, currentVersion, registry = REGISTRY, out = process.stdout }) {
   const checkOnly = args.includes('--check');
-  const packument = await getJson(`${registry}/codemuster`);
+  let packument;
+  try {
+    packument = await getJson(`${registry}/codemuster`);
+  } catch (error) {
+    out.write(`codemuster: could not reach the npm registry: ${error.message}\n`);
+    return 1;
+  }
   const latest = (packument['dist-tags'] && packument['dist-tags'].latest) || null;
   if (latest === null) {
     out.write('codemuster: the registry named no latest version\n');
@@ -239,7 +245,12 @@ async function updateNow({ args, stateDir, platform, arch, currentVersion, regis
 
   out.write(`updating codemuster ${currentVersion} to ${latest}\n`);
   const versionsDir = path.join(stateDir, 'versions');
-  await installVersion({ registry, version: latest, versionsDir, platform, arch });
+  try {
+    await installVersion({ registry, version: latest, versionsDir, platform, arch });
+  } catch (error) {
+    out.write(`codemuster: ${latest} could not be installed: ${error.message}\n`);
+    return 1;
+  }
   pruneVersions(versionsDir);
   fs.mkdirSync(stateDir, { recursive: true });
   fs.writeFileSync(path.join(stateDir, 'last-update-check'), String(Date.now()));
