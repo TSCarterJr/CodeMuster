@@ -138,5 +138,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" packages/*.tgz --repo "$GITHUB_REPOSITORY" --title "$TAG" \
-            --notes "Published to npm as ${TAG#v}."
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" packages/*.tgz --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" packages/*.tgz --repo "$GITHUB_REPOSITORY" --title "$TAG" \
+              --notes "Published to npm as ${TAG#v}."
+          fi
