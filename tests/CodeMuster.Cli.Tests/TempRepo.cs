@@ -20,11 +20,20 @@ public sealed class TempRepo : IDisposable
     }
 
     /// <summary>Turns the dependency audit off, so end-to-end tests never reach the network.</summary>
-    public void WithoutVulnerabilityScan()
+    public void WithoutVulnerabilityScan() => AppendConfig("\"vulnerabilities\": false");
+
+    /// <summary>Points the repository's test command at <paramref name="command"/>, as fix mode reads it.</summary>
+    public void WithTestCommand(params string[] command)
+    {
+        var quoted = string.Join(", ", command.Select(part => '"' + part + '"'));
+        AppendConfig("\"test_command\": [" + quoted + "]");
+    }
+
+    private void AppendConfig(string entry)
     {
         var path = Path.Combine(Root, ".codemuster", "config.json");
-        var config = File.ReadAllText(path);
-        File.WriteAllText(path, config.TrimEnd().TrimEnd('}').TrimEnd().TrimEnd(',') + ",\n  \"vulnerabilities\": false\n}\n");
+        var config = File.ReadAllText(path).TrimEnd().TrimEnd('}').TrimEnd().TrimEnd(',');
+        File.WriteAllText(path, config + ",\n  " + entry + "\n}\n");
     }
 
     public void CopyRestoredFromFixture(string fixture, string relativeDirectory, string restoreCommand)

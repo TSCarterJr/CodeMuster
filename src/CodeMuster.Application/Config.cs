@@ -13,6 +13,9 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     /// <summary>Repo-relative globs of files never analyzed, on top of the built-in <see cref="Exclusions"/> (D04). A glob without a slash matches file names, so a folder needs <c>folder/**</c>.</summary>
     public IReadOnlyList<string> Exclude { get; init; } = [];
 
+    /// <summary>The repository's own test command as a program and its arguments, such as <c>["dotnet", "test"]</c>. Fix mode runs it after every unit and throws away a fix that fails it (D37).</summary>
+    public IReadOnlyList<string> TestCommand { get; init; } = [];
+
     /// <summary>True when this repository's own <see cref="Exclude"/> globs cover the path, whatever the built-in rules say about it.</summary>
     public bool ExcludedHere(string path) => Exclude.Any(glob => Glob.IsMatch(glob, path));
 

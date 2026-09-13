@@ -12,6 +12,7 @@ public class FixRunTests
     private readonly FakeClock clock = new();
     private readonly FakeWorkspace workspace = new();
     private readonly List<string> notes = [];
+    private readonly FakeTestRunner tests = new();
 
     private async Task<IReadOnlyList<long>> SeedAsync(string path, params int[] lines)
     {
@@ -33,8 +34,8 @@ public class FixRunTests
         return ids;
     }
 
-    private Task<FixResult> RunAsync(FakeAgentAdapter adapter, int attempts = 2) =>
-        new Fix(ledger, tree, clock, Config.Default, workspace).RunAsync(
+    private Task<FixResult> RunAsync(FakeAgentAdapter adapter, int attempts = 2, ITestRunner? runner = null) =>
+        new Fix(ledger, tree, clock, Config.Default, workspace, runner).RunAsync(
             adapter,
             new FixOptions(attempts),
             new ListProgress(notes),
@@ -126,5 +127,82 @@ public class FixRunTests
         await RunAsync(adapter);
 
         Assert.Equal(["fixing src/a.cs, 1 finding(s)"], notes);
+    }
+
+    [Fact]
+    public async Task PassingTests_LetTheFixBeRecordedAndCommitted()
+    {
+        var ids = await SeedAsync("src/a.cs", 10);
+        var adapter = Fixer(_ => new FixResponse("Fixed it.", ids, []));
+        tests.Results.Enqueue(new TestRun(true, "all good"));
+
+        var result = await RunAsync(adapter, runner: tests);
+
+        Assert.Equal(1, tests.Runs);
+        Assert.Equal((1, 1, 0), (result.Units, result.Fixed, result.Declined));
+        Assert.Single(workspace.Commits);
+        Assert.Contains("running tests for src/a.cs", notes);
+    }
+
+    [Fact]
+    public async Task FailingTests_ThrowTheFixAway_AndNothingIsRecorded()
+    {
+        var ids = await SeedAsync("src/a.cs", 10);
+        var adapter = Fixer(_ => new FixResponse("Broke it.", ids, []));
+        tests.Results.Enqueue(new TestRun(false, "MyTest failed: expected 2, got 3"));
+        tests.Results.Enqueue(new TestRun(false, "MyTest failed: expected 2, got 3"));
+
+        var result = await RunAsync(adapter, runner: tests);
+
+        Assert.Equal(2, adapter.Packs.Count);
+        Assert.Equal([UnitIds.Fix("src/a.cs")], result.GaveUp);
+        Assert.Equal(0, result.Fixed);
+        Assert.Empty(workspace.Commits);
+        Assert.Equal(2, workspace.Restores);
+        Assert.Empty(ledger.Fixes);
+        Assert.Contains(notes, note => note.Contains("expected 2, got 3", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task FailingThenPassing_RecordsTheSecondAttempt()
+    {
+        var ids = await SeedAsync("src/a.cs", 10);
+        var adapter = Fixer(_ => new FixResponse("Second time lucky.", ids, []));
+        tests.Results.Enqueue(new TestRun(false, "broken"));
+        tests.Results.Enqueue(new TestRun(true, ""));
+
+        var result = await RunAsync(adapter, runner: tests);
+
+        Assert.Equal((1, 1, 0), (result.Units, result.Fixed, result.Declined));
+        Assert.Empty(result.GaveUp);
+        Assert.Single(workspace.Commits);
+        Assert.Equal(FixState.Fixed, ledger.Fixes[ids[0]].State);
+    }
+
+    [Fact]
+    public async Task WithoutATestCommand_TheFixIsRecordedUnverified()
+    {
+        var ids = await SeedAsync("src/a.cs", 10);
+        var adapter = Fixer(_ => new FixResponse("Fixed it.", ids, []));
+
+        var result = await RunAsync(adapter);
+
+        Assert.Equal(0, tests.Runs);
+        Assert.False(result.TestsRun);
+        Assert.Single(workspace.Commits);
+    }
+
+    [Fact]
+    public async Task ADeclineOnlyUnit_StillRunsTheTests_SinceTheAgentMayHaveTouchedFiles()
+    {
+        var ids = await SeedAsync("src/a.cs", 10);
+        var adapter = Fixer(_ => new FixResponse("Left alone.", [], [new DeclinedFix(ids[0], "Not real.")]), touchesFiles: false);
+        tests.Results.Enqueue(new TestRun(true, ""));
+
+        var result = await RunAsync(adapter, runner: tests);
+
+        Assert.Equal(1, tests.Runs);
+        Assert.True(result.TestsRun);
+        Assert.Empty(workspace.Commits);
     }
 }

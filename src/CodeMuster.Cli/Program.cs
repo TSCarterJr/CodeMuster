@@ -225,7 +225,13 @@ public static class Program
             int.Parse(command.Options.GetValueOrDefault("attempts", "3"), CultureInfo.InvariantCulture),
             command.Options.GetValueOrDefault("path"));
         Console.WriteLine($"fixing with {command.Options["agent"]}, one file at a time; each file it changes becomes a commit");
-        var fix = new Fix(ledger, tree, clock, config, new GitWorkspace(repoRoot));
+        ITestRunner? tests = config.TestCommand.Count > 0 ? new CommandTestRunner(repoRoot, config.TestCommand) : null;
+        if (tests is null)
+        {
+            Console.Error.WriteLine("warning: no test_command in .codemuster/config.json, so nothing checks that a fix still builds");
+        }
+
+        var fix = new Fix(ledger, tree, clock, config, new GitWorkspace(repoRoot), tests);
         var result = await fix.RunAsync(adapter, options, new ProgressWriter(Console.Out), cancellationToken);
         foreach (var unitId in result.GaveUp)
         {

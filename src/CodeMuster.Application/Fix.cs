@@ -1,10 +1,11 @@
 using System.Globalization;
+using System.Text.Json;
 using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
 
 /// <summary>Fixes what the audit confirmed (D37): one unit per file with confirmed findings, one fresh agent call each, serially, committing after every file it changes. The only use case that writes to the repository.</summary>
-public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock = null, Config? config = null, IWorkspace? workspace = null)
+public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock = null, Config? config = null, IWorkspace? workspace = null, ITestRunner? tests = null)
 {
     /// <summary>Plans the units, then works them one at a time: pack, agent, record, commit. Refuses to start unless the working tree is clean, and throws away a failed attempt's edits before retrying.</summary>
     public async Task<FixResult> RunAsync(IAgentAdapter adapter, FixOptions options, IProgress<string>? notes, CancellationToken cancellationToken)
@@ -29,7 +30,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
             var pack = (await next.RunAsync(gaveUp.Count + 1, cancellationToken)).FirstOrDefault(p => !gaveUp.Contains(p.UnitId));
             if (pack is null)
             {
-                return new FixResult(units, fixedCount, declined, gaveUp);
+                return new FixResult(units, fixedCount, declined, gaveUp, tests is not null);
             }
 
             var targets = (await ledger.GetCurrentFindingsAsync(cancellationToken))
@@ -38,7 +39,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
 
             var attempt = attempts.GetValueOrDefault(pack.UnitId) + 1;
             attempts[pack.UnitId] = attempt;
-            var result = await AttemptAsync(adapter, done, pack, cancellationToken);
+            var result = await AttemptAsync(adapter, done, pack, notes, cancellationToken);
             if (result.Outcome != DoneOutcome.Recorded)
             {
                 await repository.RestoreAsync(cancellationToken);
@@ -61,7 +62,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         }
     }
 
-    private static async Task<AttemptResult> AttemptAsync(IAgentAdapter adapter, Done done, UnitPack pack, CancellationToken cancellationToken)
+    private async Task<AttemptResult> AttemptAsync(IAgentAdapter adapter, Done done, UnitPack pack, IProgress<string>? notes, CancellationToken cancellationToken)
     {
         string text;
         try
@@ -74,8 +75,34 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         }
 
         var json = ResponseText.ExtractJson(text);
+        try
+        {
+            FixResponseJson.Parse(json);
+        }
+        catch (JsonException)
+        {
+            return new AttemptResult(DoneOutcome.InvalidResponse, null);
+        }
+
+        if (tests is not null)
+        {
+            notes?.Report($"running tests for {pack.Key}");
+            var run = await tests.RunAsync(cancellationToken).ConfigureAwait(false);
+            if (!run.Passed)
+            {
+                notes?.Report($"tests failed after fixing {pack.Key}, throwing the change away: {LastLine(run.Output)}");
+                return new AttemptResult(DoneOutcome.Rejected, null);
+            }
+        }
+
         var result = await done.RunAsync(pack.UnitId, pack.Fingerprint, json, cancellationToken);
         return new AttemptResult(result.Outcome, result.Outcome == DoneOutcome.Recorded ? json : null);
+    }
+
+    private static string LastLine(string output)
+    {
+        var lines = output.Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0).ToList();
+        return lines.Count == 0 ? "no output" : lines[^1];
     }
 
     private static string CommitMessage(string path, FixResponse response)
