@@ -33,9 +33,10 @@ public static class Program
                                                             model and effort go straight to the agent's own flags
           verify --agent <name> [-j N] [--attempts N] [--force] [--path <folder>] [--model <id>] [--effort <level>]
                                                             run --kind verify: try to refute recorded findings
-          fix --agent <name> [--attempts N] [--path <folder>] [--model <id>] [--effort <level>]
+          fix --agent <name> [--attempts N] [--path <folder>] [--model <id>] [--effort <level>] [--stash]
                                                             fix the confirmed findings, one file at a time, and commit
-                                                            each file it changes; needs a clean working tree
+                                                            each file it changes; offers to stash tracked local changes
+                                                            and restore them afterward; --stash consents without asking
           report [--out <file>] [--include-refuted]         render findings and coverage as markdown;
                                                             refuted findings are left out unless asked for
           skill install --for <agent> [--global]            install the skill for claude, codex, gemini, or opencode
@@ -222,9 +223,27 @@ public static class Program
             command.Options.GetValueOrDefault("model"),
             command.Options.GetValueOrDefault("effort"),
             write: true);
+        var workspace = new GitWorkspace(repoRoot);
+        var stash = command.Flags.Contains("stash");
+        if (!await workspace.IsCleanAsync(cancellationToken))
+        {
+            var interactive = !Console.IsInputRedirected && !Console.IsOutputRedirected;
+            stash = StashPrompt.Decide(command.Flags, interactive, () =>
+            {
+                Console.Write("tracked files have local changes. Stash them, fix findings, then restore them? Untracked files stay in place. [y/N] ");
+                return Console.ReadLine();
+            });
+            if (!stash && interactive)
+            {
+                Console.WriteLine("left your changes alone; no fixes started");
+                return 1;
+            }
+        }
+
         var options = new FixOptions(
             int.Parse(command.Options.GetValueOrDefault("attempts", "3"), CultureInfo.InvariantCulture),
-            command.Options.GetValueOrDefault("path"));
+            command.Options.GetValueOrDefault("path"),
+            stash);
         Console.WriteLine($"fixing with {command.Options["agent"]}, one file at a time; each file it changes becomes a commit");
         ITestRunner? tests = config.TestCommand.Count > 0 ? new CommandTestRunner(repoRoot, config.TestCommand) : null;
         if (tests is null)
@@ -232,7 +251,7 @@ public static class Program
             Console.Error.WriteLine("warning: no test_command in .codemuster/config.json, so nothing checks that a fix still builds");
         }
 
-        var fix = new Fix(ledger, tree, clock, config, new GitWorkspace(repoRoot), tests);
+        var fix = new Fix(ledger, tree, clock, config, workspace, tests);
         var result = await fix.RunAsync(adapter, options, new ProgressWriter(Console.Out), cancellationToken);
         foreach (var unitId in result.GaveUp)
         {
@@ -343,7 +362,7 @@ public static class Program
         "run" => IsAgentRun(command, "kind") && (!command.Options.TryGetValue("kind", out var kind) || (KindNames.Contains(kind) && kind is not ("fix" or "dependency"))),
         "verify" => IsAgentRun(command),
         "fix" => command.Positionals.Count == 0
-            && command.Flags.Count == 0
+            && command.Flags.All(f => f == "stash")
             && command.Options.ContainsKey("agent")
             && command.Options.Keys.All(k => k is "agent" or "attempts" or "model" or "effort" or "path"),
         "estimate" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "path"),

@@ -4,7 +4,7 @@ public sealed record Command(string Verb, IReadOnlyList<string> Positionals, IRe
 
 public static class CommandLine
 {
-    private static readonly HashSet<string> FlagNames = ["yes", "no-gitignore", "global", "force", "include-refuted"];
+    private static readonly HashSet<string> FlagNames = ["yes", "no-gitignore", "global", "force", "include-refuted", "stash"];
     private static readonly Dictionary<string, string> ShortOptions = new(StringComparer.Ordinal) { ["-j"] = "jobs" };
 
     public static Command? Parse(string[] args)

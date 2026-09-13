@@ -11,4 +11,10 @@ public interface IWorkspace
 
     /// <summary>Throws away uncommitted changes to tracked files, so a failed attempt does not leave half a fix behind.</summary>
     Task RestoreAsync(CancellationToken cancellationToken);
+
+    /// <summary>Saves tracked changes and their index state, returning the exact stash commit. Leaves untracked files alone.</summary>
+    Task<string> StashAsync(CancellationToken cancellationToken);
+
+    /// <summary>Restores the saved tracked changes and index, retaining the stash as a recovery copy. Saves unfinished fix edits separately first.</summary>
+    Task RestoreStashAsync(string stash, CancellationToken cancellationToken);
 }

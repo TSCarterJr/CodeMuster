@@ -7,13 +7,45 @@ namespace CodeMuster.Application;
 /// <summary>Fixes what the audit confirmed (D37): one unit per file with confirmed findings, one fresh agent call each, serially, committing after every file it changes. The only use case that writes to the repository.</summary>
 public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock = null, Config? config = null, IWorkspace? workspace = null, ITestRunner? tests = null)
 {
-    /// <summary>Plans the units, then works them one at a time: pack, agent, record, commit. Refuses to start unless the working tree is clean, and throws away a failed attempt's edits before retrying.</summary>
+    /// <summary>Plans and fixes confirmed findings. With consent, saves tracked local changes and restores them afterward, including on failure or cancellation.</summary>
     public async Task<FixResult> RunAsync(IAgentAdapter adapter, FixOptions options, IProgress<string>? notes, CancellationToken cancellationToken)
     {
         var repository = workspace ?? throw new InvalidOperationException("fix needs a workspace");
+        string? stash = null;
         if (!await repository.IsCleanAsync(cancellationToken))
         {
-            throw new InvalidOperationException("the working tree has uncommitted changes; commit or stash them before codemuster fix");
+            if (!options.Stash)
+            {
+                throw new InvalidOperationException("the working tree has uncommitted changes; run codemuster fix in a terminal to be offered a stash, or pass --stash to save and restore them automatically");
+            }
+
+            stash = await repository.StashAsync(cancellationToken);
+        }
+
+        try
+        {
+            if (stash is not null)
+            {
+                notes?.Report($"saved your tracked changes in stash {stash}; they will be restored after fixing");
+            }
+
+            return await RunCleanAsync(adapter, options, notes, repository, cancellationToken);
+        }
+        finally
+        {
+            if (stash is not null)
+            {
+                await repository.RestoreStashAsync(stash, CancellationToken.None);
+                notes?.Report($"restored your tracked changes and staging; recovery stash {stash} retained");
+            }
+        }
+    }
+
+    private async Task<FixResult> RunCleanAsync(IAgentAdapter adapter, FixOptions options, IProgress<string>? notes, IWorkspace repository, CancellationToken cancellationToken)
+    {
+        if (!await repository.IsCleanAsync(cancellationToken))
+        {
+            throw new InvalidOperationException("the working tree still has tracked changes after stashing; no fixes were started");
         }
 
         await PlanAsync(cancellationToken);

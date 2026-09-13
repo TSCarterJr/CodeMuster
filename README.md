@@ -70,6 +70,22 @@ only the units whose code changed need another pass.
   folder needs `folder/**`. To audit one part of a large repository first, exclude the rest, then
   `scan`.
 
+## Fixing confirmed findings
+
+Run `codemuster fix --agent codex` to fix confirmed findings, one file at a time, with a local
+commit for each file changed. If tracked files have local edits, the terminal offers to stash
+them and restore them afterward, including their staging state. Answer `y` to continue; Enter
+or `n` leaves your work alone. For noninteractive use, pass `--stash` explicitly.
+
+Untracked files stay in place and outside fix commits. The recovery stash is retained after
+restoration. If restoring conflicts with a fix, CodeMuster stops, keeps the commits and stash,
+and prints the backup identifier and recovery command. Interrupted fix edits are saved in a
+separate stash before restoring your work. Avoid editing the same checkout during a fix run.
+
+Set `"test_command"` in `.codemuster/config.json` to a program and arguments, such as
+`["dotnet", "test"]`, to validate each fix before it is recorded and committed. Without this
+setting, CodeMuster warns that it is not running tests.
+
 ## Updates
 
 The `codemuster` command checks npm for a newer version at most once a day. When there is one, it

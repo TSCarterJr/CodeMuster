@@ -73,5 +73,92 @@ public sealed class GitWorkspaceTests : IDisposable
         Assert.True(await _workspace.IsCleanAsync(CancellationToken.None));
     }
 
+    [Fact]
+    public async Task Stash_RestoresBothIndexAndWorktree_AndLeavesUntrackedFilesAndOlderStashesAlone()
+    {
+        _repo.WriteFile("src/a.cs", "older stash\n");
+        _repo.Run("stash", "push", "-m", "older work");
+        var older = _repo.Run("rev-parse", "refs/stash").Trim();
+        _repo.WriteFile("src/a.cs", "staged\n");
+        _repo.Run("add", "src/a.cs");
+        _repo.WriteFile("src/a.cs", "unstaged\n");
+        _repo.WriteFile(".codemuster/config.json", "{}\n");
+        var index = _repo.Run("diff", "--cached");
+        var worktree = _repo.Run("diff");
+
+        var stash = await _workspace.StashAsync(CancellationToken.None);
+
+        Assert.True(await _workspace.IsCleanAsync(CancellationToken.None));
+        Assert.NotEqual(older, stash);
+        Assert.Equal("{}\n", File.ReadAllText(Path.Combine(_repo.Root, ".codemuster", "config.json")));
+        await _workspace.RestoreStashAsync(stash, CancellationToken.None);
+
+        Assert.Equal(index, _repo.Run("diff", "--cached"));
+        Assert.Equal(worktree, _repo.Run("diff"));
+        Assert.Equal(new[] { stash, older }, _repo.Run("stash", "list", "--format=%H").Split('\n', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    [Fact]
+    public async Task RestoreStash_SavesInterruptedFixEditsBeforeRestoringLocalWork()
+    {
+        _repo.WriteFile("src/a.cs", "local work\n");
+        var stash = await _workspace.StashAsync(CancellationToken.None);
+        _repo.WriteFile("src/a.cs", "unfinished fix\n");
+
+        await _workspace.RestoreStashAsync(stash, CancellationToken.None);
+
+        Assert.Equal("local work\n", File.ReadAllText(Path.Combine(_repo.Root, "src", "a.cs")));
+        Assert.Equal("unfinished fix", _repo.Run("show", "refs/stash:src/a.cs").Trim());
+        Assert.Contains(stash, _repo.Run("stash", "list", "--format=%H"));
+    }
+
+    [Fact]
+    public async Task RestoreStash_ConflictKeepsTheBackupAndFixCommit_AndNamesTheRecoveryCommand()
+    {
+        _repo.WriteFile("src/a.cs", "local work\n");
+        var stash = await _workspace.StashAsync(CancellationToken.None);
+        _repo.WriteFile("src/a.cs", "committed fix\n");
+        var head = _repo.Commit("fix");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => _workspace.RestoreStashAsync(stash, CancellationToken.None));
+
+        Assert.Contains("git stash apply --index " + stash, error.Message);
+        Assert.Equal(head.Trim(), _repo.Run("rev-parse", "HEAD").Trim());
+        Assert.Equal("local work", _repo.Run("show", stash + ":src/a.cs").Trim());
+        Assert.Contains(stash, _repo.Run("stash", "list", "--format=%H"));
+    }
+
+    [Fact]
+    public async Task Stash_WhenClean_DoesNotReuseAnOlderStash()
+    {
+        _repo.WriteFile("src/a.cs", "older stash\n");
+        _repo.Run("stash", "push", "-m", "older work");
+        var older = _repo.Run("rev-parse", "refs/stash");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _workspace.StashAsync(CancellationToken.None));
+
+        Assert.Equal(older, _repo.Run("rev-parse", "refs/stash"));
+        Assert.True(await _workspace.IsCleanAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Stash_WhenOnlyASubmoduleIsDirty_DoesNotReturnAnOlderStash()
+    {
+        using var child = new TempRepo();
+        child.WriteFile("child.cs", "original\n");
+        child.Commit("child");
+        _repo.Run("-c", "protocol.file.allow=always", "submodule", "add", child.Root, "child");
+        _repo.Commit("submodule");
+        _repo.WriteFile("src/a.cs", "older stash\n");
+        _repo.Run("stash", "push", "-m", "older work");
+        var older = _repo.Run("rev-parse", "refs/stash");
+        _repo.WriteFile("child/child.cs", "local submodule work\n");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _workspace.StashAsync(CancellationToken.None));
+
+        Assert.Equal(older, _repo.Run("rev-parse", "refs/stash"));
+        Assert.Equal("local submodule work\n", File.ReadAllText(Path.Combine(_repo.Root, "child", "child.cs")));
+    }
+
     public void Dispose() => _repo.Dispose();
 }

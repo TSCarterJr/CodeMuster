@@ -86,6 +86,55 @@ public class FixRunTests
         Assert.All(ledger.Units.Where(u => u.Kind == UnitKind.Fix), u => Assert.Equal(UnitStatus.Done, u.Status));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Stash_RestoresLocalChanges_OnCancellationOrUnexpectedFailure(bool cancel)
+    {
+        await SeedAsync("src/a.cs", 10);
+        workspace.Clean = false;
+        using var cancellation = new CancellationTokenSource();
+        var adapter = new FakeAgentAdapter((_, _) =>
+        {
+            workspace.Clean = false;
+            if (cancel)
+            {
+                cancellation.Cancel();
+                throw new OperationCanceledException(cancellation.Token);
+            }
+
+            throw new InvalidOperationException("agent failed");
+        });
+        var run = new Fix(ledger, tree, clock, Config.Default, workspace).RunAsync(
+            adapter, new FixOptions(1, Stash: true), new ListProgress(notes), cancellation.Token);
+
+        if (cancel)
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+        }
+        else
+        {
+            Assert.Single((await run).GaveUp);
+        }
+
+        Assert.Equal(1, workspace.Stashes);
+        Assert.Equal("saved-stash", workspace.RestoredStash);
+        Assert.False(workspace.RestoreStashToken.CanBeCanceled);
+        Assert.False(workspace.Clean);
+    }
+
+    [Fact]
+    public async Task Stash_WhenClean_DoesNotCreateOrRestoreAStash()
+    {
+        var ids = await SeedAsync("src/a.cs", 10);
+
+        await new Fix(ledger, tree, clock, Config.Default, workspace).RunAsync(
+            Fixer(_ => new FixResponse("Fixed", ids, [])), new FixOptions(Stash: true), null, CancellationToken.None);
+
+        Assert.Equal(0, workspace.Stashes);
+        Assert.Null(workspace.RestoredStash);
+    }
+
     [Fact]
     public async Task AUnitThatOnlyDeclines_IsRecordedWithoutACommit()
     {

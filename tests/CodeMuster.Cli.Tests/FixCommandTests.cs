@@ -40,11 +40,17 @@ public class FixCommandTests
     {
         using var repo = await AuditedAsync();
         await File.WriteAllTextAsync(Path.Combine(repo.Root, "src", "MixedRepo.Api", "Program.cs"), "// edited by hand\n");
+        var before = repo.Git("status", "--porcelain");
+        var head = repo.Git("rev-parse", "HEAD");
 
         var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake");
 
         Assert.Equal(1, fix.ExitCode);
         Assert.Contains("working tree has uncommitted changes", fix.Stderr);
+        Assert.Contains("--stash", fix.Stderr);
+        Assert.Equal(before, repo.Git("status", "--porcelain"));
+        Assert.Equal(head, repo.Git("rev-parse", "HEAD"));
+        Assert.Empty(repo.Git("stash", "list"));
     }
 
     [Fact]
@@ -114,5 +120,45 @@ public class FixCommandTests
 
         Assert.Equal(0, fix.ExitCode);
         Assert.Contains("no test_command", fix.Stderr);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Stash_RestoresLocalEditsAndIndex_AfterFixOrFailure(bool failTests)
+    {
+        using var repo = await AuditedAsync();
+        const string target = "src/MixedRepo.Api/Program.cs";
+        repo.Git("config", "user.name", "CodeMuster Tests");
+        repo.Git("config", "user.email", "tests@codemuster.invalid");
+        repo.Git("config", "commit.gpgsign", "false");
+        await File.WriteAllTextAsync(Path.Combine(repo.Root, "memory.md"), "original\n");
+        repo.Git("add", "memory.md");
+        repo.Git("commit", "-qm", "memory fixture");
+        await File.WriteAllTextAsync(Path.Combine(repo.Root, "memory.md"), "staged\n");
+        repo.Git("add", "memory.md");
+        await File.WriteAllTextAsync(Path.Combine(repo.Root, "memory.md"), "unstaged\n");
+        var targetPath = Path.Combine(repo.Root, target);
+        var original = await File.ReadAllTextAsync(targetPath);
+        await File.WriteAllTextAsync(targetPath, original + "\n// fixture fix\n");
+        var patch = repo.Git("diff", "--", target);
+        await File.WriteAllTextAsync(targetPath, original);
+        await File.WriteAllTextAsync(Path.Combine(repo.Root, "fix.patch"), patch);
+        repo.WithTestCommand(failTests ? ["git", "rev-parse", "--verify", "missing-ref"] : ["git", "apply", "fix.patch"]);
+        var before = repo.Git("rev-parse", "HEAD").Trim();
+        var staged = repo.Git("diff", "--cached");
+        var unstaged = repo.Git("diff");
+        var untracked = repo.Git("ls-files", "--others", "--exclude-standard");
+
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--path", target, "--attempts", "1", "--stash");
+
+        Assert.Equal(failTests ? 1 : 0, fix.ExitCode);
+        Assert.Contains("restored your tracked changes", fix.Stdout);
+        Assert.Equal(staged, repo.Git("diff", "--cached"));
+        Assert.Equal(unstaged, repo.Git("diff"));
+        Assert.Equal(untracked, repo.Git("ls-files", "--others", "--exclude-standard"));
+        Assert.Equal(failTests ? "0" : "1", repo.Git("rev-list", "--count", before + "..HEAD").Trim());
+        Assert.Equal(failTests ? "" : target, repo.Git("diff", "--name-only", before, "HEAD").Trim());
+        Assert.Contains("codemuster fix", repo.Git("stash", "list"));
     }
 }
