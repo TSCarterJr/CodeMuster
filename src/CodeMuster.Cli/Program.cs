@@ -12,38 +12,7 @@ namespace CodeMuster.Cli;
 
 public static class Program
 {
-    public const string Usage = """
-        usage: codemuster <verb> [options]
-               codemuster --version
-
-        verbs:
-          init [--yes] [--no-gitignore]                     set this repo up: write .codemuster/config.json, gitignore the ledger
-          doctor                                            check that git and the C# and TypeScript mappers work here;
-                                                            prints the command that fixes each problem
-          scan [--mode file]                                build or refresh the ledger: one flow per entry point,
-                                                            or one unit per file with --mode file
-          status                                            print coverage
-          estimate [--path <folder>]                        approximate token cost of pending units
-          next [--batch N] [--out <file>]                   print the next unit pack(s)
-          done <unit> --fingerprint <fp> --findings <file>  record the model's response for a unit
-          run --agent <name> [-j N] [--attempts N] [--force] [--kind <kind>] [--path <folder>] [--model <id>] [--effort <level>]
-                                                            drive a headless agent over every pending unit, or only
-                                                            one kind: file, slice, orphan, verify
-                                                            agents: claude, codex, gemini, opencode, fake
-                                                            model and effort go straight to the agent's own flags
-          verify --agent <name> [-j N] [--attempts N] [--force] [--path <folder>] [--model <id>] [--effort <level>]
-                                                            run --kind verify: try to refute recorded findings
-          fix --agent <name> [-j N] [--attempts N] [--path <folder>] [--model <id>] [--effort <level>] [--stash]
-                                                            fix confirmed findings with up to N file workers, and commit
-                                                            each file it changes; offers to stash tracked local changes
-                                                            and restore them afterward; --stash consents without asking
-          report [--out <file>] [--include-refuted]         render findings and coverage as markdown;
-                                                            refuted findings are left out unless asked for
-          skill install --for <agent> [--global]            install the skill for claude, codex, gemini, or opencode
-          update [--check]                                  update CodeMuster itself from npm, or just say what is available
-
-        every verb runs against the git repository containing the current directory.
-        """;
+    public const string Usage = HelpText.Overview;
 
     private static readonly string[] Verbs = ["init", "doctor", "scan", "status", "estimate", "next", "done", "run", "verify", "report", "skill", "fix"];
 
@@ -64,6 +33,20 @@ public static class Program
         if (args is ["--version"])
         {
             Console.WriteLine(Version);
+            return 0;
+        }
+
+        if (args is ["--help"] or ["-h"] or ["help"])
+        {
+            Console.WriteLine(Usage);
+            return 0;
+        }
+
+        var helpCommand = args is ["help", var requested] ? requested
+            : args.Length > 1 && args.Skip(1).Any(arg => arg is "--help" or "-h") ? args[0] : null;
+        if (helpCommand is not null && HelpText.For(helpCommand.ToLowerInvariant()) is { } help)
+        {
+            Console.WriteLine(help);
             return 0;
         }
 

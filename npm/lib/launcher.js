@@ -259,6 +259,12 @@ async function updateNow({ args, stateDir, platform, arch, currentVersion, regis
 }
 
 async function main(args, env = process.env) {
+  if ((args[0] === 'update' && args.slice(1).some((arg) => arg === '--help' || arg === '-h'))
+      || (args.length === 2 && args[0] === 'help' && args[1] === 'update')) {
+    process.stdout.write('usage: codemuster update [--check]\n\nUpdate CodeMuster itself through the npm launcher.\n  --check   Show the available version without installing it\n\nAutomatic background checks can be disabled with CI or CODEMUSTER_NO_UPDATE.\n');
+    return 0;
+  }
+
   const platform = process.platform;
   const arch = process.arch;
   const stateDir = path.join(os.homedir(), '.codemuster');

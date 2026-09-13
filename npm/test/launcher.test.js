@@ -249,3 +249,17 @@ test('update says so plainly when the registry cannot be reached', async () => {
   assert.equal(code, 1);
   assert.match(said.join(''), /could not reach the npm registry/);
 });
+
+for (const args of [['update', '--help'], ['update', '-h'], ['help', 'update']]) {
+  test(`${args.join(' ')} prints help without looking for or downloading a build`, async (t) => {
+    const said = [];
+    t.mock.method(os, 'homedir', () => { throw new Error('help must bypass build discovery'); });
+    t.mock.method(process.stdout, 'write', (line) => { said.push(line); return true; });
+
+    const code = await launcher.main(args);
+
+    assert.equal(code, 0);
+    assert.match(said.join(''), /usage: codemuster update/);
+    assert.match(said.join(''), /--check/);
+  });
+}
