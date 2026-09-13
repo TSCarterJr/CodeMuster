@@ -13,7 +13,7 @@ public sealed class GitWorkspace(string repoRoot) : IWorkspace
 
     public async Task CommitAsync(string message, CancellationToken cancellationToken)
     {
-        await GitProcess.RunAsync(repoRoot, ["add", "-A"], null, cancellationToken).ConfigureAwait(false);
+        await GitProcess.RunAsync(repoRoot, ["add", "--update"], null, cancellationToken).ConfigureAwait(false);
         await GitProcess.RunAsync(repoRoot, ["commit", "-m", message], null, cancellationToken).ConfigureAwait(false);
     }
 

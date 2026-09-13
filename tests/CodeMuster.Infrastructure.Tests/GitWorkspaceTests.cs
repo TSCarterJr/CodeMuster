@@ -47,5 +47,31 @@ public sealed class GitWorkspaceTests : IDisposable
         Assert.Equal("class A { }\n", File.ReadAllText(Path.Combine(_repo.Root, "src", "a.cs")).Replace("\r\n", "\n"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Commit_LeavesUntrackedFilesOutsideTheCommit(bool deleteTrackedFile)
+    {
+        const string untracked = ".claude/agents/local agent.md";
+        const string content = "local work\n";
+        _repo.WriteFile(untracked, content);
+        Assert.True(await _workspace.IsCleanAsync(CancellationToken.None));
+        if (deleteTrackedFile)
+        {
+            File.Delete(Path.Combine(_repo.Root, "src", "a.cs"));
+        }
+        else
+        {
+            _repo.WriteFile("src/a.cs", "class A { int x; }\n");
+        }
+
+        await _workspace.CommitAsync("fix src/a.cs", CancellationToken.None);
+
+        Assert.Equal("src/a.cs", _repo.Run("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").Trim());
+        Assert.Equal(untracked, _repo.Run("ls-files", "--others", "--exclude-standard").Trim());
+        Assert.Equal(content, File.ReadAllText(Path.Combine(_repo.Root, untracked)));
+        Assert.True(await _workspace.IsCleanAsync(CancellationToken.None));
+    }
+
     public void Dispose() => _repo.Dispose();
 }

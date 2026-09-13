@@ -63,6 +63,35 @@ public class FixCommandTests
     }
 
     [Fact]
+    public async Task Fix_CommitsTrackedChanges_AndPreservesUntrackedFiles()
+    {
+        using var repo = await AuditedAsync();
+        const string target = "src/MixedRepo.Api/Program.cs";
+        var targetPath = Path.Combine(repo.Root, target);
+        var original = await File.ReadAllTextAsync(targetPath);
+        await File.WriteAllTextAsync(targetPath, original + "\n// fixture fix\n");
+        var patch = repo.Git("diff", "--", target);
+        await File.WriteAllTextAsync(targetPath, original);
+        await File.WriteAllTextAsync(Path.Combine(repo.Root, "fix.patch"), patch);
+        await File.WriteAllTextAsync(Path.Combine(repo.Root, "local notes.txt"), "keep my work\n");
+        repo.Git("config", "user.name", "CodeMuster Tests");
+        repo.Git("config", "user.email", "tests@codemuster.invalid");
+        repo.Git("config", "commit.gpgsign", "false");
+        repo.WithTestCommand("git", "apply", "fix.patch");
+        var before = repo.Git("rev-parse", "HEAD").Trim();
+        var untracked = repo.Git("ls-files", "--others", "--exclude-standard");
+
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--path", target);
+
+        Assert.Equal(0, fix.ExitCode);
+        Assert.Equal("1", repo.Git("rev-list", "--count", before + "..HEAD").Trim());
+        Assert.Equal(target, repo.Git("diff", "--name-only", before, "HEAD").Trim());
+        Assert.Equal(untracked, repo.Git("ls-files", "--others", "--exclude-standard"));
+        Assert.Equal("keep my work\n", await File.ReadAllTextAsync(Path.Combine(repo.Root, "local notes.txt")));
+        Assert.Contains("// fixture fix", repo.Git("show", "HEAD:" + target));
+    }
+
+    [Fact]
     public async Task APassingTestCommand_LetsTheFixesThrough()
     {
         using var repo = await AuditedAsync();
