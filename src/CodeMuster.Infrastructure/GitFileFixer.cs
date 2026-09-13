@@ -29,9 +29,13 @@ public sealed class GitFileFixer(string repoRoot, Func<string, IAgentAdapter> ad
             var response = await adapterForDirectory(directory).RunAsync(instructions, cancellationToken).ConfigureAwait(false);
             var changed = await GitProcess.RunAsync(directory, ["diff", "--name-only", "-z", baseline], null, cancellationToken).ConfigureAwait(false);
             var untracked = await GitProcess.RunAsync(directory, ["ls-files", "--others", "--exclude-standard", "-z"], null, cancellationToken).ConfigureAwait(false);
-            if (changed.Split('\0', StringSplitOptions.RemoveEmptyEntries).Any(changedPath => changedPath != path) || untracked.Length > 0)
+            var extraPaths = changed.Split('\0', StringSplitOptions.RemoveEmptyEntries).Where(changedPath => changedPath != path)
+                .Concat(untracked.Split('\0', StringSplitOptions.RemoveEmptyEntries).Where(untrackedPath => untrackedPath != ".impeccable/hook.cache.json"))
+                .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            if (extraPaths.Length > 0)
             {
-                throw new InvalidOperationException($"worker for {path} changed files outside its assigned file; no changes were applied");
+                retain = true;
+                throw new InvalidOperationException($"worker for {path} changed files outside its assigned file: {string.Join(", ", extraPaths)}; no changes were applied; worker retained at {directory}");
             }
 
             var patch = await GitProcess.RunAsync(directory, ["--literal-pathspecs", "diff", "--binary", baseline, "--", path], null, cancellationToken).ConfigureAwait(false);

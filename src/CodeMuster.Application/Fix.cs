@@ -125,7 +125,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                 {
                     var pack = pending.Dequeue();
                     attempts[pack.UnitId] = attempts.GetValueOrDefault(pack.UnitId) + 1;
-                    notes?.Report(string.Create(CultureInfo.InvariantCulture, $"fixing {pack.Key}, {targets[pack.Key].Count} finding(s)"));
+                    notes?.Report(string.Create(CultureInfo.InvariantCulture, $"fixing {pack.Key}, {targets[pack.Key].Count} finding(s) (attempt {attempts[pack.UnitId]}/{options.MaxAttempts})"));
                     running.Add(EditAsync(pack), pack);
                 }
 
@@ -144,10 +144,12 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                     if (attempts[unit.UnitId] >= options.MaxAttempts)
                     {
                         gaveUp.Add(unit.UnitId);
+                        notes?.Report(string.Create(CultureInfo.InvariantCulture, $"gave up on {unit.Key} after {options.MaxAttempts} attempts; findings remain unfixed"));
                     }
                     else
                     {
                         pending.Enqueue(unit);
+                        notes?.Report($"queued retry for {unit.Key}");
                     }
                 }
                 else

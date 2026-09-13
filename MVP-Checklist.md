@@ -180,6 +180,8 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 
 | T14.8 | Parallel per-file fixing via `fix -j N` (D40). **Tests first:** CLI option validation; N concurrent calls with one file per worker and immediate slot refill; isolated worker diffs reject unrelated paths; coordinator serializes tests, scoped commits, and ledger writes; failure/retry isolation and cancellation before stash restoration. | `[x]` | codex 2026-09-13 | Taken ahead of remaining tasks at Tim's request after a real serial run took several minutes per file. 761 .NET tests pass. A real CLI smoke using a fake Codex executable proved `-j 10` starts exactly four overlapping workers for four files, integrates eight findings as four scoped commits, restores staged/unstaged local edits, and removes finished worker checkouts. No LLM calls. Local installation version: 0.2.3. |
 
+| T14.9 | Ignore only the untracked Impeccable hook cache in isolated fix workers; report and retain rejected extra edits, and show retry attempts. **Tests first:** cache does not block the assigned patch; tracked cache and other new files remain rejected with exact paths and recoverable contents; retries end in a clear give-up message. | `[x]` | codex 2026-09-13 | Prioritized at Tim's request while documentation work is underway: live ToolbagCRM workers contain the intended source edit plus `.impeccable/hook.cache.json`. Preserves D40's one-file integration boundary. All six regressions failed before implementation; all 767 .NET tests pass. Installed 0.2.3 and the active ToolbagCRM run remain untouched. |
+
 ## Phase 15: Dependency vulnerabilities (D38)
 
 | ID | Task | Status | Owner / Date | Notes |

@@ -89,6 +89,24 @@ public class FixRunTests
     }
 
     [Fact]
+    public async Task ParallelFix_FailedWorker_ShowsAttemptsRetriesAndGiveUp()
+    {
+        await SeedAsync("a.cs", 10);
+        var editor = new FileFixer((_, _) => throw new InvalidOperationException("extra file: b.cs"));
+
+        var result = await new Fix(ledger, tree, clock, Config.Default, workspace, null, editor).RunAsync(
+            Fixer(_ => throw new Exception()), new FixOptions(MaxAttempts: 2, Parallelism: 2), new ListProgress(notes), CancellationToken.None);
+
+        Assert.Contains(notes, line => line.Contains("attempt 1/2", StringComparison.Ordinal));
+        Assert.Contains(notes, line => line.Contains("attempt 2/2", StringComparison.Ordinal));
+        Assert.Contains("queued retry for a.cs", notes);
+        Assert.Contains("gave up on a.cs after 2 attempts; findings remain unfixed", notes);
+        Assert.Contains(notes, line => line.Contains("extra file: b.cs", StringComparison.Ordinal));
+        Assert.Single(result.GaveUp);
+        Assert.Empty(ledger.Fixes);
+    }
+
+    [Fact]
     public async Task ParallelFix_FailedTestsRetryOnlyThatFile()
     {
         var ids = await SeedAsync("a.cs", 10);

@@ -43,8 +43,10 @@ public sealed class GitFileFixerTests : IDisposable
     [InlineData("new.cs")]
     public async Task WorkerThatChangesAnotherFile_IsRejectedWithoutChangingTheMainCheckout(string other)
     {
+        string? worker = null;
         using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
         {
+            worker = dir;
             File.WriteAllText(Path.Combine(dir, other), "wrong file\n");
             return Task.FromResult("response");
         }));
@@ -53,6 +55,61 @@ public sealed class GitFileFixerTests : IDisposable
 
         Assert.Contains("outside its assigned file", error.Message);
         Assert.Empty(repo.Run("status", "--porcelain"));
+        Assert.NotNull(worker);
+        repo.Run("worktree", "remove", "--force", worker);
+    }
+
+    [Fact]
+    public async Task UntrackedHookCache_DoesNotBlockTheAssignedPatch()
+    {
+        var originalWorktrees = repo.Run("worktree", "list", "--porcelain");
+        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
+        {
+            File.WriteAllText(Path.Combine(dir, "a.cs"), "fixed\n");
+            Directory.CreateDirectory(Path.Combine(dir, ".impeccable"));
+            File.WriteAllText(Path.Combine(dir, ".impeccable", "hook.cache.json"), "{}");
+            return Task.FromResult("response");
+        }));
+
+        var edit = await fixer.RunAsync("a.cs", "pack", CancellationToken.None);
+
+        Assert.Contains("+fixed", edit.Patch);
+        Assert.DoesNotContain("hook.cache", edit.Patch);
+        Assert.Equal(originalWorktrees, repo.Run("worktree", "list", "--porcelain"));
+        Assert.Empty(repo.Run("status", "--porcelain"));
+    }
+
+    [Theory]
+    [InlineData("b.cs", true)]
+    [InlineData("new.cs", false)]
+    [InlineData(".impeccable/hook.cache.json", true)]
+    [InlineData(".impeccable/other.json", false)]
+    public async Task RejectedEdits_NameTheExtraPath_AndRetainTheWorker(string other, bool tracked)
+    {
+        if (tracked)
+        {
+            repo.WriteFile(other, "original\n");
+            repo.Commit("track extra file");
+        }
+
+        string? worker = null;
+        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
+        {
+            worker = dir;
+            var extra = Path.Combine(dir, other);
+            Directory.CreateDirectory(Path.GetDirectoryName(extra)!);
+            File.WriteAllText(extra, "extra edit\n");
+            return Task.FromResult("response");
+        }));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => fixer.RunAsync("a.cs", "pack", CancellationToken.None));
+
+        Assert.Contains(other, error.Message);
+        Assert.NotNull(worker);
+        Assert.Contains(worker, error.Message);
+        Assert.Equal("extra edit\n", File.ReadAllText(Path.Combine(worker, other)));
+        Assert.Empty(repo.Run("status", "--porcelain"));
+        repo.Run("worktree", "remove", "--force", worker);
     }
 
     [Fact]
