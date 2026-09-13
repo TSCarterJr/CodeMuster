@@ -1,3 +1,4 @@
+using System.Globalization;
 using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
@@ -8,7 +9,7 @@ namespace CodeMuster.Application;
 /// With at least one mapper the scan runs in slice mode: the mappers map the repository at <paramref name="repoRoot"/> and units are slices, orphans, and file units (D25). Without mappers every included file is one file unit.
 /// Each step is reported to <paramref name="progress"/> as it starts or finishes, with mapper steps under their language.
 /// </summary>
-public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config, IReadOnlyList<ICodeMapper>? mappers = null, string repoRoot = "", IProgress<string>? progress = null)
+public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config, IReadOnlyList<ICodeMapper>? mappers = null, string repoRoot = "", IProgress<string>? progress = null, IDependencyAuditor? auditor = null)
 {
     /// <summary>Runs one scan, in slice mode when mappers were given.</summary>
     public async Task<ScanResult> RunAsync(CancellationToken cancellationToken)
@@ -44,6 +45,14 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             planned = [.. planned, .. await PlanVerifyUnitsAsync(planned, cancellationToken)];
         }
 
+        var audit = config.Vulnerabilities && auditor is not null
+            ? await auditor.AuditAsync(repoRoot, included.Select(f => f.Path).ToList(), progress, cancellationToken)
+            : null;
+        if (audit is not null)
+        {
+            planned = [.. planned, .. PlanDependencyUnitsAsync(audit, included)];
+        }
+
         var existingUnits = (await ledger.GetUnitsAsync(cancellationToken)).ToDictionary(u => u.Id, StringComparer.Ordinal);
         var units = new List<Unit>(planned.Count);
         var created = 0;
@@ -63,8 +72,10 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
 
         var members = planned.SelectMany(p => p.Members).ToList();
         var produced = units.Select(u => u.Id).ToHashSet(StringComparer.Ordinal);
+        var live = included.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
         var retired = existingUnits.Values
             .Where(u => u.Status != UnitStatus.Retired && !produced.Contains(u.Id))
+            .Where(u => u.Kind != UnitKind.Dependency || !live.Contains(u.Key))
             .Select(u => u with { Status = UnitStatus.Retired })
             .ToList();
         if (retired.Count > 0)
@@ -74,6 +85,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
 
         progress?.Report($"saving {units.Count} units");
         await ledger.UpsertUnitsAsync([.. units, .. retired], members, cancellationToken);
+        var vulnerabilities = audit is null ? null : await RecordVulnerabilitiesAsync(audit, units, now, cancellationToken);
 
         foreach (var unit in units.Concat(retired))
         {
@@ -90,15 +102,67 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
                 units.Count(u => u.Kind == UnitKind.File),
                 mapped.ResolutionRate,
                 mapped.Map.Diagnostics);
-        return new ScanResult(head, included.Count, excluded, created, units.Count(u => u.Status == UnitStatus.Stale), total, sliceMode);
+        return new ScanResult(head, included.Count, excluded, created, units.Count(u => u.Status == UnitStatus.Stale), total, sliceMode, vulnerabilities);
     }
 
     private async Task<IEnumerable<PlannedUnit>> PlanVerifyUnitsAsync(IReadOnlyList<PlannedUnit> planned, CancellationToken cancellationToken)
     {
-        var sources = planned.ToDictionary(p => p.Id, StringComparer.Ordinal);
+        var sources = planned.Where(p => p.Kind != UnitKind.Dependency).ToDictionary(p => p.Id, StringComparer.Ordinal);
         return (await ledger.GetCurrentFindingsAsync(cancellationToken))
             .Where(f => sources.TryGetValue(f.UnitId, out var source) && Fingerprints.Compute(source.Members) == f.Fingerprint)
             .Select(f => PlannedUnit.Verify(f, sources[f.UnitId].Members, sources[f.UnitId].Fidelity));
+    }
+
+    private static IEnumerable<PlannedUnit> PlanDependencyUnitsAsync(DependencyAudit audit, IReadOnlyList<FileRecord> included)
+    {
+        var hashes = included.ToDictionary(f => f.Path, f => f.ContentHash, StringComparer.Ordinal);
+        return audit.Manifests
+            .Where(manifest => hashes.ContainsKey(manifest.Manifest))
+            .Select(manifest => PlannedUnit.Dependency(manifest.Manifest, hashes[manifest.Manifest]));
+    }
+
+    private async Task<DependencyResult> RecordVulnerabilitiesAsync(DependencyAudit audit, IReadOnlyList<Unit> units, string now, CancellationToken cancellationToken)
+    {
+        var byId = units.Where(u => u.Kind == UnitKind.Dependency).ToDictionary(u => u.Id, StringComparer.Ordinal);
+        var recorded = 0;
+        var severities = new Dictionary<Severity, int>();
+        foreach (var manifest in audit.Manifests)
+        {
+            if (!byId.TryGetValue(UnitIds.Dependency(manifest.Manifest), out var unit))
+            {
+                continue;
+            }
+
+            var findings = manifest.Packages.Select(package => Finding(manifest.Manifest, package)).ToList();
+            var summary = string.Create(CultureInfo.InvariantCulture, $"{findings.Count} vulnerable package(s) reported by {manifest.Tool}");
+            var analysis = new Analysis(unit.Id, unit.Fingerprint, unit.LensHash ?? "", now, true, summary, null, new AgentIdentity(manifest.Tool));
+            await ledger.RecordAnalysisAsync(analysis, findings, cancellationToken, new VerifyResponse(Verdict.Confirmed, $"reported by {manifest.Tool}"));
+            recorded += findings.Count;
+            foreach (var finding in findings)
+            {
+                severities[finding.Severity] = severities.GetValueOrDefault(finding.Severity) + 1;
+            }
+        }
+
+        return new DependencyResult(audit.Manifests.Count, recorded, severities, audit.Diagnostics);
+    }
+
+    private static Finding Finding(string manifest, VulnerablePackage package)
+    {
+        var fix = package.FixedVersion is { Length: > 0 } fixedVersion
+            ? $" Fixed in {fixedVersion}."
+            : " The advisory names no fixed version; check the package's releases.";
+        var reach = package.Direct ? "declared here" : "pulled in by another package";
+        return new Finding(
+            manifest,
+            1,
+            1,
+            package.Severity,
+            "dependency",
+            $"{package.Package} {package.VulnerableVersions} has a known {package.Severity.ToString().ToLowerInvariant()} severity vulnerability ({package.AdvisoryId}), {reach}.",
+            $"{package.Title} {package.AdvisoryUrl}.{fix}",
+            1.0,
+            "dependencies");
     }
 
     private async Task<FileRecord> RefreshAsync(SourceFile file, FileRecord? previous, string now, CancellationToken cancellationToken)

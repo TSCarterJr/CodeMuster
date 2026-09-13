@@ -8,7 +8,16 @@ namespace CodeMuster.Application;
 /// <param name="UnitsStale">Units left stale after the scan.</param>
 /// <param name="UnitsTotal">Units present after the scan, retired ones excluded.</param>
 /// <param name="SliceMode">What slice mode built and how well the mappers resolved, or null when the scan ran in file mode.</param>
-public sealed record ScanResult(string HeadCommit, int FilesIncluded, int FilesExcluded, int UnitsCreated, int UnitsStale, int UnitsTotal, SliceModeResult? SliceMode = null);
+/// <param name="Vulnerabilities">What the dependency audit found, or null when it did not run (D38).</param>
+public sealed record ScanResult(
+    string HeadCommit,
+    int FilesIncluded,
+    int FilesExcluded,
+    int UnitsCreated,
+    int UnitsStale,
+    int UnitsTotal,
+    SliceModeResult? SliceMode = null,
+    DependencyResult? Vulnerabilities = null);
 
 /// <summary>The units a slice-mode <see cref="Scan"/> planned and what its mappers reported.</summary>
 /// <param name="Slices">Slice units present after the scan.</param>

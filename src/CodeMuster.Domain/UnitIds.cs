@@ -17,6 +17,9 @@ public static class UnitIds
     /// <summary>Id of the fix unit for a repo-relative path (D37).</summary>
     public static string Fix(string path) => "fix:" + path;
 
+    /// <summary>Id of the dependency unit for a manifest (D38).</summary>
+    public static string Dependency(string manifest) => "dependency:" + manifest;
+
     /// <summary>Id of the slice unit that starts at an entry point's symbol.</summary>
     public static string Slice(string entrySymbolId) => "slice:" + entrySymbolId;
 }

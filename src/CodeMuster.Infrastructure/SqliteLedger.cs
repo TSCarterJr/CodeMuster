@@ -276,6 +276,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
         await using var command = CreateCommand($"""
             SELECT {UnitColumns} FROM units
             WHERE status IN ($pending, $stale, $failed)
+              AND kind != $dependency
               AND ($kind IS NULL OR kind = $kind)
               AND ($path IS NULL OR EXISTS (
                     SELECT 1 FROM unit_members m
@@ -284,6 +285,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
             """);
         var folder = path is null ? null : RepoPath.Normalize(path).TrimEnd('/');
         command.Parameters.AddWithValue("$kind", Db(kind is { } k ? Name(k) : null));
+        command.Parameters.AddWithValue("$dependency", Name(UnitKind.Dependency));
         command.Parameters.AddWithValue("$path", Db(folder));
         command.Parameters.AddWithValue("$under", Db(folder is null ? null : folder + "/%"));
         command.Parameters.AddWithValue("$pending", Name(UnitStatus.Pending));
@@ -293,18 +295,20 @@ public sealed class SqliteLedger : ILedger, IDisposable
         return await ReadAllAsync(command, ReadUnit, cancellationToken);
     }
 
-    public async Task RecordAnalysisAsync(Analysis analysis, IReadOnlyList<Finding> findings, CancellationToken cancellationToken)
+    public async Task RecordAnalysisAsync(Analysis analysis, IReadOnlyList<Finding> findings, CancellationToken cancellationToken, VerifyResponse? verifiedAs = null)
     {
         await using var transaction = await _connection.BeginTransactionAsync(cancellationToken);
         var analysisId = await InsertAnalysisAsync(analysis, cancellationToken);
 
         await using var insertFinding = CreateCommand($"""
-            INSERT INTO findings (analysis_id, {FindingColumns})
-            VALUES ($analysis_id, $path, $line_start, $line_end, $severity, $category, $claim, $evidence, $confidence, $lens_id)
+            INSERT INTO findings (analysis_id, {FindingColumns}, verify_status, verify_reason)
+            VALUES ($analysis_id, $path, $line_start, $line_end, $severity, $category, $claim, $evidence, $confidence, $lens_id, $verify_status, $verify_reason)
             """);
         foreach (var finding in findings)
         {
             insertFinding.Parameters.Clear();
+            insertFinding.Parameters.AddWithValue("$verify_status", Db(verifiedAs is null ? null : Name(verifiedAs.Verdict)));
+            insertFinding.Parameters.AddWithValue("$verify_reason", Db(verifiedAs?.Reason));
             insertFinding.Parameters.AddWithValue("$analysis_id", analysisId);
             insertFinding.Parameters.AddWithValue("$path", finding.Path);
             insertFinding.Parameters.AddWithValue("$line_start", finding.LineStart);

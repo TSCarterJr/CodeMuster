@@ -25,7 +25,7 @@ public interface ILedger
     Task<IReadOnlyList<Unit>> NextAsync(int batch, UnitKind? kind, string? path, CancellationToken cancellationToken);
 
     /// <summary>Stores an analysis and its findings atomically and moves the unit to Done (with summary, summary hash, and lens hash) or Failed.</summary>
-    Task RecordAnalysisAsync(Analysis analysis, IReadOnlyList<Finding> findings, CancellationToken cancellationToken);
+    Task RecordAnalysisAsync(Analysis analysis, IReadOnlyList<Finding> findings, CancellationToken cancellationToken, VerifyResponse? verifiedAs = null);
 
     /// <summary>Stores a verify unit's successful analysis and its verdict on finding <paramref name="findingId"/> atomically, and moves the unit to Done with summary, summary hash, and lens hash.</summary>
     Task RecordVerificationAsync(Analysis analysis, long findingId, VerifyResponse verification, CancellationToken cancellationToken);

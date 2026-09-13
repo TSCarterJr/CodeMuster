@@ -13,4 +13,6 @@ public enum UnitKind
     Verify,
     /// <summary>Every confirmed finding in one file, to be fixed (D37).</summary>
     Fix,
+    /// <summary>One manifest's vulnerable packages, as its ecosystem's audit tool reported them (D38).</summary>
+    Dependency,
 }

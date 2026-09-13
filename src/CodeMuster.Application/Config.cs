@@ -7,7 +7,8 @@ namespace CodeMuster.Application;
 /// <param name="SliceTokenBudget">Approximate tokens of code a slice pack may show in full before farther members shrink to signatures (D07).</param>
 /// <param name="ResolutionThreshold">Share of call sites, 0 to 1, the mappers must resolve before status calls slice coverage complete (D09).</param>
 /// <param name="Verify">Whether every recorded finding gets a verify unit, costing about one more agent call per finding (D27, D28).</param>
-public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 24000, double ResolutionThreshold = 0.9, bool Verify = true)
+/// <param name="Vulnerabilities">Whether <c>scan</c> runs each ecosystem's audit tool over the repository's manifests (D38); costs no agent calls.</param>
+public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 24000, double ResolutionThreshold = 0.9, bool Verify = true, bool Vulnerabilities = true)
 {
     /// <summary>Repo-relative globs of files never analyzed, on top of the built-in <see cref="Exclusions"/> (D04). A glob without a slash matches file names, so a folder needs <c>folder/**</c>.</summary>
     public IReadOnlyList<string> Exclude { get; init; } = [];

@@ -11,6 +11,7 @@ public sealed class FakeLedger : ILedger
     public List<ScanRun> Runs { get; } = [];
     public Dictionary<long, VerifyResponse> Verifications { get; } = [];
     public Dictionary<long, FixOutcome> Fixes { get; } = [];
+    private List<(string UnitId, VerifyResponse Verdict)> PendingVerdicts { get; } = [];
     public Action<Analysis>? OnRecordAnalysis { get; set; }
 
     public Task<IReadOnlyList<FileRecord>> GetFilesAsync(CancellationToken cancellationToken) =>
@@ -62,15 +63,20 @@ public sealed class FakeLedger : ILedger
         bool Under(Unit unit) => folder is null || Members.Any(m =>
             m.UnitId == unit.Id && (m.Path == folder || m.Path.StartsWith(folder + "/", StringComparison.Ordinal)));
         return Task.FromResult<IReadOnlyList<Unit>>(Units
-            .Where(u => (u.Status is UnitStatus.Pending or UnitStatus.Stale or UnitStatus.Failed) && (kind is null || u.Kind == kind) && Under(u))
+            .Where(u => (u.Status is UnitStatus.Pending or UnitStatus.Stale or UnitStatus.Failed) && u.Kind != UnitKind.Dependency && (kind is null || u.Kind == kind) && Under(u))
             .Take(batch)
             .ToList());
     }
 
-    public Task RecordAnalysisAsync(Analysis analysis, IReadOnlyList<Finding> findings, CancellationToken cancellationToken)
+    public Task RecordAnalysisAsync(Analysis analysis, IReadOnlyList<Finding> findings, CancellationToken cancellationToken, VerifyResponse? verifiedAs = null)
     {
         OnRecordAnalysis?.Invoke(analysis);
         Analyses.Add((analysis, findings));
+        if (verifiedAs is not null)
+        {
+            PendingVerdicts.Add((analysis.UnitId, verifiedAs));
+        }
+
         var index = Units.FindIndex(u => u.Id == analysis.UnitId);
         var unit = Units[index];
         Units[index] = analysis.Succeeded
@@ -113,7 +119,13 @@ public sealed class FakeLedger : ILedger
             .Where(a => a.Analysis.Succeeded && live.Contains(a.Analysis.UnitId))
             .GroupBy(a => a.Analysis.UnitId)
             .Select(g => g.Last())
-            .SelectMany(a => a.Findings.Select(f => new UnitFinding(f.Id, a.Analysis.UnitId, a.Analysis.Fingerprint, f.Finding, Verifications.GetValueOrDefault(f.Id), Fixes.GetValueOrDefault(f.Id))))
+            .SelectMany(a => a.Findings.Select(f => new UnitFinding(
+                f.Id,
+                a.Analysis.UnitId,
+                a.Analysis.Fingerprint,
+                f.Finding,
+                Verifications.GetValueOrDefault(f.Id) ?? PendingVerdicts.LastOrDefault(v => v.UnitId == a.Analysis.UnitId).Verdict,
+                Fixes.GetValueOrDefault(f.Id))))
             .OrderBy(f => f.Id)
             .ToList();
         return Task.FromResult<IReadOnlyList<UnitFinding>>(current);

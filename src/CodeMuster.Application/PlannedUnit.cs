@@ -10,6 +10,13 @@ namespace CodeMuster.Application;
 /// <param name="Members">The files or symbols the unit covers, each carrying this unit's id.</param>
 public sealed record PlannedUnit(string Id, UnitKind Kind, string Key, Fidelity Fidelity, IReadOnlyList<UnitMember> Members)
 {
+    /// <summary>The dependency unit for one manifest: the manifest as it stands, so a change to it re-audits (D38).</summary>
+    public static PlannedUnit Dependency(string manifest, string contentHash)
+    {
+        var id = UnitIds.Dependency(manifest);
+        return new PlannedUnit(id, UnitKind.Dependency, manifest, Fidelity.Full, [new UnitMember(id, manifest, null, contentHash, 0)]);
+    }
+
     /// <summary>The fix unit for one file: its whole content, so a change to the file marks the unit stale (D37).</summary>
     public static PlannedUnit Fix(string path, string contentHash)
     {
