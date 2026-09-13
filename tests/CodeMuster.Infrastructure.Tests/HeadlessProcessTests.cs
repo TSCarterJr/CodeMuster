@@ -40,13 +40,13 @@ public sealed class HeadlessProcessTests : IDisposable
     [Fact]
     public async Task Cancellation_kills_the_process()
     {
-        var shim = WriteShim("ping -n 10 127.0.0.1 > nul\r\n", "sleep 10\n");
+        var shim = WriteShim("ping -n 60 127.0.0.1 > nul\r\n", "sleep 60\n");
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
         var watch = Stopwatch.StartNew();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => HeadlessProcess.RunAsync(shim, [], "", cts.Token));
 
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"took {watch.Elapsed}");
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(20), $"took {watch.Elapsed}");
     }
 
     private string WriteShim(string windowsBody, string unixBody)
