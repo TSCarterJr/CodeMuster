@@ -1,0 +1,131 @@
+using CodeMuster.Domain;
+
+namespace CodeMuster.Infrastructure.Tests;
+
+public sealed class GitFileFixerTests : IDisposable
+{
+    private readonly TempRepo repo = new();
+
+    public GitFileFixerTests()
+    {
+        repo.WriteFile("a.cs", "class A { }\n");
+        repo.WriteFile("b.cs", "class B { }\n");
+        repo.Commit("fixture");
+    }
+
+
+    [Fact]
+    public async Task WorkerEditsAreIsolated_AndOnlyItsAssignedFileIsAppliedAndCommitted()
+    {
+        var worktrees = repo.Run("worktree", "list", "--porcelain");
+        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
+        {
+            File.WriteAllText(Path.Combine(dir, "a.cs"), "class A { int x; }\n");
+            Assert.Equal("class A { }\n", File.ReadAllText(Path.Combine(repo.Root, "a.cs")));
+            return Task.FromResult("response");
+        }));
+
+        var edit = await fixer.RunAsync("a.cs", "pack", CancellationToken.None);
+
+        Assert.Equal("response", edit.Response);
+        Assert.Equal(worktrees, repo.Run("worktree", "list", "--porcelain"));
+        var workspace = new GitWorkspace(repo.Root);
+        await workspace.ApplyPatchAsync(edit.Patch, CancellationToken.None);
+        repo.WriteFile("b.cs", "other work\n");
+        await workspace.CommitFileAsync("a.cs", "fix a", CancellationToken.None);
+        Assert.Equal("a.cs", repo.Run("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").Trim());
+        Assert.Equal("other work\n", File.ReadAllText(Path.Combine(repo.Root, "b.cs")));
+        Assert.True(await workspace.HasFileChangesAsync("b.cs", CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("b.cs")]
+    [InlineData("new.cs")]
+    public async Task WorkerThatChangesAnotherFile_IsRejectedWithoutChangingTheMainCheckout(string other)
+    {
+        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
+        {
+            File.WriteAllText(Path.Combine(dir, other), "wrong file\n");
+            return Task.FromResult("response");
+        }));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => fixer.RunAsync("a.cs", "pack", CancellationToken.None));
+
+        Assert.Contains("outside its assigned file", error.Message);
+        Assert.Empty(repo.Run("status", "--porcelain"));
+    }
+
+    [Fact]
+    public async Task TwoWorkers_EditDifferentFilesConcurrently_WithoutSeeingEachOthersEdits()
+    {
+        var aStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent(async (pack, ct) =>
+        {
+            var isA = pack.StartsWith("a", StringComparison.Ordinal);
+            var path = isA ? "a.cs" : "b.cs";
+            File.WriteAllText(Path.Combine(dir, path), "fixed\n");
+            (isA ? aStarted : bStarted).TrySetResult();
+            await (isA ? bStarted : aStarted).Task.WaitAsync(ct);
+            Assert.Contains("class", File.ReadAllText(Path.Combine(dir, isA ? "b.cs" : "a.cs")));
+            return "response";
+        }));
+
+        var edits = await Task.WhenAll(fixer.RunAsync("a.cs", "a", timeout.Token), fixer.RunAsync("b.cs", "b", timeout.Token));
+
+        Assert.All(edits, edit => Assert.Contains("+fixed", edit.Patch));
+        Assert.Empty(repo.Run("status", "--porcelain"));
+    }
+
+    [Fact]
+    public async Task FileRollback_DoesNotTouchAnotherFile()
+    {
+        repo.WriteFile("a.cs", "failed fix\n");
+        repo.WriteFile("b.cs", "keep me\n");
+        repo.Run("add", "a.cs", "b.cs");
+        var workspace = new GitWorkspace(repo.Root);
+
+        await workspace.RestoreFileAsync("a.cs", CancellationToken.None);
+
+        Assert.False(await workspace.HasFileChangesAsync("a.cs", CancellationToken.None));
+        Assert.Equal("keep me\n", File.ReadAllText(Path.Combine(repo.Root, "b.cs")));
+        Assert.Equal("b.cs", repo.Run("diff", "--cached", "--name-only").Trim());
+    }
+
+    [Fact]
+    public async Task Cancellation_KeepsTheInterruptedWorkerForRecovery()
+    {
+        string? worker = null;
+        using var cancellation = new CancellationTokenSource();
+        var notes = new List<string>();
+        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
+        {
+            worker = dir;
+            File.WriteAllText(Path.Combine(dir, "a.cs"), "unfinished\n");
+            cancellation.Cancel();
+            throw new OperationCanceledException(cancellation.Token);
+        }), new Notes(notes));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fixer.RunAsync("a.cs", "pack", cancellation.Token));
+
+        Assert.NotNull(worker);
+        Assert.Equal("unfinished\n", File.ReadAllText(Path.Combine(worker, "a.cs")));
+        Assert.Contains(notes, note => note.Contains(worker, StringComparison.Ordinal));
+        Assert.Empty(repo.Run("status", "--porcelain"));
+        repo.Run("worktree", "remove", "--force", worker);
+    }
+
+    private sealed class Notes(List<string> lines) : IProgress<string>
+    {
+        public void Report(string value) => lines.Add(value);
+    }
+
+    private sealed class CallbackAgent(Func<string, CancellationToken, Task<string>> run) : IAgentAdapter
+    {
+        public AgentIdentity Identity { get; } = new("fake", null, null);
+        public Task<string> RunAsync(string pack, CancellationToken cancellationToken) => run(pack, cancellationToken);
+    }
+
+    public void Dispose() => repo.Dispose();
+}

@@ -2,7 +2,7 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
 
-public sealed class CodexAdapter(string executable, string? model = null, string? effort = null, bool write = false) : IAgentAdapter
+public sealed class CodexAdapter(string executable, string? model = null, string? effort = null, bool write = false, string? workingDirectory = null) : IAgentAdapter
 {
     public IReadOnlyList<string> Arguments => ArgumentsFor(NewLastMessageFile());
 
@@ -13,7 +13,7 @@ public sealed class CodexAdapter(string executable, string? model = null, string
         var lastMessageFile = NewLastMessageFile();
         try
         {
-            await HeadlessProcess.RunAsync(executable, ArgumentsFor(lastMessageFile), pack, cancellationToken).ConfigureAwait(false);
+            await HeadlessProcess.RunAsync(executable, ArgumentsFor(lastMessageFile), pack, cancellationToken, workingDirectory).ConfigureAwait(false);
             return File.Exists(lastMessageFile)
                 ? await File.ReadAllTextAsync(lastMessageFile, cancellationToken).ConfigureAwait(false)
                 : throw new InvalidOperationException("codex exited without writing its last message.");

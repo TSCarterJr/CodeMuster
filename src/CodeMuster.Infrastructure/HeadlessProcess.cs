@@ -5,12 +5,13 @@ namespace CodeMuster.Infrastructure;
 
 internal static class HeadlessProcess
 {
-    public static async Task<string> RunAsync(string executable, IReadOnlyList<string> arguments, string standardInput, CancellationToken cancellationToken)
+    public static async Task<string> RunAsync(string executable, IReadOnlyList<string> arguments, string standardInput, CancellationToken cancellationToken, string? workingDirectory = null)
     {
         var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
         var startInfo = new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
+            WorkingDirectory = workingDirectory ?? "",
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,

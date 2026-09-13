@@ -122,10 +122,37 @@ public class FixCommandTests
         Assert.Contains("no test_command", fix.Stderr);
     }
 
+    [Fact]
+    public async Task Fix_ParallelWorkers_RecordFindings_AndLeaveNoWorktreesBehind()
+    {
+        using var repo = await AuditedAsync();
+        var worktrees = repo.Git("worktree", "list", "--porcelain");
+
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "-j", "2");
+
+        Assert.Equal(0, fix.ExitCode);
+        Assert.Contains("up to 2 files at a time", fix.Stdout);
+        Assert.Matches(@"fixed [1-9]\d* finding\(s\) across [1-9]\d* file\(s\), declined 0, 0 gave up", fix.Stdout);
+        Assert.Equal(worktrees, repo.Git("worktree", "list", "--porcelain"));
+    }
+
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Stash_RestoresLocalEditsAndIndex_AfterFixOrFailure(bool failTests)
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("invalid")]
+    public async Task Fix_RejectsInvalidParallelism(string jobs)
+    {
+        using var repo = TempRepo.FromFixture("mixed-repo");
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "-j", jobs);
+        Assert.Equal(2, fix.ExitCode);
+    }
+
+    [Theory]
+    [InlineData(false, "1")]
+    [InlineData(true, "1")]
+    [InlineData(false, "2")]
+    [InlineData(true, "2")]
+    public async Task Stash_RestoresLocalEditsAndIndex_AfterFixOrFailure(bool failTests, string jobs)
     {
         using var repo = await AuditedAsync();
         const string target = "src/MixedRepo.Api/Program.cs";
@@ -150,7 +177,7 @@ public class FixCommandTests
         var unstaged = repo.Git("diff");
         var untracked = repo.Git("ls-files", "--others", "--exclude-standard");
 
-        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--path", target, "--attempts", "1", "--stash");
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--path", target, "--attempts", "1", "--stash", "-j", jobs);
 
         Assert.Equal(failTests ? 1 : 0, fix.ExitCode);
         Assert.Contains("restored your tracked changes", fix.Stdout);

@@ -3,7 +3,7 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
 
-public sealed class OpenCodeAdapter(string executable, string? model = null, string? effort = null, bool write = false) : IAgentAdapter
+public sealed class OpenCodeAdapter(string executable, string? model = null, string? effort = null, bool write = false, string? workingDirectory = null) : IAgentAdapter
 {
     public IReadOnlyList<string> Arguments { get; } =
     [
@@ -15,7 +15,7 @@ public sealed class OpenCodeAdapter(string executable, string? model = null, str
     public AgentIdentity Identity { get; } = new("opencode", model, effort);
 
     public async Task<string> RunAsync(string pack, CancellationToken cancellationToken) =>
-        FinalText(await HeadlessProcess.RunAsync(executable, Arguments, pack, cancellationToken).ConfigureAwait(false));
+        FinalText(await HeadlessProcess.RunAsync(executable, Arguments, pack, cancellationToken, workingDirectory).ConfigureAwait(false));
 
     internal static string FinalText(string output)
     {

@@ -4,8 +4,8 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
 
-/// <summary>Fixes what the audit confirmed (D37): one unit per file with confirmed findings, one fresh agent call each, serially, committing after every file it changes. The only use case that writes to the repository.</summary>
-public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock = null, Config? config = null, IWorkspace? workspace = null, ITestRunner? tests = null)
+/// <summary>Fixes what the audit confirmed: one unit per file with confirmed findings, one fresh agent call each, and one commit per changed file. Parallel workers edit in isolation (D40).</summary>
+public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock = null, Config? config = null, IWorkspace? workspace = null, ITestRunner? tests = null, IFileFixer? fileFixer = null)
 {
     /// <summary>Plans and fixes confirmed findings. With consent, saves tracked local changes and restores them afterward, including on failure or cancellation.</summary>
     public async Task<FixResult> RunAsync(IAgentAdapter adapter, FixOptions options, IProgress<string>? notes, CancellationToken cancellationToken)
@@ -49,6 +49,11 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         }
 
         await PlanAsync(cancellationToken);
+        if (options.Parallelism > 1)
+        {
+            return await RunParallelAsync(adapter, options, notes, repository, cancellationToken);
+        }
+
         var next = new Next(ledger, tree!, config ?? Config.Default, interactive: false, UnitKind.Fix, options.Path);
         var done = new Done(ledger, clock!, config ?? Config.Default, adapter.Identity);
         var gaveUp = new List<string>();
@@ -93,6 +98,161 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
             }
         }
     }
+
+    private async Task<FixResult> RunParallelAsync(IAgentAdapter adapter, FixOptions options, IProgress<string>? notes, IWorkspace repository, CancellationToken cancellationToken)
+    {
+        var editor = fileFixer ?? throw new InvalidOperationException("parallel fix needs isolated file workers");
+        var next = new Next(ledger, tree!, config ?? Config.Default, interactive: false, UnitKind.Fix, options.Path);
+        var pending = new Queue<UnitPack>(await next.RunAsync(int.MaxValue, cancellationToken));
+        var targets = (await ledger.GetCurrentFindingsAsync(cancellationToken))
+            .Where(f => f.Verification?.Verdict == Verdict.Confirmed)
+            .GroupBy(f => f.Finding.Path)
+            .ToDictionary(group => group.Key, group => group.Select(f => f.Id).ToHashSet(), StringComparer.Ordinal);
+        var done = new Done(ledger, clock!, config ?? Config.Default, adapter.Identity);
+        var attempts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var running = new Dictionary<Task<ParallelAttempt>, UnitPack>();
+        var gaveUp = new List<string>();
+        var units = 0;
+        var fixedCount = 0;
+        var declined = 0;
+        using var workers = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        try
+        {
+            while (pending.Count > 0 || running.Count > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                while (pending.Count > 0 && running.Count < options.Parallelism)
+                {
+                    var pack = pending.Dequeue();
+                    attempts[pack.UnitId] = attempts.GetValueOrDefault(pack.UnitId) + 1;
+                    notes?.Report(string.Create(CultureInfo.InvariantCulture, $"fixing {pack.Key}, {targets[pack.Key].Count} finding(s)"));
+                    running.Add(EditAsync(pack), pack);
+                }
+
+                var completed = await Task.WhenAny(running.Keys).WaitAsync(cancellationToken);
+                var unit = running[completed];
+                running.Remove(completed);
+                var attempt = await completed;
+                var response = attempt.Edit is null ? null : await IntegrateAsync(unit, attempt.Edit);
+                if (response is null)
+                {
+                    if (attempt.Error is not null)
+                    {
+                        notes?.Report($"fix failed for {unit.Key}: {attempt.Error}");
+                    }
+
+                    if (attempts[unit.UnitId] >= options.MaxAttempts)
+                    {
+                        gaveUp.Add(unit.UnitId);
+                    }
+                    else
+                    {
+                        pending.Enqueue(unit);
+                    }
+                }
+                else
+                {
+                    units++;
+                    fixedCount += response.Addressed.Count;
+                    declined += response.Declined.Count;
+                    notes?.Report($"finished {unit.Key}");
+                }
+            }
+
+            return new FixResult(units, fixedCount, declined, gaveUp, tests is not null);
+        }
+        finally
+        {
+            await workers.CancelAsync();
+            await Task.WhenAll(running.Keys.Select(async task =>
+            {
+                try
+                {
+                    await task;
+                }
+                catch (OperationCanceledException) when (workers.IsCancellationRequested)
+                {
+                }
+            }));
+        }
+
+        async Task<ParallelAttempt> EditAsync(UnitPack pack)
+        {
+            try
+            {
+                return new ParallelAttempt(await editor.RunAsync(pack.Key, pack.Markdown, workers.Token), null);
+            }
+            catch (Exception ex) when (!workers.IsCancellationRequested)
+            {
+                return new ParallelAttempt(null, ex.Message);
+            }
+        }
+
+        async Task<FixResponse?> IntegrateAsync(UnitPack pack, FileFixEdit edit)
+        {
+            var json = ResponseText.ExtractJson(edit.Response);
+            FixResponse response;
+            try
+            {
+                response = FixResponseJson.Parse(json);
+            }
+            catch (JsonException ex)
+            {
+                notes?.Report($"invalid fix response for {pack.Key}: {ex.Message}");
+                return null;
+            }
+
+            var cited = response.Addressed.Concat(response.Declined.Select(d => d.Finding)).ToList();
+            if (cited.Count == 0 || cited.Any(id => !targets[pack.Key].Contains(id)))
+            {
+                notes?.Report($"invalid fix response for {pack.Key}: cite only confirmed findings in this file");
+                return null;
+            }
+
+            var applied = false;
+            var recorded = false;
+            try
+            {
+                await repository.ApplyPatchAsync(edit.Patch, cancellationToken);
+                applied = true;
+                if (tests is not null)
+                {
+                    notes?.Report($"running tests for {pack.Key}");
+                    var result = await tests.RunAsync(cancellationToken);
+                    if (!result.Passed)
+                    {
+                        notes?.Report($"tests failed after fixing {pack.Key}, restoring only this file: {LastLine(result.Output)}");
+                        return null;
+                    }
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                // Finish the commit and its ledger record together before observing cancellation again.
+                if (await repository.HasFileChangesAsync(pack.Key, CancellationToken.None))
+                {
+                    await repository.CommitFileAsync(pack.Key, CommitMessage(pack.Key, response), CancellationToken.None);
+                }
+
+                var resultDone = await done.RunAsync(pack.UnitId, pack.Fingerprint, json, CancellationToken.None);
+                if (resultDone.Outcome != DoneOutcome.Recorded)
+                {
+                    throw new InvalidOperationException($"could not record fix for {pack.Key}: {resultDone.Message}");
+                }
+
+                recorded = true;
+                return response;
+            }
+            finally
+            {
+                if (applied && !recorded)
+                {
+                    await repository.RestoreFileAsync(pack.Key, CancellationToken.None);
+                }
+            }
+        }
+    }
+
+    private sealed record ParallelAttempt(FileFixEdit? Edit, string? Error);
 
     private async Task<AttemptResult> AttemptAsync(IAgentAdapter adapter, Done done, UnitPack pack, IProgress<string>? notes, CancellationToken cancellationToken)
     {

@@ -33,8 +33,8 @@ public static class Program
                                                             model and effort go straight to the agent's own flags
           verify --agent <name> [-j N] [--attempts N] [--force] [--path <folder>] [--model <id>] [--effort <level>]
                                                             run --kind verify: try to refute recorded findings
-          fix --agent <name> [--attempts N] [--path <folder>] [--model <id>] [--effort <level>] [--stash]
-                                                            fix the confirmed findings, one file at a time, and commit
+          fix --agent <name> [-j N] [--attempts N] [--path <folder>] [--model <id>] [--effort <level>] [--stash]
+                                                            fix confirmed findings with up to N file workers, and commit
                                                             each file it changes; offers to stash tracked local changes
                                                             and restore them afterward; --stash consents without asking
           report [--out <file>] [--include-refuted]         render findings and coverage as markdown;
@@ -243,16 +243,21 @@ public static class Program
         var options = new FixOptions(
             int.Parse(command.Options.GetValueOrDefault("attempts", "3"), CultureInfo.InvariantCulture),
             command.Options.GetValueOrDefault("path"),
-            stash);
-        Console.WriteLine($"fixing with {command.Options["agent"]}, one file at a time; each file it changes becomes a commit");
+            stash,
+            int.Parse(command.Options.GetValueOrDefault("jobs", "1"), CultureInfo.InvariantCulture));
+        var concurrency = options.Parallelism == 1 ? "one file at a time" : string.Create(CultureInfo.InvariantCulture, $"up to {options.Parallelism} files at a time");
+        Console.WriteLine($"fixing with {command.Options["agent"]}, {concurrency}; each file it changes becomes a commit");
         ITestRunner? tests = config.TestCommand.Count > 0 ? new CommandTestRunner(repoRoot, config.TestCommand) : null;
         if (tests is null)
         {
             Console.Error.WriteLine("warning: no test_command in .codemuster/config.json, so nothing checks that a fix still builds");
         }
 
-        var fix = new Fix(ledger, tree, clock, config, workspace, tests);
-        var result = await fix.RunAsync(adapter, options, new ProgressWriter(Console.Out), cancellationToken);
+        var progress = new ProgressWriter(Console.Out);
+        using var fileFixer = new GitFileFixer(repoRoot, directory => AgentAdapters.Create(
+            command.Options["agent"], null, command.Options.GetValueOrDefault("model"), command.Options.GetValueOrDefault("effort"), write: true, workingDirectory: directory), progress);
+        var fix = new Fix(ledger, tree, clock, config, workspace, tests, fileFixer);
+        var result = await fix.RunAsync(adapter, options, progress, cancellationToken);
         foreach (var unitId in result.GaveUp)
         {
             Console.Error.WriteLine($"gave up on {unitId} after {options.MaxAttempts} attempts");
@@ -364,7 +369,9 @@ public static class Program
         "fix" => command.Positionals.Count == 0
             && command.Flags.All(f => f == "stash")
             && command.Options.ContainsKey("agent")
-            && command.Options.Keys.All(k => k is "agent" or "attempts" or "model" or "effort" or "path"),
+            && command.Options.Keys.All(k => k is "agent" or "attempts" or "model" or "effort" or "path" or "jobs")
+            && IsPositiveOrAbsent(command, "jobs")
+            && IsPositiveOrAbsent(command, "attempts"),
         "estimate" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "path"),
         "report" => command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "out") && command.Flags.All(f => f == "include-refuted"),
         "skill" => command.Positionals.SequenceEqual(["install"]) && SkillInstaller.Harnesses.Contains(command.Options.GetValueOrDefault("for", "")) && command.Flags.All(f => f == "global"),

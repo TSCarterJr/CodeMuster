@@ -27,6 +27,14 @@ public sealed class HeadlessProcessTests : IDisposable
     }
 
     [Fact]
+    public async Task UsesTheRequestedWorkingDirectory()
+    {
+        using var repo = new TempRepo();
+        var output = await HeadlessProcess.RunAsync(ExecutableResolver.Resolve("git"), ["rev-parse", "--show-toplevel"], "", CancellationToken.None, repo.Root);
+        Assert.Equal(repo.Run("rev-parse", "--show-toplevel").Trim().Replace('\\', '/'), output.Trim().Replace('\\', '/'));
+    }
+
+    [Fact]
     public async Task Non_zero_exit_throws_with_stderr()
     {
         var git = ExecutableResolver.Resolve("git");

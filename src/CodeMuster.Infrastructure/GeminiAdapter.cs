@@ -6,8 +6,9 @@ namespace CodeMuster.Infrastructure;
 public sealed class GeminiAdapter : IAgentAdapter
 {
     private readonly string _executable;
+    private readonly string? _workingDirectory;
 
-    public GeminiAdapter(string executable, string? model = null, string? effort = null, bool write = false)
+    public GeminiAdapter(string executable, string? model = null, string? effort = null, bool write = false, string? workingDirectory = null)
     {
         if (effort is not null)
         {
@@ -15,6 +16,7 @@ public sealed class GeminiAdapter : IAgentAdapter
         }
 
         _executable = executable;
+        _workingDirectory = workingDirectory;
         Arguments = ["--output-format", "json", "--approval-mode", write ? "auto_edit" : "default", .. model is null ? Array.Empty<string>() : ["-m", model]];
         Identity = new AgentIdentity("gemini", model, null);
     }
@@ -24,7 +26,7 @@ public sealed class GeminiAdapter : IAgentAdapter
     public AgentIdentity Identity { get; }
 
     public async Task<string> RunAsync(string pack, CancellationToken cancellationToken) =>
-        FinalText(await HeadlessProcess.RunAsync(_executable, Arguments, pack, cancellationToken).ConfigureAwait(false));
+        FinalText(await HeadlessProcess.RunAsync(_executable, Arguments, pack, cancellationToken, _workingDirectory).ConfigureAwait(false));
 
     internal static string FinalText(string output)
     {

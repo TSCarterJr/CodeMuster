@@ -20,6 +20,34 @@ public sealed class GitWorkspace(string repoRoot) : IWorkspace
     public Task RestoreAsync(CancellationToken cancellationToken) =>
         GitProcess.RunAsync(repoRoot, ["checkout", "--", "."], null, cancellationToken);
 
+    public async Task ApplyPatchAsync(string patch, CancellationToken cancellationToken)
+    {
+        if (patch.Length > 0)
+        {
+            await GitProcess.RunAsync(repoRoot, ["apply", "--whitespace=nowarn", "-"], patch, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async Task<bool> HasFileChangesAsync(string path, CancellationToken cancellationToken)
+    {
+        var result = await GitProcess.RunAllowingFailureAsync(repoRoot, ["--literal-pathspecs", "diff", "--quiet", "HEAD", "--", path], null, cancellationToken).ConfigureAwait(false);
+        return result.ExitCode switch
+        {
+            0 => false,
+            1 => true,
+            _ => throw new InvalidOperationException(result.Error),
+        };
+    }
+
+    public async Task CommitFileAsync(string path, string message, CancellationToken cancellationToken)
+    {
+        await GitProcess.RunAsync(repoRoot, ["--literal-pathspecs", "add", "--", path], null, cancellationToken).ConfigureAwait(false);
+        await GitProcess.RunAsync(repoRoot, ["--literal-pathspecs", "commit", "--only", "-m", message, "--", path], null, cancellationToken).ConfigureAwait(false);
+    }
+
+    public Task RestoreFileAsync(string path, CancellationToken cancellationToken) =>
+        GitProcess.RunAsync(repoRoot, ["--literal-pathspecs", "restore", "--source=HEAD", "--staged", "--worktree", "--", path], null, cancellationToken);
+
     public Task<string> StashAsync(CancellationToken cancellationToken) =>
         SaveStashAsync("codemuster fix: saved tracked changes", cancellationToken);
 

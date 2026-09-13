@@ -2,7 +2,7 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
 
-public sealed class ClaudeAdapter(string executable, string? model = null, string? effort = null, bool write = false) : IAgentAdapter
+public sealed class ClaudeAdapter(string executable, string? model = null, string? effort = null, bool write = false, string? workingDirectory = null) : IAgentAdapter
 {
     public IReadOnlyList<string> Arguments { get; } =
     [
@@ -17,5 +17,5 @@ public sealed class ClaudeAdapter(string executable, string? model = null, strin
     public AgentIdentity Identity { get; } = new("claude", model, effort);
 
     public Task<string> RunAsync(string pack, CancellationToken cancellationToken) =>
-        HeadlessProcess.RunAsync(executable, Arguments, pack, cancellationToken);
+        HeadlessProcess.RunAsync(executable, Arguments, pack, cancellationToken, workingDirectory);
 }

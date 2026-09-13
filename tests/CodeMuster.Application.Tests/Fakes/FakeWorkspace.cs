@@ -10,6 +10,29 @@ public sealed class FakeWorkspace : IWorkspace
     public int Stashes { get; private set; }
     public string? RestoredStash { get; private set; }
     public CancellationToken RestoreStashToken { get; private set; }
+    public List<string> CommittedFiles { get; } = [];
+    public List<string> RestoredFiles { get; } = [];
+
+    public Task ApplyPatchAsync(string patch, CancellationToken cancellationToken)
+    {
+        Clean = patch.Length == 0;
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> HasFileChangesAsync(string path, CancellationToken cancellationToken) => Task.FromResult(!Clean);
+
+    public Task CommitFileAsync(string path, string message, CancellationToken cancellationToken)
+    {
+        CommittedFiles.Add(path);
+        return CommitAsync(message, cancellationToken);
+    }
+
+    public Task RestoreFileAsync(string path, CancellationToken cancellationToken)
+    {
+        RestoredFiles.Add(path);
+        Clean = true;
+        return Task.CompletedTask;
+    }
 
     public Task<string> StashAsync(CancellationToken cancellationToken)
     {

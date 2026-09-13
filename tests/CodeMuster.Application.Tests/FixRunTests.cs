@@ -53,6 +53,160 @@ public class FixRunTests
         });
 
     [Fact]
+    public async Task ParallelFix_RefillsAnAvailableSlot_AndCommitsEachFileOnce()
+    {
+        var ids = new Dictionary<string, IReadOnlyList<long>>();
+        foreach (var path in new[] { "a.cs", "b.cs", "c.cs" })
+        {
+            ids[path] = await SeedAsync(path, 10, 20);
+        }
+
+        var started = ids.Keys.ToDictionary(path => path, _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        var release = ids.Keys.ToDictionary(path => path, _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        var editor = new FileFixer(async (pack, ct) =>
+        {
+            started[pack].SetResult();
+            await release[pack].Task.WaitAsync(ct);
+            return new FileFixEdit(FixResponseJson.Serialize(new FixResponse("fixed", ids[pack], [])), pack);
+        });
+        var run = new Fix(ledger, tree, clock, Config.Default, workspace, tests, editor).RunAsync(
+            Fixer(_ => throw new Exception("shared-checkout adapter must not run")), new FixOptions(Parallelism: 2), new ListProgress(notes), CancellationToken.None);
+
+        await Task.WhenAll(started["a.cs"].Task, started["b.cs"].Task).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.False(started["c.cs"].Task.IsCompleted);
+        release["b.cs"].SetResult();
+        await started["c.cs"].Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.False(release["a.cs"].Task.IsCompleted);
+        release["c.cs"].SetResult();
+        release["a.cs"].SetResult();
+        var result = await run;
+
+        Assert.Equal((3, 6, 0), (result.Units, result.Fixed, result.Declined));
+        Assert.Equal(3, tests.Runs);
+        Assert.Equal(3, workspace.CommittedFiles.Distinct().Count());
+        Assert.Equal("b.cs", workspace.CommittedFiles[0]);
+        Assert.Equal(0, workspace.Restores);
+    }
+
+    [Fact]
+    public async Task ParallelFix_FailedTestsRetryOnlyThatFile()
+    {
+        var ids = await SeedAsync("a.cs", 10);
+        tests.Results.Enqueue(new TestRun(false, "broken"));
+        tests.Results.Enqueue(new TestRun(true, "passed"));
+        var calls = 0;
+        var editor = new FileFixer((pack, _) =>
+        {
+            calls++;
+            return Task.FromResult(new FileFixEdit(FixResponseJson.Serialize(new FixResponse("fixed", ids, [])), pack));
+        });
+
+        var result = await new Fix(ledger, tree, clock, Config.Default, workspace, tests, editor).RunAsync(
+            Fixer(_ => throw new Exception()), new FixOptions(Parallelism: 2), null, CancellationToken.None);
+
+        Assert.Equal(2, calls);
+        Assert.Equal(1, result.Fixed);
+        Assert.Equal(new[] { "a.cs" }, workspace.CommittedFiles);
+        Assert.Equal(new[] { "a.cs" }, workspace.RestoredFiles);
+        Assert.Equal(0, workspace.Restores);
+    }
+
+    [Fact]
+    public async Task ParallelFix_CancellationStopsWorkersBeforeRestoringTheStash()
+    {
+        await SeedAsync("a.cs", 10);
+        workspace.Clean = false;
+        using var cancellation = new CancellationTokenSource();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stopped = false;
+        var editor = new FileFixer(async (_, ct) =>
+        {
+            started.SetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+                throw new Exception("unreachable");
+            }
+            finally
+            {
+                Assert.Null(workspace.RestoredStash);
+                stopped = true;
+            }
+        });
+        var run = new Fix(ledger, tree, clock, Config.Default, workspace, null, editor).RunAsync(
+            Fixer(_ => throw new Exception()), new FixOptions(Stash: true, Parallelism: 2), null, cancellation.Token);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+
+        Assert.True(stopped);
+        Assert.Equal("saved-stash", workspace.RestoredStash);
+        Assert.Empty(workspace.CommittedFiles);
+        Assert.Empty(ledger.Fixes);
+    }
+
+    private sealed class FileFixer(Func<string, CancellationToken, Task<FileFixEdit>> run) : IFileFixer
+    {
+        public Task<FileFixEdit> RunAsync(string path, string pack, CancellationToken cancellationToken) => run(path, cancellationToken);
+    }
+
+    [Fact]
+    public async Task ParallelFix_TenSlotsWithFourFiles_StartsOnlyFourWorkers()
+    {
+        var ids = new Dictionary<string, IReadOnlyList<long>>();
+        foreach (var path in new[] { "a.cs", "b.cs", "c.cs", "d.cs" })
+        {
+            ids[path] = await SeedAsync(path, 10);
+        }
+
+        var started = new List<string>();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var editor = new FileFixer(async (path, ct) =>
+        {
+            started.Add(path);
+            if (started.Count == 4)
+            {
+                allStarted.SetResult();
+            }
+
+            await release.Task.WaitAsync(ct);
+            return new FileFixEdit(FixResponseJson.Serialize(new FixResponse("fixed", ids[path], [])), path);
+        });
+        var run = new Fix(ledger, tree, clock, Config.Default, workspace, null, editor).RunAsync(
+            Fixer(_ => throw new Exception()), new FixOptions(Parallelism: 10), null, CancellationToken.None);
+        await allStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(4, started.Count);
+        Assert.Equal(4, started.Distinct().Count());
+        release.SetResult();
+
+        Assert.Equal(4, (await run).Units);
+        Assert.Equal(4, started.Count);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ParallelFix_OneBrokenWorkerDoesNotDiscardAnotherFilesCommit(bool wrongFinding)
+    {
+        var a = await SeedAsync("a.cs", 10);
+        await SeedAsync("b.cs", 10);
+        var editor = new FileFixer((path, _) => path == "b.cs" && !wrongFinding
+            ? throw new InvalidOperationException("agent failed")
+            : Task.FromResult(new FileFixEdit(FixResponseJson.Serialize(new FixResponse("fixed", a, [])), path)));
+
+        var result = await new Fix(ledger, tree, clock, Config.Default, workspace, null, editor).RunAsync(
+            Fixer(_ => throw new Exception()), new FixOptions(MaxAttempts: 1, Parallelism: 2), null, CancellationToken.None);
+
+        Assert.Equal(1, result.Fixed);
+        Assert.Equal(new[] { UnitIds.Fix("b.cs") }, result.GaveUp);
+        Assert.Equal(new[] { "a.cs" }, workspace.CommittedFiles);
+        Assert.Empty(workspace.RestoredFiles);
+        Assert.Equal(FixState.Fixed, ledger.Fixes[a[0]].State);
+    }
+
+    [Fact]
     public async Task ADirtyTree_StopsBeforeAnythingRuns()
     {
         await SeedAsync("src/a.cs", 10);
