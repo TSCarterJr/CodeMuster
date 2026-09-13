@@ -39,6 +39,7 @@ public static class Program
           report [--out <file>] [--include-refuted]         render findings and coverage as markdown;
                                                             refuted findings are left out unless asked for
           skill install --for <agent> [--global]            install the skill for claude, codex, gemini, or opencode
+          update [--check]                                  update CodeMuster itself from npm, or just say what is available
 
         every verb runs against the git repository containing the current directory.
         """;

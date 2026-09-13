@@ -218,6 +218,35 @@ function bundledBuild(pkg) {
   }
 }
 
+async function updateNow({ args, stateDir, platform, arch, currentVersion, registry = REGISTRY, out = process.stdout }) {
+  const checkOnly = args.includes('--check');
+  const packument = await getJson(`${registry}/codemuster`);
+  const latest = (packument['dist-tags'] && packument['dist-tags'].latest) || null;
+  if (latest === null) {
+    out.write('codemuster: the registry named no latest version\n');
+    return 1;
+  }
+
+  if (compareVersions(latest, currentVersion) <= 0) {
+    out.write(`codemuster ${currentVersion} is already the newest\n`);
+    return 0;
+  }
+
+  if (checkOnly) {
+    out.write(`codemuster ${latest} is available; you are on ${currentVersion}. Run codemuster update to install it.\n`);
+    return 0;
+  }
+
+  out.write(`updating codemuster ${currentVersion} to ${latest}\n`);
+  const versionsDir = path.join(stateDir, 'versions');
+  await installVersion({ registry, version: latest, versionsDir, platform, arch });
+  pruneVersions(versionsDir);
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(path.join(stateDir, 'last-update-check'), String(Date.now()));
+  out.write(`codemuster ${latest} is ready; the next command uses it\n`);
+  return 0;
+}
+
 async function main(args, env = process.env) {
   const platform = process.platform;
   const arch = process.arch;
@@ -229,6 +258,10 @@ async function main(args, env = process.env) {
     process.stderr.write(`codemuster: downloading CodeMuster ${version} for ${platform}-${arch}\n`);
     await installVersion({ registry: REGISTRY, version, versionsDir, platform, arch });
     build = newestBuild({ versionsDir, bundled: null, platform });
+  }
+
+  if (args[0] === 'update') {
+    return updateNow({ args: args.slice(1), stateDir, platform, arch, currentVersion: build.version });
   }
 
   if (shouldCheckForUpdate({ env, now: Date.now(), lastCheck: readLastCheck(stateDir) })) {
@@ -253,4 +286,5 @@ module.exports = {
   shouldCheckForUpdate,
   tar,
   update,
+  updateNow,
 };

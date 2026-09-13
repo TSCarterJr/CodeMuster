@@ -157,3 +157,77 @@ test('the build runs with the same arguments and its exit code comes back', asyn
 
   assert.equal(code, 3);
 });
+
+test('update installs a newer version and says so', async () => {
+  const tarball = packTarball('0.2.0', process.platform);
+  const registry = await fakeRegistry({ latest: '0.2.0', version: '0.2.0', tarball, integrity: integrityOf(tarball) });
+  const stateDir = tempDir();
+  const said = [];
+  try {
+    const code = await launcher.updateNow({
+      args: [],
+      stateDir,
+      platform: process.platform,
+      arch: process.arch,
+      currentVersion: '0.1.0',
+      registry: registry.url,
+      out: { write: (line) => said.push(line) },
+    });
+
+    assert.equal(code, 0);
+    assert.match(said.join(''), /updating codemuster 0\.1\.0 to 0\.2\.0/);
+    assert.match(said.join(''), /0\.2\.0 is ready/);
+    assert.equal(launcher.newestBuild({ versionsDir: path.join(stateDir, 'versions'), bundled: null, platform: process.platform }).version, '0.2.0');
+  } finally {
+    registry.close();
+  }
+});
+
+test('update on the newest version downloads nothing', async () => {
+  const registry = await fakeRegistry({ latest: '0.1.0', version: '0.1.0', tarball: Buffer.alloc(0), integrity: 'sha512-x' });
+  const stateDir = tempDir();
+  const said = [];
+  try {
+    const code = await launcher.updateNow({
+      args: [],
+      stateDir,
+      platform: process.platform,
+      arch: process.arch,
+      currentVersion: '0.1.0',
+      registry: registry.url,
+      out: { write: (line) => said.push(line) },
+    });
+
+    assert.equal(code, 0);
+    assert.match(said.join(''), /0\.1\.0 is already the newest/);
+    assert.deepEqual(registry.requests, ['/codemuster']);
+    assert.ok(!fs.existsSync(path.join(stateDir, 'versions')));
+  } finally {
+    registry.close();
+  }
+});
+
+test('update --check says what is available without installing it', async () => {
+  const tarball = packTarball('0.2.0', process.platform);
+  const registry = await fakeRegistry({ latest: '0.2.0', version: '0.2.0', tarball, integrity: integrityOf(tarball) });
+  const stateDir = tempDir();
+  const said = [];
+  try {
+    const code = await launcher.updateNow({
+      args: ['--check'],
+      stateDir,
+      platform: process.platform,
+      arch: process.arch,
+      currentVersion: '0.1.0',
+      registry: registry.url,
+      out: { write: (line) => said.push(line) },
+    });
+
+    assert.equal(code, 0);
+    assert.match(said.join(''), /codemuster 0\.2\.0 is available/);
+    assert.deepEqual(registry.requests, ['/codemuster']);
+    assert.ok(!fs.existsSync(path.join(stateDir, 'versions')));
+  } finally {
+    registry.close();
+  }
+});
