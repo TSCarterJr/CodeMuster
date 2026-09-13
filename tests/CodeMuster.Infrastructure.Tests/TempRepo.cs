@@ -11,6 +11,8 @@ public sealed class TempRepo : IDisposable
         Directory.CreateDirectory(Root);
         Run("init", "-q");
         Run("config", "core.autocrlf", "false");
+        Run("config", "user.name", "CodeMuster Tests");
+        Run("config", "user.email", "tests@codemuster.invalid");
     }
 
     public string Root { get; }
