@@ -46,7 +46,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         }
 
         var audit = config.Vulnerabilities && auditor is not null
-            ? await auditor.AuditAsync(repoRoot, included.Select(f => f.Path).ToList(), progress, cancellationToken)
+            ? await auditor.AuditAsync(repoRoot, AuditPaths(current), progress, cancellationToken)
             : null;
         if (audit is not null)
         {
@@ -112,6 +112,14 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             .Where(f => sources.TryGetValue(f.UnitId, out var source) && Fingerprints.Compute(source.Members) == f.Fingerprint)
             .Select(f => PlannedUnit.Verify(f, sources[f.UnitId].Members, sources[f.UnitId].Fidelity));
     }
+
+    /// <summary>Files the audit may look at: everything not excluded, plus the lockfiles, which are excluded as code but are exactly what the audit tools read (D38).</summary>
+    private IReadOnlyList<string> AuditPaths(IReadOnlyList<FileRecord> current) =>
+        current
+            .Where(f => f.DeletedAt is null)
+            .Where(f => f.ExcludedReason is null || (f.ExcludedReason == "lockfile" && !config.ExcludedHere(f.Path)))
+            .Select(f => f.Path)
+            .ToList();
 
     private static IEnumerable<PlannedUnit> PlanDependencyUnitsAsync(DependencyAudit audit, IReadOnlyList<FileRecord> included)
     {

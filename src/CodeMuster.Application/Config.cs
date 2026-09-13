@@ -13,6 +13,9 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     /// <summary>Repo-relative globs of files never analyzed, on top of the built-in <see cref="Exclusions"/> (D04). A glob without a slash matches file names, so a folder needs <c>folder/**</c>.</summary>
     public IReadOnlyList<string> Exclude { get; init; } = [];
 
+    /// <summary>True when this repository's own <see cref="Exclude"/> globs cover the path, whatever the built-in rules say about it.</summary>
+    public bool ExcludedHere(string path) => Exclude.Any(glob => Glob.IsMatch(glob, path));
+
     /// <summary>Why a file is not analyzed: the built-in reason first, then <c>exclude:&lt;glob&gt;</c> for the first exclude glob it matches; null when it is analyzed.</summary>
     public string? ExcludedReason(string path, bool linguistGenerated) =>
         Exclusions.Reason(path, linguistGenerated)

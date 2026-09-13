@@ -103,4 +103,29 @@ public class DependencyScanTests
 
         Assert.DoesNotContain(ledger.Units, u => u.Kind == UnitKind.Verify);
     }
+
+    [Fact]
+    public async Task LockfilesReachTheAudit_EvenThoughTheyAreNeverAnalyzedAsCode()
+    {
+        tree.Add("app/pnpm-lock.yaml", "lockfile");
+        tree.Add("app/package.json", "{}");
+
+        await ScanAsync();
+
+        Assert.Contains("web/package-lock.json", auditor.Paths);
+        Assert.Contains("app/pnpm-lock.yaml", auditor.Paths);
+        Assert.Contains("web/package.json", auditor.Paths);
+    }
+
+    [Fact]
+    public async Task AnExcludedFolderIsNeverAudited()
+    {
+        tree.Add("mobile/package.json", "{}");
+        tree.Add("mobile/package-lock.json", "lockfile");
+
+        await ScanAsync(Config.Default with { Exclude = ["mobile/**"] });
+
+        Assert.DoesNotContain("mobile/package.json", auditor.Paths);
+        Assert.DoesNotContain("mobile/package-lock.json", auditor.Paths);
+    }
 }
