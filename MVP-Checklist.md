@@ -222,3 +222,11 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 | ID | Task | Status | Notes |
 |---|---|---|---|
 | LIC1 | Replace MIT with personal/internal company use terms and ship matching license metadata. | [x] | codex 2026-09-14. All 16 npm tests and dotnet test pass locally; no publication. Prioritized at Tim's explicit request over the next feature. Staging test failed because LICENSE was missing. |
+
+## Phase 16: Complete the agent workflow (Tim's requested priority)
+
+| ID | Task | Status | Owner / Date | Notes |
+|---|---|---|---|---|
+| T16.1 | Init agent selection, idempotent skill/hook installation, lightweight change notifications and scan acknowledgement. Tests first: preserve settings, invalid config, opt-outs, selected agents, linked worktrees and notification races. | `[x]` | codex 2026-09-14 | D41. Three CLI regressions and change-tracking regressions failed first; all 803 tests pass. Notifications live in worktree Git metadata; content fingerprints avoid read-only false alarms. |
+| T16.2 | Retry declines with an explicit related-file scope, verify current findings and record resolution, and expose final validation. Tests first: outcome transitions, resumed completed files, scope isolation and validation failures. | `[~]` | codex 2026-09-14 | D42; explicit user priority. |
+| T16.3 | Update shared skill/help/user guide for setup, CLI-owned repairs, completion and final checks; validate installed workflow. | `[ ]` | | Supersedes instructions to manually fix from the report. |

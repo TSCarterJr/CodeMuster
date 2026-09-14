@@ -14,7 +14,7 @@ public static class Program
 {
     public const string Usage = HelpText.Overview;
 
-    private static readonly string[] Verbs = ["init", "doctor", "scan", "status", "estimate", "next", "done", "run", "verify", "report", "skill", "fix"];
+    private static readonly string[] Verbs = ["init", "doctor", "scan", "status", "estimate", "next", "done", "run", "verify", "report", "skill", "fix", "hook"];
 
     private static readonly string[] KindNames = Enum.GetNames<UnitKind>().Select(name => name.ToLowerInvariant()).ToArray();
 
@@ -114,6 +114,13 @@ public static class Program
 
         var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
         var tree = new GitSourceTree(repoRoot);
+        var changes = new GitChangeTracker(repoRoot);
+        if (command.Verb == "hook")
+        {
+            if (fileSystem.FileExists(ConfigLoader.PathFor(repoRoot))) await changes.NotifyAsync(cancellationToken);
+            Console.WriteLine("{}");
+            return 0;
+        }
         if (command.Verb == "init")
         {
             return await InitAsync(command, repoRoot, fileSystem, tree, cancellationToken);
@@ -122,11 +129,18 @@ public static class Program
         var config = await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken);
         using var ledger = await SqliteLedger.OpenAsync(Path.Combine(repoRoot, ".codemuster", "ledger.db"), cancellationToken);
         var clock = new SystemClock();
+        if (command.Verb is "status" or "report" or "fix" or "verify" && await changes.HasChangesAsync(cancellationToken))
+        {
+            Console.Error.WriteLine("changes reported by an agent hook since the last scan; run codemuster scan to refresh coverage");
+        }
 
         switch (command.Verb)
         {
             case "scan":
-                return await ScanAsync(command, repoRoot, ledger, tree, clock, config, cancellationToken);
+                var snapshot = await changes.SnapshotAsync(cancellationToken);
+                var exit = await ScanAsync(command, repoRoot, ledger, tree, clock, config, cancellationToken);
+                if (exit == 0) await changes.AcknowledgeAsync(snapshot, cancellationToken);
+                return exit;
             case "status":
                 Console.WriteLine((await new Status(ledger, config).RunAsync(cancellationToken)).Render());
                 return 0;
@@ -325,6 +339,18 @@ public static class Program
     private static async Task<int> InitAsync(Command command, string repoRoot, PhysicalFileSystem fileSystem, GitSourceTree tree, CancellationToken cancellationToken)
     {
         var interactive = !Console.IsInputRedirected && !Console.IsOutputRedirected;
+        var selection = command.Options.GetValueOrDefault("for");
+        if (selection is null && !command.Flags.Contains("no-skills") && interactive && !command.Flags.Contains("yes"))
+        {
+            Console.Write("install skills and hooks for which agents? [claude,codex,gemini / none; default all] ");
+            selection = Console.ReadLine();
+            selection = string.IsNullOrWhiteSpace(selection) ? "all" : selection.Trim();
+        }
+        selection ??= command.Flags.Contains("yes") ? "all" : "none";
+        var agents = command.Flags.Contains("no-skills") || selection == "none" ? Array.Empty<string>() : AgentSetup.Select(selection);
+        await new AgentSetup(fileSystem).InstallAsync(repoRoot, agents, !command.Flags.Contains("no-hooks"), EmbeddedSkill.Text, cancellationToken);
+        foreach (var agent in agents) Console.WriteLine($"installed {agent} skill" + (command.Flags.Contains("no-hooks") ? "" : " and change hook (reload the agent and approve hooks if prompted)"));
+        if (agents.Count == 0) Console.WriteLine("no agent skills selected; use init --for claude,codex,gemini to install them");
         var result = await new Init(fileSystem, tree).RunAsync(repoRoot, _ => Task.FromResult(GitignorePrompt.Decide(command.Flags, interactive, () =>
         {
             Console.Write("add .codemuster/ledger.db to .gitignore? [Y/n] ");
@@ -342,7 +368,10 @@ public static class Program
 
     private static bool HasRequiredArguments(Command command) => command.Verb switch
     {
-        "init" => command.Positionals.Count == 0 && command.Options.Count == 0,
+        "init" => command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "for")
+            && command.Flags.All(f => f is "yes" or "no-gitignore" or "no-hooks" or "no-skills")
+            && !(command.Flags.Contains("no-skills") && command.Options.ContainsKey("for")),
+        "hook" => command.Positionals.Count == 0 && command.Options.Count == 0 && command.Flags.Count == 0,
         "doctor" => command.Positionals.Count == 0 && command.Options.Count == 0 && command.Flags.Count == 0,
         "scan" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "mode") && command.Options.GetValueOrDefault("mode", "file") is "file" or "slice",
         "done" => command.Flags.Count == 0 && command.Positionals.Count == 1 && command.Options.ContainsKey("fingerprint") && command.Options.ContainsKey("findings"),
