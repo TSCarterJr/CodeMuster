@@ -5,8 +5,12 @@ namespace CodeMuster.Application;
 /// <param name="Path">Fix only files under this repo-relative folder, or anywhere when null.</param>
 /// <param name="Stash">Save tracked local changes before fixing and restore them afterward.</param>
 /// <param name="Parallelism">Maximum simultaneous file workers; at least one.</param>
-public sealed record FixOptions(int MaxAttempts = 3, string? Path = null, bool Stash = false, int Parallelism = 1)
+/// <param name="RetryDeclined">Reopens completed files containing declined confirmed findings.</param>
+public sealed record FixOptions(int MaxAttempts = 3, string? Path = null, bool Stash = false, int Parallelism = 1, bool RetryDeclined = false)
 {
+    /// <summary>Additional existing tracked files explicitly allowed in a serial recovery worker.</summary>
+    public IReadOnlyList<string> RelatedFiles { get; init; } = [];
+
     /// <summary>Maximum simultaneous file workers.</summary>
     public int Parallelism { get; } = Parallelism >= 1
         ? Parallelism

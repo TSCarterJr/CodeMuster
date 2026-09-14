@@ -16,7 +16,7 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
     private const string VerifyInstructions =
         "An earlier analysis reported the finding below. Try to refute it: check the claim against the code under Files and follow the calls it depends on. "
         + "Answer refuted when the code shows the claim is wrong or the defect cannot happen, confirmed only when the code shows the defect is real, "
-        + "and unsure when the code shown cannot settle it. "
+        + "and unsure when the code shown cannot settle it. Use resolved when a previously reported defect is no longer present in current code; cite the change or current behavior that resolves it. Refuted means the original claim was wrong, not that a real defect was repaired. "
         + "A defect in code nothing can reach cannot happen: answer refuted when the repository shows nothing calls that code, "
         + "and count code reached through dependency injection, reflection, routing, or a library's public API as reachable.";
 
@@ -48,7 +48,8 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
             }
 
             var targets = unit.Kind == UnitKind.Fix ? Targets(current, unit.Key) : [];
-            var markdown = Render(unit, await SelectAsync(unitMembers, cancellationToken), finding, targets);
+            var prior = unit.Kind == UnitKind.Verify ? current.FirstOrDefault(f => UnitIds.Verify(f.Id) == unit.Id) : null;
+            var markdown = Render(unit, await SelectAsync(unitMembers, cancellationToken), finding, targets, prior);
             var failure = unit.Status == UnitStatus.Failed
                 ? failures.LastOrDefault(a => a.UnitId == unit.Id && a.Fingerprint == unit.Fingerprint)
                 : null;
@@ -113,12 +114,12 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
 
     private static IReadOnlyList<FixTarget> Targets(IReadOnlyList<UnitFinding> current, string path) =>
         current
-            .Where(f => f.Finding.Path == path && f.Verification?.Verdict == Verdict.Confirmed)
+            .Where(f => f.Finding.Path == path && f.Verification?.Verdict == Verdict.Confirmed && f.Fix?.State != FixState.Fixed)
             .OrderBy(f => f.Finding.LineStart)
-            .Select(f => new FixTarget(f.Id, f.Finding, f.Verification?.Reason))
+            .Select(f => new FixTarget(f.Id, f.Finding, f.Verification?.Reason, f.Fix))
             .ToList();
 
-    private string Render(Unit unit, IReadOnlyList<Part> parts, Finding? finding, IReadOnlyList<FixTarget> targets)
+    private string Render(Unit unit, IReadOnlyList<Part> parts, Finding? finding, IReadOnlyList<FixTarget> targets, UnitFinding? prior)
     {
         var lenses = config.LensesFor(parts.Select(p => (p.Member.Path, Languages.FromPath(p.Member.Path))));
         var outlined = parts.Count(p => p.Outlined);
@@ -159,6 +160,12 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
         }
 
         lines.Add("");
+        if (prior is not null && (prior.Verification is not null || prior.Fix is not null))
+        {
+            lines.Add("## Prior outcome (historical evidence)");
+            lines.Add(JsonSerializer.Serialize(new { prior.Verification, prior.Fix }, DomainJson.Options));
+            lines.Add("");
+        }
         lines.Add("## Files");
 
         foreach (var part in parts)

@@ -15,6 +15,24 @@ public sealed class GitFileFixerTests : IDisposable
 
 
     [Fact]
+    public async Task ExplicitRelatedFileScope_AcceptsAndCommitsTheCoherentRepair()
+    {
+        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((pack, _) =>
+        {
+            Assert.Contains("a.cs, b.cs", pack);
+            File.WriteAllText(Path.Combine(dir, "a.cs"), "class A { int x; }\n");
+            File.WriteAllText(Path.Combine(dir, "b.cs"), "class B { int x; }\n");
+            return Task.FromResult("response");
+        }), relatedFiles: ["b.cs"]);
+        var edit = await fixer.RunAsync("a.cs", "pack", CancellationToken.None);
+        var workspace = new GitWorkspace(repo.Root);
+        await workspace.ApplyPatchAsync(edit.Patch, CancellationToken.None);
+        await workspace.CommitFilesAsync(["a.cs", "b.cs"], "coherent repair", CancellationToken.None);
+        Assert.Equal(new[] { "a.cs", "b.cs" }, repo.Run("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()));
+        Assert.True(await workspace.IsCleanAsync(CancellationToken.None));
+    }
+
+    [Fact]
     public async Task WorkerEditsAreIsolated_AndOnlyItsAssignedFileIsAppliedAndCommitted()
     {
         var worktrees = repo.Run("worktree", "list", "--porcelain");

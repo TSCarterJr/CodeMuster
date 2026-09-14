@@ -10,6 +10,8 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
     /// <summary>Plans and fixes confirmed findings. With consent, saves tracked local changes and restores them afterward, including on failure or cancellation.</summary>
     public async Task<FixResult> RunAsync(IAgentAdapter adapter, FixOptions options, IProgress<string>? notes, CancellationToken cancellationToken)
     {
+        if (options.RelatedFiles.Count > 0 && (options.Parallelism != 1 || string.IsNullOrWhiteSpace(options.Path)))
+            throw new ArgumentException("related-file recovery requires one --path file and -j 1");
         var repository = workspace ?? throw new InvalidOperationException("fix needs a workspace");
         string? stash = null;
         if (!await repository.IsCleanAsync(cancellationToken))
@@ -49,7 +51,18 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         }
 
         await PlanAsync(cancellationToken);
-        if (options.Parallelism > 1)
+        if (options.RetryDeclined)
+        {
+            var declinedPaths = (await ledger.GetCurrentFindingsAsync(cancellationToken))
+                .Where(f => f.Verification?.Verdict == Verdict.Confirmed && f.Fix?.State == FixState.Declined)
+                .Select(f => f.Finding.Path).ToHashSet(StringComparer.Ordinal);
+            var reopen = (await ledger.GetUnitsAsync(cancellationToken))
+                .Where(u => u.Kind == UnitKind.Fix && u.Status == UnitStatus.Done && declinedPaths.Contains(u.Key)
+                    && (options.Path is null || u.Key == options.Path || u.Key.StartsWith(options.Path.TrimEnd('/') + "/", StringComparison.Ordinal)))
+                .Select(u => u with { Status = UnitStatus.Pending }).ToArray();
+            await ledger.UpsertUnitsAsync(reopen, await ledger.GetMembersAsync(reopen.Select(u => u.Id).ToArray(), cancellationToken), cancellationToken);
+        }
+        if (options.Parallelism > 1 || options.RelatedFiles.Count > 0)
         {
             return await RunParallelAsync(adapter, options, notes, repository, cancellationToken);
         }
@@ -112,7 +125,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         var pending = new Queue<UnitPack>(await next.RunAsync(int.MaxValue, cancellationToken));
         var originalPacks = pending.ToDictionary(p => p.UnitId, StringComparer.Ordinal);
         var targets = (await ledger.GetCurrentFindingsAsync(cancellationToken))
-            .Where(f => f.Verification?.Verdict == Verdict.Confirmed)
+            .Where(f => f.Verification?.Verdict == Verdict.Confirmed && f.Fix?.State != FixState.Fixed)
             .GroupBy(f => f.Finding.Path)
             .ToDictionary(group => group.Key, group => group.Select(f => f.Id).ToHashSet(), StringComparer.Ordinal);
         var done = new Done(ledger, clock!, config ?? Config.Default, adapter.Identity);
@@ -224,9 +237,9 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
             }
 
             var cited = response.Addressed.Concat(response.Declined.Select(d => d.Finding)).ToList();
-            if (cited.Count == 0 || cited.Any(id => !targets[pack.Key].Contains(id)))
+            if (cited.Count == 0 || !targets[pack.Key].SetEquals(cited) || cited.Count != targets[pack.Key].Count || string.IsNullOrWhiteSpace(response.Summary) || response.Declined.Any(d => string.IsNullOrWhiteSpace(d.Reason)))
             {
-                return await RejectAsync(pack, $"invalid fix response for {pack.Key}: cite only confirmed findings in this file");
+                return await RejectAsync(pack, $"invalid fix response for {pack.Key}: answer every unresolved confirmed finding in this file exactly once, with reasons");
             }
 
             var applied = false;
@@ -248,9 +261,14 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
 
                 cancellationToken.ThrowIfCancellationRequested();
                 // Finish the commit and its ledger record together before observing cancellation again.
-                if (await repository.HasFileChangesAsync(pack.Key, CancellationToken.None))
+                var allowed = new[] { pack.Key }.Concat(options.RelatedFiles).Distinct(StringComparer.Ordinal).ToArray();
+                var changed = new List<string>();
+                foreach (var path in allowed)
+                    if (await repository.HasFileChangesAsync(path, CancellationToken.None)) changed.Add(path);
+                if (changed.Count > 0)
                 {
-                    await repository.CommitFileAsync(pack.Key, CommitMessage(pack.Key, response), CancellationToken.None);
+                    if (options.RelatedFiles.Count == 0) await repository.CommitFileAsync(pack.Key, CommitMessage(pack.Key, response), CancellationToken.None);
+                    else await repository.CommitFilesAsync(changed, CommitMessage(pack.Key, response), CancellationToken.None);
                 }
 
                 var resultDone = await done.RunAsync(pack.UnitId, pack.Fingerprint, json, CancellationToken.None);
@@ -266,7 +284,8 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
             {
                 if (applied && !recorded)
                 {
-                    await repository.RestoreFileAsync(pack.Key, CancellationToken.None);
+                    foreach (var path in new[] { pack.Key }.Concat(options.RelatedFiles).Distinct(StringComparer.Ordinal))
+                        await repository.RestoreFileAsync(path, CancellationToken.None);
                 }
             }
         }
@@ -349,6 +368,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         var confirmed = (await ledger.GetCurrentFindingsAsync(cancellationToken))
             .Where(f => f.Verification?.Verdict == Verdict.Confirmed)
             .ToList();
+        var unresolvedPaths = confirmed.Where(f => f.Fix?.State != FixState.Fixed).Select(f => f.Finding.Path).ToHashSet(StringComparer.Ordinal);
         var files = (await ledger.GetFilesAsync(cancellationToken))
             .Where(f => f.DeletedAt is null)
             .ToDictionary(f => f.Path, StringComparer.Ordinal);
@@ -367,7 +387,8 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         {
             var fingerprint = Fingerprints.Compute(plan.Members);
             existing.TryGetValue(plan.Id, out var previous);
-            var status = previous is null || previous.Status == UnitStatus.Retired ? UnitStatus.Pending
+            var status = !unresolvedPaths.Contains(plan.Key) ? UnitStatus.Done
+                : previous is null || previous.Status == UnitStatus.Retired ? UnitStatus.Pending
                 : previous.Status == UnitStatus.Done && previous.Fingerprint != fingerprint ? UnitStatus.Stale
                 : previous.Status;
             return new Unit(plan.Id, plan.Kind, plan.Key, fingerprint, status, plan.Fidelity, previous?.LensHash, previous?.Summary, previous?.SummaryHash);

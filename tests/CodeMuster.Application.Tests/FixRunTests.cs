@@ -52,6 +52,20 @@ public class FixRunTests
             return Task.FromResult(FixResponseJson.Serialize(respond(pack)));
         });
 
+    [Fact]
+    public async Task RetryDeclined_LeavesFixedFindingsAlone_AndIncludesTheDeclineReason()
+    {
+        var ids = await SeedAsync("a.cs", 10, 20);
+        await RunAsync(Fixer(_ => new FixResponse("partly fixed", [ids[0]], [new DeclinedFix(ids[1], "needs precise formatting in caller")])));
+        string? pack = null;
+        var retry = Fixer(text => { pack = text; return new FixResponse("caller fixed", [ids[1]], []); });
+        var result = await new Fix(ledger, tree, clock, Config.Default, workspace).RunAsync(retry, new FixOptions(RetryDeclined: true), null, CancellationToken.None);
+        Assert.Equal(1, result.Fixed);
+        Assert.Contains("needs precise formatting in caller", pack);
+        Assert.DoesNotContain("claim 10", pack);
+        Assert.Equal("partly fixed", ledger.Fixes[ids[0]].Reason);
+    }
+
     [Theory]
     [InlineData(1, "agent")]
     [InlineData(2, "agent")]

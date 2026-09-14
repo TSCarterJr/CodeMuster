@@ -97,6 +97,14 @@ public sealed class FakeLedger : ILedger
 
     public Task RecordVerificationAsync(Analysis analysis, long findingId, VerifyResponse verification, CancellationToken cancellationToken)
     {
+        if (verification.Verdict == Verdict.Resolved) Fixes[findingId] = new FixOutcome(FixState.Fixed, verification.Reason);
+        if (verification.Verdict == Verdict.Confirmed && Fixes.GetValueOrDefault(findingId)?.State == FixState.Fixed)
+        {
+            Fixes.Remove(findingId);
+            var path = GetCurrentFindingsAsync(cancellationToken).Result.Single(f => f.Id == findingId).Finding.Path;
+            var index = Units.FindIndex(u => u.Id == UnitIds.Fix(path) && u.Status != UnitStatus.Retired);
+            if (index >= 0) Units[index] = Units[index] with { Status = UnitStatus.Stale };
+        }
         Verifications[findingId] = verification;
         return RecordAnalysisAsync(analysis, [], cancellationToken);
     }

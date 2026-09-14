@@ -11,4 +11,7 @@ public enum Verdict
 
     /// <summary>The code shown cannot settle the claim.</summary>
     Unsure,
+
+    /// <summary>The previously reported defect is no longer present in current code, with resolution evidence.</summary>
+    Resolved,
 }

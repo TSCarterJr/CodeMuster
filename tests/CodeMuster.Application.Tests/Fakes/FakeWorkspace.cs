@@ -27,6 +27,12 @@ public sealed class FakeWorkspace : IWorkspace
         return CommitAsync(message, cancellationToken);
     }
 
+    public Task CommitFilesAsync(IReadOnlyList<string> paths, string message, CancellationToken cancellationToken)
+    {
+        CommittedFiles.AddRange(paths);
+        return CommitAsync(message, cancellationToken);
+    }
+
     public Task RestoreFileAsync(string path, CancellationToken cancellationToken)
     {
         RestoredFiles.Add(path);

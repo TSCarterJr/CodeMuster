@@ -8,6 +8,25 @@ public class SqliteLedgerFixTests
     private const string At = "2026-09-12T00:00:00.0000000Z";
 
     [Fact]
+    public async Task ResolvedVerification_PersistsFixedOutcome_AndConfirmationReopensFixUnit()
+    {
+        using var temp = new TempDirectory();
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+        var source = new Unit("file:src/A.cs", UnitKind.File, "src/A.cs", "fp", UnitStatus.Done, Fidelity.Full, null, null, null);
+        var fix = source with { Id = UnitIds.Fix(source.Key), Kind = UnitKind.Fix };
+        var verify = source with { Id = UnitIds.Verify(1), Kind = UnitKind.Verify };
+        await ledger.UpsertUnitsAsync([source, fix, verify], [], CancellationToken.None);
+        var analysis = new Analysis(source.Id, "fp", "lens", At, true, "source", null);
+        await ledger.RecordAnalysisAsync(analysis, [Finding(1)], CancellationToken.None);
+        await ledger.RecordFixAsync(analysis with { UnitId = fix.Id }, [(1L, new FixOutcome(FixState.Declined, "needs caller edit"))], CancellationToken.None);
+        await ledger.RecordVerificationAsync(analysis with { UnitId = verify.Id }, 1, new VerifyResponse(Verdict.Resolved, "caller repaired"), CancellationToken.None);
+        Assert.Equal(new FixOutcome(FixState.Fixed, "caller repaired"), Assert.Single(await ledger.GetCurrentFindingsAsync(CancellationToken.None)).Fix);
+        await ledger.RecordVerificationAsync(analysis with { UnitId = verify.Id }, 1, new VerifyResponse(Verdict.Confirmed, "regression"), CancellationToken.None);
+        Assert.Null(Assert.Single(await ledger.GetCurrentFindingsAsync(CancellationToken.None)).Fix);
+        Assert.Equal(UnitStatus.Stale, (await ledger.GetUnitAsync(fix.Id, CancellationToken.None))!.Status);
+    }
+
+    [Fact]
     public async Task RecordFix_StoresWhatWasFixedAndDeclined_AndMarksTheUnitDone()
     {
         using var temp = new TempDirectory();

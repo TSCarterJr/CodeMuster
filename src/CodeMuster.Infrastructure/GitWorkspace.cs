@@ -45,6 +45,12 @@ public sealed class GitWorkspace(string repoRoot) : IWorkspace
         await GitProcess.RunAsync(repoRoot, ["--literal-pathspecs", "commit", "--only", "-m", message, "--", path], null, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task CommitFilesAsync(IReadOnlyList<string> paths, string message, CancellationToken cancellationToken)
+    {
+        await GitProcess.RunAsync(repoRoot, ["--literal-pathspecs", "add", "--", .. paths], null, cancellationToken);
+        await GitProcess.RunAsync(repoRoot, ["--literal-pathspecs", "commit", "--only", "-m", message, "--", .. paths], null, cancellationToken);
+    }
+
     public Task RestoreFileAsync(string path, CancellationToken cancellationToken) =>
         GitProcess.RunAsync(repoRoot, ["--literal-pathspecs", "restore", "--source=HEAD", "--staged", "--worktree", "--", path], null, cancellationToken);
 

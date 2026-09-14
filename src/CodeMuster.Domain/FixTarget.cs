@@ -6,7 +6,8 @@ namespace CodeMuster.Domain;
 /// <param name="Id">The finding's ledger id.</param>
 /// <param name="Finding">The finding itself (D11).</param>
 /// <param name="ConfirmedBecause">The verifier's reason, when it recorded one.</param>
-public sealed record FixTarget(long Id, Finding Finding, string? ConfirmedBecause);
+/// <param name="PreviousFix">The previous fix outcome, including a decline reason on retries.</param>
+public sealed record FixTarget(long Id, Finding Finding, string? ConfirmedBecause, FixOutcome? PreviousFix = null);
 
 /// <summary>Serializes what a fix pack shows.</summary>
 public static class FixJson

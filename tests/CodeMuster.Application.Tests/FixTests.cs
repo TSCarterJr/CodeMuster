@@ -50,6 +50,18 @@ public class FixTests
         new Done(ledger, new FakeClock(), Config.Default).RunAsync(fix.Id, fix.Fingerprint, responseJson, CancellationToken.None);
 
     [Fact]
+    public async Task PartialFixResponse_CannotMarkTheFileComplete()
+    {
+        var unit = AddUnit("src/a.cs");
+        var ids = await RecordAsync(unit, (10, Verdict.Confirmed), (20, Verdict.Confirmed));
+        await PlanAsync();
+        var fix = Stored(UnitIds.Fix(unit.Key));
+        var result = await DoneAsync(fix, FixResponseJson.Serialize(new FixResponse("only one", [ids[0]], [])));
+        Assert.Equal(DoneOutcome.Rejected, result.Outcome);
+        Assert.Empty(ledger.Fixes);
+    }
+
+    [Fact]
     public async Task AFixResponse_MarksFindingsFixedOrDeclined_AndTheUnitDone()
     {
         var unit = AddUnit("src/a.cs");

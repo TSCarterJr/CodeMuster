@@ -74,6 +74,7 @@ public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdent
         }
 
         var response = VerifyResponseJson.Parse(responseJson);
+        if (string.IsNullOrWhiteSpace(response.Reason)) return new DoneResult(DoneOutcome.Rejected, "verification needs an evidence-backed reason");
         var verdict = response.Verdict.ToString().ToLowerInvariant();
         await ledger.RecordVerificationAsync(analysis with { Summary = $"{verdict}: {response.Reason}" }, finding.Id, response, cancellationToken);
         return new DoneResult(DoneOutcome.Recorded, $"recorded {verdict}");
@@ -83,7 +84,7 @@ public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdent
     {
         var response = FixResponseJson.Parse(responseJson);
         var mine = current
-            .Where(f => f.Finding.Path == unit.Key && f.Verification?.Verdict == Verdict.Confirmed)
+            .Where(f => f.Finding.Path == unit.Key && f.Verification?.Verdict == Verdict.Confirmed && f.Fix?.State != FixState.Fixed)
             .Select(f => f.Id)
             .ToHashSet();
         var cited = response.Addressed.Concat(response.Declined.Select(d => d.Finding)).ToList();
@@ -96,6 +97,9 @@ public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdent
         {
             return new DoneResult(DoneOutcome.Rejected, string.Create(CultureInfo.InvariantCulture, $"finding {stray} is not a confirmed finding in {unit.Key}"));
         }
+
+        if (!mine.SetEquals(cited) || cited.Count != mine.Count || string.IsNullOrWhiteSpace(response.Summary) || response.Declined.Any(d => string.IsNullOrWhiteSpace(d.Reason)))
+            return new DoneResult(DoneOutcome.Rejected, "every unresolved confirmed finding needs exactly one outcome and an evidence-backed reason");
 
         var outcomes = response.Addressed
             .Select(id => (FindingId: id, Outcome: new FixOutcome(FixState.Fixed, response.Summary)))

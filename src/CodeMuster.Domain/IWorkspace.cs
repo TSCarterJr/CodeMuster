@@ -27,6 +27,9 @@ public interface IWorkspace
     /// <summary>Commits only the assigned file, leaving other paths and their staging state alone.</summary>
     Task CommitFileAsync(string path, string message, CancellationToken cancellationToken);
 
+    /// <summary>Commits only the explicitly allowed tracked files as one coherent repair.</summary>
+    Task CommitFilesAsync(IReadOnlyList<string> paths, string message, CancellationToken cancellationToken);
+
     /// <summary>Restores only the assigned file and its index entry to HEAD.</summary>
     Task RestoreFileAsync(string path, CancellationToken cancellationToken);
 }

@@ -14,7 +14,7 @@ public static class Program
 {
     public const string Usage = HelpText.Overview;
 
-    private static readonly string[] Verbs = ["init", "doctor", "scan", "status", "estimate", "next", "done", "run", "verify", "report", "skill", "fix", "hook"];
+    private static readonly string[] Verbs = ["init", "doctor", "scan", "status", "estimate", "next", "done", "run", "verify", "report", "skill", "fix", "hook", "validate"];
 
     private static readonly string[] KindNames = Enum.GetNames<UnitKind>().Select(name => name.ToLowerInvariant()).ToArray();
 
@@ -157,6 +157,12 @@ public static class Program
             case "run":
             case "verify":
                 return await RunAgentAsync(command, ledger, tree, clock, config, cancellationToken);
+            case "validate":
+                ITestRunner? runner = config.TestCommand.Count == 0 ? null : new CommandTestRunner(repoRoot, config.TestCommand);
+                var validation = await new Validate(runner).RunAsync(cancellationToken);
+                Console.WriteLine(validation.Output);
+                Console.WriteLine(validation.Passed ? "validation passed" : "validation failed");
+                return validation.Passed ? 0 : 1;
             case "fix":
                 return await FixAsync(command, repoRoot, ledger, tree, clock, config, cancellationToken);
             default:
@@ -241,7 +247,17 @@ public static class Program
             int.Parse(command.Options.GetValueOrDefault("attempts", "3"), CultureInfo.InvariantCulture),
             command.Options.GetValueOrDefault("path"),
             stash,
-            int.Parse(command.Options.GetValueOrDefault("jobs", "1"), CultureInfo.InvariantCulture));
+            int.Parse(command.Options.GetValueOrDefault("jobs", "1"), CultureInfo.InvariantCulture),
+            command.Flags.Contains("retry-declined"))
+        {
+            RelatedFiles = command.Options.TryGetValue("include-related", out var related) ? related.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(RepoPath.Normalize).ToArray() : [],
+        };
+        if (options.RelatedFiles.Count > 0)
+        {
+            var tracked = (await tree.ListFilesAsync(cancellationToken)).Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+            if (options.Parallelism != 1 || options.Path is null || !tracked.Contains(options.Path) || options.RelatedFiles.Any(p => !tracked.Contains(p)))
+                throw new ArgumentException("--include-related requires -j 1, an exact tracked --path, and exact existing tracked related files");
+        }
         var concurrency = options.Parallelism == 1 ? "one file at a time" : string.Create(CultureInfo.InvariantCulture, $"up to {options.Parallelism} files at a time");
         Console.WriteLine($"fixing with {command.Options["agent"]}, {concurrency}; each file it changes becomes a commit");
         ITestRunner? tests = config.TestCommand.Count > 0 ? new CommandTestRunner(repoRoot, config.TestCommand) : null;
@@ -252,7 +268,7 @@ public static class Program
 
         var progress = new ProgressWriter(Console.Out);
         using var fileFixer = new GitFileFixer(repoRoot, directory => AgentAdapters.Create(
-            command.Options["agent"], null, command.Options.GetValueOrDefault("model"), command.Options.GetValueOrDefault("effort"), write: true, workingDirectory: directory), progress);
+            command.Options["agent"], null, command.Options.GetValueOrDefault("model"), command.Options.GetValueOrDefault("effort"), write: true, workingDirectory: directory), progress, options.RelatedFiles);
         var fix = new Fix(ledger, tree, clock, config, workspace, tests, fileFixer);
         var result = await fix.RunAsync(adapter, options, progress, cancellationToken);
         foreach (var unitId in result.GaveUp)
@@ -319,6 +335,7 @@ public static class Program
             command.Options.GetValueOrDefault("model"),
             command.Options.GetValueOrDefault("effort"));
         var kind = command.Verb == "verify" ? "verify" : command.Options.GetValueOrDefault("kind");
+        if (kind == "verify") await new RefreshVerification(ledger, tree).RunAsync(cancellationToken);
         var options = new RunOptions(
             int.Parse(command.Options.GetValueOrDefault("jobs", "1")),
             int.Parse(command.Options.GetValueOrDefault("attempts", "3")),
@@ -379,9 +396,9 @@ public static class Program
         "run" => IsAgentRun(command, "kind") && (!command.Options.TryGetValue("kind", out var kind) || (KindNames.Contains(kind) && kind is not ("fix" or "dependency"))),
         "verify" => IsAgentRun(command),
         "fix" => command.Positionals.Count == 0
-            && command.Flags.All(f => f == "stash")
+            && command.Flags.All(f => f is "stash" or "retry-declined")
             && command.Options.ContainsKey("agent")
-            && command.Options.Keys.All(k => k is "agent" or "attempts" or "model" or "effort" or "path" or "jobs")
+            && command.Options.Keys.All(k => k is "agent" or "attempts" or "model" or "effort" or "path" or "jobs" or "include-related")
             && IsPositiveOrAbsent(command, "jobs")
             && IsPositiveOrAbsent(command, "attempts"),
         "estimate" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "path"),

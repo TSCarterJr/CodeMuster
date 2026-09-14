@@ -330,7 +330,18 @@ public sealed class SqliteLedger : ILedger, IDisposable
     {
         await using var transaction = await _connection.BeginTransactionAsync(cancellationToken);
         await InsertAnalysisAsync(analysis, cancellationToken);
-        await using var verdict = CreateCommand("UPDATE findings SET verify_status = $status, verify_reason = $reason WHERE id = $id");
+        if (verification.Verdict == Verdict.Confirmed)
+        {
+            await using var reopen = CreateCommand("UPDATE units SET status = 'stale' WHERE id = (SELECT 'fix:' || path FROM findings WHERE id = $id AND fix_status = 'fixed') AND status != 'retired'");
+            reopen.Parameters.AddWithValue("$id", findingId);
+            await reopen.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await using var verdict = CreateCommand("""
+            UPDATE findings SET verify_status = $status, verify_reason = $reason,
+                fix_status = CASE WHEN $status = 'resolved' THEN 'fixed' WHEN $status = 'confirmed' AND fix_status = 'fixed' THEN NULL ELSE fix_status END,
+                fix_reason = CASE WHEN $status = 'resolved' THEN $reason WHEN $status = 'confirmed' AND fix_status = 'fixed' THEN NULL ELSE fix_reason END
+            WHERE id = $id
+            """);
         verdict.Parameters.AddWithValue("$id", findingId);
         verdict.Parameters.AddWithValue("$status", Name(verification.Verdict));
         verdict.Parameters.AddWithValue("$reason", verification.Reason);

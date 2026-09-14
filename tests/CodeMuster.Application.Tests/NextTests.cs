@@ -136,7 +136,7 @@ public class NextTests
 
             ## Instructions
 
-            An earlier analysis reported the finding below. Try to refute it: check the claim against the code under Files and follow the calls it depends on. Answer refuted when the code shows the claim is wrong or the defect cannot happen, confirmed only when the code shows the defect is real, and unsure when the code shown cannot settle it. A defect in code nothing can reach cannot happen: answer refuted when the repository shows nothing calls that code, and count code reached through dependency injection, reflection, routing, or a library's public API as reachable.
+            An earlier analysis reported the finding below. Try to refute it: check the claim against the code under Files and follow the calls it depends on. Answer refuted when the code shows the claim is wrong or the defect cannot happen, confirmed only when the code shows the defect is real, and unsure when the code shown cannot settle it. Use resolved when a previously reported defect is no longer present in current code; cite the change or current behavior that resolves it. Refuted means the original claim was wrong, not that a real defect was repaired. A defect in code nothing can reach cannot happen: answer refuted when the repository shows nothing calls that code, and count code reached through dependency injection, reflection, routing, or a library's public API as reachable.
 
             ## Finding
 

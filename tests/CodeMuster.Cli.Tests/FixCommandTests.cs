@@ -21,6 +21,25 @@ public class FixCommandTests
     }
 
     [Fact]
+    public async Task Validation_RunsAfterTheQueueIsDone_AndMissingConfigurationIsNotAPass()
+    {
+        using var repo = await AuditedAsync();
+        Assert.NotEqual(0, (await CliProcess.RunAsync(repo.Root, "validate")).ExitCode);
+        repo.WithTestCommand("git", "--version");
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "validate")).ExitCode);
+        repo.WithTestCommand("git", "rev-parse", "--verify", "missing-ref");
+        Assert.Equal(1, (await CliProcess.RunAsync(repo.Root, "validate")).ExitCode);
+    }
+
+    [Fact]
+    public async Task Fix_ExplicitRecoveryOptions_AreAccepted()
+    {
+        using var repo = await AuditedAsync();
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--retry-declined", "--path", "src/MixedRepo.Api/Program.cs", "--include-related", "web/lib/api.ts");
+        Assert.Equal(0, fix.ExitCode);
+    }
+
+    [Fact]
     public async Task Fix_RecordsAnOutcomeForEveryConfirmedFinding()
     {
         using var repo = await AuditedAsync();
