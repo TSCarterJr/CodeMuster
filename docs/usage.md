@@ -20,9 +20,8 @@ Fixing is a separate, explicit command that edits code and creates commits.
 From a Git repository:
 
 ```sh
-codemuster init --yes
+codemuster init --for codex --yes
 codemuster doctor
-codemuster skill install --for codex
 ```
 
 `init` creates `.codemuster/config.json` and adds the ledger to `.gitignore`. Commit the config,
@@ -32,9 +31,26 @@ Install and authenticate the agent you intend to use: Claude Code, Codex, Gemini
 OpenCode. `doctor` checks Git and the code mappers, not your provider account. Follow its
 suggested restore or dependency-install commands if mapping is not ready.
 
-The skill is an alternative way to drive the workflow from an agent session. `skill install`
-accepts `--for claude|codex|gemini|opencode`; add `--global` to install in your home directory.
-Repeat installation after updating CodeMuster to refresh the copied instructions.
+`init` offers a comma-separated choice of `claude`, `codex`, and `gemini` and installs each
+selected project's skill and change hook. `--for all` selects all; `--for none` or `--no-skills`
+skips integration. `--yes` skips prompts and selects all unless you specify `--for` or
+`--no-skills`. In unattended use without `--yes`, supply `--for` to select agents.
+`--no-hooks` installs skills without hooks. Existing settings and other hooks are preserved;
+invalid settings stop installation rather than being overwritten. Repeat setup to refresh skills.
+Standalone `skill install --for opencode` and `skill install --for codex --global` remain available.
+
+Hooks are registered in `.claude/settings.json`, `.codex/hooks.json`, or `.gemini/settings.json`.
+Reload the agent and complete its hook trust/approval prompt when required. They invoke
+`codemuster hook` after supported edit and shell tools. This records a tracked-content fingerprint
+in worktree-specific Git metadata, without writing the ledger or adding files to a worker patch.
+Status/report compare tracked content with the last completed scan and warn about changes;
+`scan` acknowledges the content it started with. Read-only commands do not invalidate coverage.
+An edit during a scan remains detectable. Untracked files remain outside scan coverage until
+tracked. Hooks do not trigger model calls, run scans, or automatically close findings.
+
+Agent configuration references: [Claude hooks](https://code.claude.com/docs/en/hooks),
+[Codex hooks](https://learn.chatgpt.com/docs/hooks),
+[Gemini hooks](https://geminicli.com/docs/hooks/).
 
 ### 2. Scan and estimate
 
@@ -83,7 +99,7 @@ Configure a test command before fixing. Then:
 codemuster fix --agent codex -j 4
 ```
 
-Only confirmed findings are eligible. All confirmed findings in a file go to one worker, even
+Only confirmed findings not already marked fixed are eligible. Eligible findings in a file go to one worker, even
 when different audit units reported them. A worker can address findings or decline them with a
 reason. Declining records an outcome; it does not mark the finding fixed.
 
@@ -92,16 +108,18 @@ patch, runs the configured tests against accumulated fixes, commits the changed 
 records outcomes. Tests, commits, and ledger writes are serialized. A response that changes no
 file creates no commit. CodeMuster never pushes.
 
-Review local commits with `git log` and `git show`. Then scan and audit the changed code again:
+Review local commits with `git log` and `git show`, independently verify the findings, and run
+final validation:
 
 ```sh
-codemuster scan
-codemuster run --agent codex -j 4
+codemuster verify --agent codex --force -j 4
+codemuster validate
 codemuster report --out audit-after.md
 ```
 
 A fix record says that the response was accepted and any configured test command passed. It is
-not an independent proof that the defect is gone. The fresh audit can report a remaining defect.
+not an independent proof that the defect is gone. Resolve remaining confirmed findings and
+inspect unsure/declined reasons. Then use `scan` and `run` when refreshed full coverage is needed.
 
 ## Parallelism and scope
 
@@ -207,16 +225,48 @@ error, invalid response, out-of-scope edit, or failing test command can reject a
 
 ### A finding was declined
 
-`report --include-refuted` shows verification and code finding fix reasons. A decline remains
-unfixed even when its file's fix unit is done, so repeating `fix` alone will skip that completed
-unit. Read the reason and inspect the current code. If the correct repair spans callers, shared
-catalogs, or tests, your coding agent can make that coherent change directly after the managed
-run ends, within the scope you authorized. Validate it, then `scan` and audit again. Do not edit
-the ledger to clear a decline; a manual repair does not automatically rewrite its old outcome.
+`report --include-refuted` shows verification and fix reasons. A decline remains unresolved even
+when its file unit is done. Use the CLI to retry it; already-fixed findings stay excluded:
 
-The installed AI skill describes this recovery workflow. Refresh an installed copy after updating
-CodeMuster with `codemuster skill install --for codex` (or your harness's name; add `--global` for
-a global skill).
+```sh
+codemuster fix --agent codex --retry-declined --path src/file.ts -j 4
+```
+
+For repairs involving callers, catalogs, or other related files, inspect which files are necessary
+and supply an explicit allowlist. Related-file recovery requires one exact primary file and one
+worker; all listed paths must already be tracked:
+
+```sh
+codemuster fix --agent codex --retry-declined --path src/file.ts --include-related src/caller.ts,src/catalog.ts -j 1
+```
+
+The isolated worker can edit only that group. Tests run against the combined patch, and the
+coherent repair is committed together. Other edits still reject the patch. Every unresolved
+confirmed finding must receive exactly one addressed/declined outcome before completion.
+The AI should not switch to manual repairs merely because a worker declined.
+
+### Verify repairs and finish
+
+```sh
+codemuster verify --agent codex --force -j 4
+codemuster validate
+codemuster report --include-refuted
+```
+
+`verify` refreshes checks against current code, including checks retired by scan when the source
+changed, while preserving the original finding. `--force` also revisits unchanged completed
+checks, including previous refutations; `--path` narrows the scope. Results distinguish confirmed
+(still present), refuted (the original claim was wrong), resolved (no longer present, with
+resolution evidence), and unsure. A resolved verdict records fixed with its reason. A later
+confirmed verdict clears an earlier fixed outcome and reopens its fix unit. Historical analyses
+remain stored. Interactive verifiers can submit the same verdict/reason JSON through the
+`done` command printed in their pack; agents must not edit database rows themselves.
+
+`validate` runs `test_command` against the final repository state even if there is no fix work.
+It exits 1 for a failed command or missing configuration. Configure that command to include the
+required builds and tests, using a validation script if several commands are needed. An empty
+queue or a done unit does not prove checks passed; declines and unsure findings remain unresolved.
+Use `scan` plus `run` afterward when a full audit of changed code is required.
 
 ### A worker changes another file
 
@@ -231,7 +281,7 @@ git -C "<printed-worker-path>" diff HEAD
 
 `git diff` does not include untracked files; inspect the paths listed by `status` too. Do not
 apply a rejected patch blindly while other workers are still running. A fix that genuinely needs
-several files needs coordinated review after the run.
+several files can be retried with the explicit `--include-related` scope after review.
 
 The specific untracked `.impeccable/hook.cache.json` editor cache is allowed to remain outside
 the patch. Other untracked files, and changes to a tracked copy of that cache, still trigger
@@ -270,14 +320,16 @@ and manage them.
 
 | Command | Options |
 |---|---|
-| `init` | `--yes`, `--no-gitignore` |
+| `init` | `--for claude,codex,gemini` (or `all`/`none`), `--yes`, `--no-gitignore`, `--no-hooks`, `--no-skills` |
 | `doctor` | No options |
 | `scan` | `--mode slice` (default), `--mode file` |
 | `status` | No options |
 | `estimate` | `--path <path>` |
 | `run --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--kind file\|slice\|orphan\|verify`, `--force` |
 | `verify --agent <name>` | Same as `run`, without `--kind` |
-| `fix --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--stash` |
+| `fix --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--stash`, `--retry-declined`, `--include-related <files>` |
+| `validate` | No options; runs configured final build/tests |
+| `hook` | No options; used by installed agent hooks |
 | `report` | `--out <file>`, `--include-refuted` |
 | `next` | `--batch N`, `--out <file>` |
 | `done <unit>` | Required `--fingerprint <fp>` and `--findings <json-file>` |

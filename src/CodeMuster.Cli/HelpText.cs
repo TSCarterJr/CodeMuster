@@ -30,6 +30,8 @@ public static class HelpText
           done       Record an agent's response
 
         Maintenance
+          validate   Run the configured final build/test command
+          hook       Record an agent change notification
           update     Update CodeMuster itself, or check for an update
 
         Example
@@ -56,10 +58,13 @@ public static class HelpText
     public static string? For(string command) => command switch
     {
         "init" => """
-            usage: codemuster init [--yes] [--no-gitignore]
+            usage: codemuster init [--for claude,codex,gemini] [--yes] [--no-gitignore] [--no-hooks] [--no-skills]
 
             Write .codemuster/config.json and ignore the local ledger in this Git repo.
-              --yes            Consent to updating .gitignore without a prompt
+              --for <agents>   Comma-separated claude,codex,gemini; all or none
+              --no-hooks       Install selected skills without change hooks
+              --no-skills      Skip agent integration
+              --yes            Skip prompts; select all agents unless --for or --no-skills is given
               --no-gitignore   Leave .gitignore unchanged
 
             Commit the configuration, not .codemuster/ledger.db.
@@ -124,14 +129,16 @@ public static class HelpText
             + "Repeat the command to resume unfinished work. Use fix to edit code.\n"
             + "Example: codemuster run --agent codex -j 4 --path src\n",
         "verify" => "usage: codemuster verify --agent <name> [options]\n\n"
-            + "Try to refute reported findings; record confirmed, refuted, or unsure.\n\n"
+            + "Recheck current code; record confirmed, refuted, resolved, or unsure. Resolved records fixed with evidence.\n\n"
             + AgentOptions + "\n"
             + "  --force        Re-run completed verification units in the selected scope\n\n"
             + "Equivalent to run --kind verify. Only confirmed findings are eligible for fix.\n",
         "fix" => "usage: codemuster fix --agent <name> [options]\n\n"
             + "Fix confirmed findings, grouped by file. Creates local commits; never pushes.\n\n"
             + AgentOptions + "\n"
-            + "  --stash        Save tracked local edits and restore their staging afterward\n\n"
+            + "  --stash        Save tracked local edits and restore their staging afterward\n"
+            + "  --retry-declined Reopen completed files with declined confirmed findings\n"
+            + "  --include-related <files> Comma-separated existing tracked files; requires exact --path and -j 1\n\n"
             + "-j limits file workers: four files with -j 10 use at most four workers.\n"
             + "Parallel workers edit isolated worktrees. Tests, commits, and ledger writes run in sequence.\n"
             + "Configure test_command in .codemuster/config.json to validate each fix before accepting it.\n"
@@ -139,8 +146,22 @@ public static class HelpText
             + "Untracked files stay in place. Recovery stashes are retained after restoration.\n"
             + "Ctrl+C keeps completed commits; interrupted workers report recovery paths.\n"
             + "Extra file edits are rejected with their paths and a retained worker checkout.\n"
-            + "Repeat fix to retry unfinished files. Review commits, then scan and re-audit.\n\n"
+            + "Repeat fix to retry unfinished files. Then verify current findings and run validate.\n\n"
             + "Example: codemuster fix --agent codex -j 4 --attempts 3\n",
+        "validate" => """
+            usage: codemuster validate
+
+            Run test_command from .codemuster/config.json against the final repository state.
+            Configure it to cover required builds and tests. Missing configuration or a failing
+            command exits 1; a successful command exits 0. Runs even when the fix queue is empty.
+            """,
+        "hook" => """
+            usage: codemuster hook
+
+            Used by installed agent hooks after editing or shell tools. Records a tracked-content
+            notification in Git metadata without changing the ledger or working tree. Status and
+            report warn when content differs from the last completed scan. Prints empty JSON.
+            """,
         "report" => """
             usage: codemuster report [--out <file>] [--include-refuted]
 

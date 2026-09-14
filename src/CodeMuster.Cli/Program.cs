@@ -388,7 +388,7 @@ public static class Program
         "init" => command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "for")
             && command.Flags.All(f => f is "yes" or "no-gitignore" or "no-hooks" or "no-skills")
             && !(command.Flags.Contains("no-skills") && command.Options.ContainsKey("for")),
-        "hook" => command.Positionals.Count == 0 && command.Options.Count == 0 && command.Flags.Count == 0,
+        "validate" or "hook" => command.Positionals.Count == 0 && command.Options.Count == 0 && command.Flags.Count == 0,
         "doctor" => command.Positionals.Count == 0 && command.Options.Count == 0 && command.Flags.Count == 0,
         "scan" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "mode") && command.Options.GetValueOrDefault("mode", "file") is "file" or "slice",
         "done" => command.Flags.Count == 0 && command.Positionals.Count == 1 && command.Options.ContainsKey("fingerprint") && command.Options.ContainsKey("findings"),

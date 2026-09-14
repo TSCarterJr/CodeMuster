@@ -56,6 +56,8 @@ public class UsageTests
     [InlineData("report")]
     [InlineData("skill")]
     [InlineData("update")]
+    [InlineData("hook")]
+    [InlineData("validate")]
     public async Task CommandHelp_WorksBeforeSetup_AndDoesNotExecuteTheCommand(string command)
     {
         foreach (var args in new[] { new[] { command, "--help" }, new[] { command, "-h" }, new[] { "help", command } })

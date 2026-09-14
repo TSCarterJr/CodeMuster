@@ -26,7 +26,7 @@ public class SkillTests
     }
 
     [Theory]
-    [InlineData("codemuster init --yes")]
+    [InlineData("codemuster init --for codex --yes")]
     [InlineData("codemuster scan")]
     [InlineData("codemuster next")]
     [InlineData("codemuster done")]

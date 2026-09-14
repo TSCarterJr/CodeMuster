@@ -92,5 +92,5 @@ Nothing depends on `Cli`. `Application` never references `Infrastructure` or `Ma
 - Do not use modified time to decide staleness (D05).
 - Do not branch on unit kind in `next`, `done`, `status`, or `run` (D06), except for the verify pack and its verdict (D27).
 - Do not change the findings schema without a new decision (D11).
-- Do not auto-install anything. `doctor` prints commands. The one exception is the npm launcher keeping CodeMuster itself up to date (D33).
+- Do not auto-install anything. `doctor` prints commands. Exceptions: the npm launcher keeps CodeMuster itself up to date (D33), and `init` installs the user-selected project skills and hooks (D42).
 - Do not commit `.codemuster/ledger.db` in any repo, including fixtures.

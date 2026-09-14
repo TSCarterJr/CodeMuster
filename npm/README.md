@@ -19,15 +19,17 @@ C# mapping also needs a suitable .NET SDK; TypeScript mapping needs the target r
 ```sh
 npm install -g codemuster
 cd your-repo
-codemuster init --yes
+codemuster init --for codex --yes
 codemuster doctor
-codemuster skill install --for codex
 ```
 
 Commit `.codemuster/config.json`. Keep `.codemuster/ledger.db` local and ignored.
 `doctor` checks the mappers and suggests setup commands; it does not install dependencies.
-The skill supports `claude`, `codex`, `gemini`, and `opencode`. Add `--global` to install it for
-all repositories, then ask your agent to audit with CodeMuster.
+`init` installs project skills and change hooks for your selected agents. Choose a comma-separated
+`--for claude,codex,gemini`, or choose interactively with plain `init`. `--yes` selects all unless
+`--for` or `--no-skills` is given. Use `--no-gitignore`, `--no-hooks`, or `--no-skills` to opt out.
+Reload the agent and approve its hook trust prompt when needed. Hooks track changes without
+running an audit. Standalone `skill install` also supports `opencode` and global installation.
 
 ## Drive an audit yourself
 
@@ -77,8 +79,15 @@ are rejected and reported with a retained worker path. The untracked Impeccable 
 excluded from the patch and does not block it. Without `test_command`, CodeMuster warns that
 it is accepting fixes without running your tests.
 
-Review the commits, then run `scan` and `run` again to audit the changed code. A recorded `fixed`
-state means the fix response was accepted; a fresh audit checks whether the finding returns.
+Retry declines through `fix --retry-declined`. For a repair spanning related files, select an
+exact primary `--path` and `--include-related path/to/caller,path/to/catalog -j 1`; all paths
+must be existing tracked files. The worker stays inside that explicit scope.
+
+After repairs, run `codemuster verify --agent codex --force` to recheck the known findings against
+current code. A `resolved` verdict records the fixed outcome and evidence; a confirmed regression
+reopens it. Then run `codemuster validate` to execute your configured build/test command against
+the final state, even when no fixes remain. Missing validation configuration is a failure.
+Use `scan` and `run` afterward when you need a refreshed audit of all changed code.
 
 ## Help and documentation
 
