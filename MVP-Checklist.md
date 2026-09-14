@@ -216,3 +216,9 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 | L14 | A shipped lens library documented in the README: `ux` (missing loading, error, and empty states, destructive actions without confirmation, double-submit), `a11y` (alt text, label association, button semantics, focus), `copy` (typos, inconsistent terms, placeholder mismatches), and `react` (effect dependencies, stale closures, keys). | `[ ]` | Raised 2026-09-12. Config already scopes lenses by glob and language, so this is text and documentation, not code. A lens's text is part of each unit's hash, so adding one re-audits the units it applies to. |
 | L15 | Locale parity as a deterministic check rather than a lens: keys present in one locale file and missing or untranslated in another. | `[ ]` | Raised 2026-09-12. Comparing `en.ts` with `es.ts` crosses two units, and a diff needs no model. |
 | L11 | Keep installed skill copies current across updates: `skill install` writes a short stub that runs a new `codemuster skill show` for the full instructions, and the skill hands big repos to `run`. | `[ ]` | Raised with the update design (D33). A stale copy degrades gently for now, because every pack carries its own response shape and `done` command. |
+
+## License update (user-directed priority)
+
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| LIC1 | Replace MIT with personal/internal company use terms and ship matching license metadata. | [x] | codex 2026-09-14. All 16 npm tests and dotnet test pass locally; no publication. Prioritized at Tim's explicit request over the next feature. Staging test failed because LICENSE was missing. |

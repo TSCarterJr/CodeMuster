@@ -11,6 +11,30 @@ const launcher = require('../lib/launcher');
 
 const DAY = 24 * 60 * 60 * 1000;
 
+test('release staging includes the license in the launcher and every platform package', (t) => {
+  const root = tempDir();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const builds = path.join(root, 'builds');
+  const output = path.join(root, 'staged');
+  const platforms = {
+    'win-x64': 'win32-x64', 'win-arm64': 'win32-arm64',
+    'osx-x64': 'darwin-x64', 'osx-arm64': 'darwin-arm64',
+    'linux-x64': 'linux-x64', 'linux-arm64': 'linux-arm64',
+  };
+  for (const rid of Object.keys(platforms)) {
+    fs.mkdirSync(path.join(builds, rid), { recursive: true });
+    fs.writeFileSync(path.join(builds, rid, rid.startsWith('win-') ? 'codemuster.exe' : 'codemuster'), 'fixture');
+  }
+  require('node:child_process').execFileSync(process.execPath,
+    [path.join(__dirname, '../scripts/stage.js'), '0.1.0-test', builds, output]);
+  const license = fs.readFileSync(path.join(__dirname, '../../LICENSE'), 'utf8');
+  for (const name of ['codemuster', ...Object.values(platforms)]) {
+    const dir = path.join(output, name);
+    assert.equal(fs.readFileSync(path.join(dir, 'LICENSE'), 'utf8'), license);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).license, 'SEE LICENSE IN LICENSE');
+  }
+});
+
 function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'codemuster-launcher-'));
 }

@@ -2,7 +2,7 @@
   "name": "codemuster",
   "version": "0.1.0-dev",
   "description": "CodeMuster: full-coverage codebase audits with a coverage number, driven by your coding agent through one skill.",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "author": "Tim Carter",
   "repository": {
     "type": "git",

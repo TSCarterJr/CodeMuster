@@ -100,4 +100,9 @@ an available update. Run `skill install` again to refresh an installed skill cop
 
 ## License
 
-MIT
+CodeMuster uses the [Personal and Internal Business Use License](LICENSE).
+You may use and privately modify it for personal work and internal company work,
+including work on commercial products and client code. You may sell your own
+products; you may not sell CodeMuster, commercialize a modified version, or offer
+its functionality as a paid service. Redistribution requires written permission.
+This is a source-available license with use restrictions. See LICENSE for the full terms.

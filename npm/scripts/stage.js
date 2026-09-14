@@ -32,6 +32,7 @@ for (const [rid, [os, cpu]] of Object.entries(PLATFORMS)) {
   const name = `@codemuster/${os}-${cpu}`;
   const dir = path.join(outDir, `${os}-${cpu}`);
   fs.cpSync(build, path.join(dir, 'bin'), { recursive: true });
+  fs.copyFileSync(path.join(launcherDir, '../LICENSE'), path.join(dir, 'LICENSE'));
   if (os !== 'win32') {
     fs.chmodSync(path.join(dir, 'bin', 'codemuster'), 0o755);
   }
@@ -60,5 +61,6 @@ for (const entry of ['bin', 'lib', 'README.md']) {
 }
 
 const optionalDependencies = Object.fromEntries(Object.keys(launcher.optionalDependencies).map((name) => [name, version]));
+fs.copyFileSync(path.join(launcherDir, '../LICENSE'), path.join(dir, 'LICENSE'));
 fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ ...launcher, version, optionalDependencies }, null, 2) + '\n');
 process.stdout.write([...staged, 'codemuster'].map((name) => `staged ${name}@${version}`).join('\n') + '\n');

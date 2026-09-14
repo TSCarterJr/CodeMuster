@@ -1,5 +1,17 @@
 # Agent instructions for CodeMuster
 
+## Current task status
+
+- 2026-09-14, codex: LIC1 replaces MIT with the CodeMuster Personal and Internal
+  Business Use License at Tim's request (D41). Personal and internal company use,
+  including private modifications, is permitted; resale, commercial forks, and
+  paid services exposing CodeMuster are prohibited. The license does not claim
+  exclusive rights over ideas or revoke earlier license grants.
+- License metadata and release staging are updated. After syncing main, all 16 npm
+  tests and the full dotnet test suite pass locally. Formatting, syntax, and diff
+  checks pass; the NuGet dependency scan reports no known vulnerabilities.
+  No package release has been published by this task.
+
 Read this before touching anything. Applies to every agent (Claude Code, Codex, Gemini CLI,
 OpenCode) and to humans.
 
