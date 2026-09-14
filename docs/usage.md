@@ -196,10 +196,27 @@ recording problems. Inspect a live ledger read-only; do not change its rows duri
 `--attempts N` is the total attempts per unit, including the first; the default is three.
 Parallel progress prints the attempt number, whether a retry was queued, and when the run gives
 up. A queued retry may run after other waiting files. Successful files stay recorded; repeat the
-same command to retry unfinished work.
+same command to retry unfinished work. Failed fix attempts are stored in the ledger with their
+reasons, including test output, and appear under **Failed attempts** in `report`. The next worker
+receives the prior failure diagnostic for that unit so it can address the cause. History remains
+after recovery; the report labels the current unit status separately. Versions before this
+support did not persist every fix failure, and those missing diagnostics cannot be reconstructed.
 
 A finding being verified does not guarantee a worker will produce an acceptable patch. An agent
 error, invalid response, out-of-scope edit, or failing test command can reject an attempt.
+
+### A finding was declined
+
+`report --include-refuted` shows verification and code finding fix reasons. A decline remains
+unfixed even when its file's fix unit is done, so repeating `fix` alone will skip that completed
+unit. Read the reason and inspect the current code. If the correct repair spans callers, shared
+catalogs, or tests, your coding agent can make that coherent change directly after the managed
+run ends, within the scope you authorized. Validate it, then `scan` and audit again. Do not edit
+the ledger to clear a decline; a manual repair does not automatically rewrite its old outcome.
+
+The installed AI skill describes this recovery workflow. Refresh an installed copy after updating
+CodeMuster with `codemuster skill install --for codex` (or your harness's name; add `--global` for
+a global skill).
 
 ### A worker changes another file
 

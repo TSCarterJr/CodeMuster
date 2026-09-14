@@ -36,6 +36,24 @@ public class ReportTests
     private static Finding Finding(string path, int lineStart, int lineEnd, Severity severity, string claim, string evidence, double confidence) =>
         new(path, lineStart, lineEnd, severity, "security", claim, evidence, confidence, Lens);
 
+    [Fact]
+    public async Task FailureHistory_ShowsReasonsAfterRecovery_AndOmitsRetiredUnits()
+    {
+        var unit = AddUnit("src/a.cs");
+        await ledger.RecordAnalysisAsync(new Analysis(unit.Id, unit.Fingerprint, "lens", At, false, null, "compiler error\nmissing member"), [], CancellationToken.None);
+        await AnalyzeAsync(unit, "recovered");
+        var retired = AddUnit("src/old.cs");
+        await ledger.RecordAnalysisAsync(new Analysis(retired.Id, retired.Fingerprint, "lens", At, false, null, "retired error"), [], CancellationToken.None);
+        ledger.Units[1] = ledger.Units[1] with { Status = UnitStatus.Retired };
+
+        var markdown = await RunAsync();
+
+        Assert.Contains("## Failed attempts", markdown);
+        Assert.Contains("compiler error missing member", markdown);
+        Assert.Contains("current status: done", markdown);
+        Assert.DoesNotContain("retired error", markdown);
+    }
+
     [Theory]
     [InlineData(FixState.Fixed, "fixed")]
     [InlineData(FixState.Declined, "declined")]

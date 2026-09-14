@@ -52,6 +52,46 @@ public class FixRunTests
             return Task.FromResult(FixResponseJson.Serialize(respond(pack)));
         });
 
+    [Theory]
+    [InlineData(1, "agent")]
+    [InlineData(2, "agent")]
+    [InlineData(1, "json")]
+    [InlineData(2, "json")]
+    [InlineData(1, "tests")]
+    [InlineData(2, "tests")]
+    public async Task FailedAttempts_PersistReasons_AndFeedTheNextWorker(int parallelism, string failure)
+    {
+        var ids = await SeedAsync("a.cs", 10);
+        var packs = new List<string>();
+        var calls = 0;
+        string Respond(string pack)
+        {
+            packs.Add(pack);
+            calls++;
+            if (calls == 1 && failure == "agent") throw new InvalidOperationException("extra file: b.cs");
+            if (calls == 1 && failure == "json") return "not json";
+            return FixResponseJson.Serialize(new FixResponse("fixed", ids, []));
+        }
+        if (failure == "tests") tests.Results.Enqueue(new TestRun(false, "a.cs:10 compiler error\nBuild FAILED"));
+        var adapter = new FakeAgentAdapter((pack, _) => Task.FromResult(Respond(pack)));
+        var editor = new PackFixer(pack => new FileFixEdit(Respond(pack), "a.cs"));
+        var result = await new Fix(ledger, tree, clock, Config.Default, workspace, tests, editor).RunAsync(
+            adapter, new FixOptions(Parallelism: parallelism), null, CancellationToken.None);
+
+        Assert.Equal(1, result.Fixed);
+        var failed = Assert.Single(ledger.Analyses, a => !a.Analysis.Succeeded).Analysis;
+        Assert.Equal(UnitIds.Fix("a.cs"), failed.UnitId);
+        Assert.False(string.IsNullOrWhiteSpace(failed.Error));
+        foreach (var line in failed.Error.Split('\n')) Assert.Contains(line, packs[1]);
+        if (failure == "tests") Assert.Contains("a.cs:10 compiler error", failed.Error);
+        Assert.Contains(failed.Error.ReplaceLineEndings(" "), await new Report(ledger, Config.Default).RunAsync(CancellationToken.None));
+    }
+
+    private sealed class PackFixer(Func<string, FileFixEdit> run) : IFileFixer
+    {
+        public Task<FileFixEdit> RunAsync(string path, string pack, CancellationToken cancellationToken) => Task.FromResult(run(pack));
+    }
+
     [Fact]
     public async Task ParallelFix_RefillsAnAvailableSlot_AndCommitsEachFileOnce()
     {

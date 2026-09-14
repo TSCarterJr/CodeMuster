@@ -32,6 +32,23 @@ public class NextTests
     private Task<IReadOnlyList<UnitPack>> RunAsync(int batch = 1, Config? config = null) =>
         new Next(ledger, tree, config ?? Config.Default).RunAsync(batch, CancellationToken.None);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RetryPack_UsesLatestFailureOnlyForTheSameContent(bool changed)
+    {
+        var unit = AddFileUnit("a.cs", "class A { }");
+        var failure = new Analysis(unit.Id, unit.Fingerprint, "lens", "2026-09-13T00:00:00Z", false, null, "first failure");
+        await ledger.RecordAnalysisAsync(failure, [], CancellationToken.None);
+        await ledger.RecordAnalysisAsync(failure with { Error = "latest diagnostic" }, [], CancellationToken.None);
+        if (changed) ledger.Units[0] = ledger.Units[0] with { Fingerprint = "different" };
+
+        var pack = Assert.Single(await RunAsync());
+
+        Assert.DoesNotContain("first failure", pack.Markdown);
+        Assert.Equal(!changed, pack.Markdown.Contains("latest diagnostic", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Pack_MatchesExactLayout()
     {

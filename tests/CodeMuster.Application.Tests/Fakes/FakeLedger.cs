@@ -131,6 +131,10 @@ public sealed class FakeLedger : ILedger
         return Task.FromResult<IReadOnlyList<UnitFinding>>(current);
     }
 
+    public Task<IReadOnlyList<Analysis>> GetFailedAnalysesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Analysis>>(Analyses.Select(a => a.Analysis)
+            .Where(a => !a.Succeeded && Units.Any(u => u.Id == a.UnitId && u.Status != UnitStatus.Retired)).ToList());
+
     public Task RecordRunAsync(ScanRun run, CancellationToken cancellationToken)
     {
         Runs.Add(run);

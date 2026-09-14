@@ -79,6 +79,12 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
             var result = await AttemptAsync(adapter, done, pack, notes, cancellationToken);
             if (result.Outcome != DoneOutcome.Recorded)
             {
+                if (result.Error is { } error)
+                {
+                    await RecordFailureAsync(pack, error, adapter.Identity, cancellationToken);
+                    notes?.Report($"fix failed for {pack.Key}: {error}");
+                }
+
                 await repository.RestoreAsync(cancellationToken);
                 if (attempt >= options.MaxAttempts)
                 {
@@ -104,6 +110,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         var editor = fileFixer ?? throw new InvalidOperationException("parallel fix needs isolated file workers");
         var next = new Next(ledger, tree!, config ?? Config.Default, interactive: false, UnitKind.Fix, options.Path);
         var pending = new Queue<UnitPack>(await next.RunAsync(int.MaxValue, cancellationToken));
+        var originalPacks = pending.ToDictionary(p => p.UnitId, StringComparer.Ordinal);
         var targets = (await ledger.GetCurrentFindingsAsync(cancellationToken))
             .Where(f => f.Verification?.Verdict == Verdict.Confirmed)
             .GroupBy(f => f.Finding.Path)
@@ -134,6 +141,11 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                 running.Remove(completed);
                 var attempt = await completed;
                 var response = attempt.Edit is null ? null : await IntegrateAsync(unit, attempt.Edit);
+                if (attempt.Error is { } workerError)
+                {
+                    await RecordFailureAsync(unit, workerError, adapter.Identity, cancellationToken);
+                }
+
                 if (response is null)
                 {
                     if (attempt.Error is not null)
@@ -148,7 +160,8 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                     }
                     else
                     {
-                        pending.Enqueue(unit);
+                        var failure = (await ledger.GetFailedAnalysesAsync(cancellationToken)).Last(a => a.UnitId == unit.UnitId);
+                        pending.Enqueue(originalPacks[unit.UnitId] with { Markdown = Next.WithFailure(originalPacks[unit.UnitId].Markdown, failure.Error!) });
                         notes?.Report($"queued retry for {unit.Key}");
                     }
                 }
@@ -190,6 +203,13 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
             }
         }
 
+        async Task<FixResponse?> RejectAsync(UnitPack pack, string error)
+        {
+            await RecordFailureAsync(pack, error, adapter.Identity, cancellationToken);
+            notes?.Report(error);
+            return null;
+        }
+
         async Task<FixResponse?> IntegrateAsync(UnitPack pack, FileFixEdit edit)
         {
             var json = ResponseText.ExtractJson(edit.Response);
@@ -200,15 +220,13 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
             }
             catch (JsonException ex)
             {
-                notes?.Report($"invalid fix response for {pack.Key}: {ex.Message}");
-                return null;
+                return await RejectAsync(pack, $"invalid fix response for {pack.Key}: {ex.Message}");
             }
 
             var cited = response.Addressed.Concat(response.Declined.Select(d => d.Finding)).ToList();
             if (cited.Count == 0 || cited.Any(id => !targets[pack.Key].Contains(id)))
             {
-                notes?.Report($"invalid fix response for {pack.Key}: cite only confirmed findings in this file");
-                return null;
+                return await RejectAsync(pack, $"invalid fix response for {pack.Key}: cite only confirmed findings in this file");
             }
 
             var applied = false;
@@ -224,7 +242,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                     if (!result.Passed)
                     {
                         notes?.Report($"tests failed after fixing {pack.Key}, restoring only this file: {LastLine(result.Output)}");
-                        return null;
+                        return await RejectAsync(pack, "test command failed:\n" + result.Output);
                     }
                 }
 
@@ -263,9 +281,9 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         {
             text = await adapter.RunAsync(pack.Markdown, cancellationToken);
         }
-        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
-            return new AttemptResult(DoneOutcome.Rejected, null);
+            return new AttemptResult(DoneOutcome.Rejected, null, ex.Message);
         }
 
         var json = ResponseText.ExtractJson(text);
@@ -273,9 +291,9 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         {
             FixResponseJson.Parse(json);
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
-            return new AttemptResult(DoneOutcome.InvalidResponse, null);
+            return new AttemptResult(DoneOutcome.InvalidResponse, null, "invalid fix response: " + ex.Message);
         }
 
         if (tests is not null)
@@ -285,12 +303,12 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
             if (!run.Passed)
             {
                 notes?.Report($"tests failed after fixing {pack.Key}, throwing the change away: {LastLine(run.Output)}");
-                return new AttemptResult(DoneOutcome.Rejected, null);
+                return new AttemptResult(DoneOutcome.Rejected, null, "test command failed:\n" + run.Output);
             }
         }
 
         var result = await done.RunAsync(pack.UnitId, pack.Fingerprint, json, cancellationToken);
-        return new AttemptResult(result.Outcome, result.Outcome == DoneOutcome.Recorded ? json : null);
+        return new AttemptResult(result.Outcome, result.Outcome == DoneOutcome.Recorded ? json : null, result.Outcome == DoneOutcome.Rejected ? result.Message : null);
     }
 
     private static string LastLine(string output)
@@ -316,7 +334,14 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         return string.Join('\n', lines);
     }
 
-    private sealed record AttemptResult(DoneOutcome Outcome, string? ResponseJson);
+    private sealed record AttemptResult(DoneOutcome Outcome, string? ResponseJson, string? Error = null);
+
+    private Task RecordFailureAsync(UnitPack pack, string error, AgentIdentity identity, CancellationToken cancellationToken)
+    {
+        var lenses = (config ?? Config.Default).LensesFor([(pack.Key, Languages.FromPath(pack.Key))]);
+        return ledger.RecordAnalysisAsync(new Analysis(pack.UnitId, pack.Fingerprint, Config.HashOf(lenses),
+            Timestamps.Format(clock!.UtcNow), false, null, error, identity), [], cancellationToken);
+    }
 
     /// <summary>Creates or refreshes a fix unit for every file with a confirmed finding, and retires fix units whose findings are gone. A unit already fixed against the file's current content keeps its Done status.</summary>
     public async Task<FixPlan> PlanAsync(CancellationToken cancellationToken)

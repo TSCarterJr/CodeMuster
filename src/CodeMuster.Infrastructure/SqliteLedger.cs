@@ -420,6 +420,19 @@ public sealed class SqliteLedger : ILedger, IDisposable
         return rows.ToDictionary(row => row.UnitId, row => row.Identity, StringComparer.Ordinal);
     }
 
+    public async Task<IReadOnlyList<Analysis>> GetFailedAnalysesAsync(CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand("""
+            SELECT a.unit_id, a.fingerprint, a.lens_hash, a.created_at, a.error, a.agent, a.model, a.effort
+            FROM analyses a JOIN units u ON u.id = a.unit_id
+            WHERE a.succeeded = 0 AND u.status != 'retired'
+            ORDER BY a.id
+            """);
+        return await ReadAllAsync(command, reader => new Analysis(
+            reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), false, null, Text(reader, 4),
+            reader.IsDBNull(5) ? null : new AgentIdentity(reader.GetString(5), Text(reader, 6), Text(reader, 7))), cancellationToken);
+    }
+
     public async Task RecordRunAsync(ScanRun run, CancellationToken cancellationToken)
     {
         await using var command = CreateCommand($"INSERT INTO runs ({RunColumns}) VALUES ($started_at, $head_commit, $files_included, $files_excluded, $units_total, $resolution_rate, $top_unresolved_names)");

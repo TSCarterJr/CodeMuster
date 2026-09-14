@@ -53,19 +53,31 @@ public class FixCommandTests
         Assert.Empty(repo.Git("stash", "list"));
     }
 
-    [Fact]
-    public async Task AFailingTestCommand_ThrowsTheFixAway_AndTheRunReportsIt()
+    [Theory]
+    [InlineData("1")]
+    [InlineData("2")]
+    public async Task AFailingTestCommand_ThrowsTheFixAway_AndTheRunReportsIt(string jobs)
     {
         using var repo = await AuditedAsync();
         repo.WithTestCommand("git", "rev-parse", "--verify", "no-such-ref");
 
-        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--attempts", "1");
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--attempts", "1", "-j", jobs);
 
         Assert.Equal(1, fix.ExitCode);
         Assert.Contains("running tests for", fix.Stdout);
         Assert.Contains("tests failed after fixing", fix.Stdout);
         Assert.Contains("fixed 0 finding(s)", fix.Stdout);
         Assert.Contains("gave up on", fix.Stderr);
+        var report = await CliProcess.RunAsync(repo.Root, "report");
+        Assert.Contains("## Failed attempts", report.Stdout);
+        Assert.Contains("test command failed:", report.Stdout);
+        Assert.Contains("current status: failed", report.Stdout);
+        repo.WithTestCommand("git", "--version");
+        var retry = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "-j", jobs);
+        Assert.Equal(0, retry.ExitCode);
+        var recovered = await CliProcess.RunAsync(repo.Root, "report");
+        Assert.Contains("test command failed:", recovered.Stdout);
+        Assert.Contains("current status: done", recovered.Stdout);
     }
 
     [Fact]

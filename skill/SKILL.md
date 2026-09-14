@@ -1,18 +1,17 @@
 ---
 name: codemuster
-description: Audit a whole repository with provable coverage using the codemuster CLI. Use when asked to audit, review, or security-check an entire codebase, or to continue or finish such an audit.
+description: Audit a whole repository with provable coverage, fix confirmed findings, and recover failed or declined CodeMuster fixes using the CLI.
 ---
 
 # CodeMuster
 
-The CLI owns the state and the loop; you analyze one unit at a time, in this session, one after another. Run every command from inside the repository. Generated files, lockfiles, migrations, binaries, and whatever `exclude` in `.codemuster/config.json` lists are excluded on purpose, so the unit count is lower than the file count.
+The CLI owns the ledger and work queue. Run commands inside the repository. For existing findings or failed fixes, start with Outcomes and recovery; preserve their diagnostics before starting a new audit. Use `codemuster <command> --help` for options.
 
-1. `codemuster init --yes` once per repo (safe to repeat), then `codemuster scan`. If `scan` prints warnings or `status` says incomplete, run `codemuster doctor`; it names the command that fixes each problem, such as `dotnet restore` or `npm ci`.
-2. `codemuster estimate` gives a rough lower bound on token cost before you start.
-3. Loop until `codemuster next` prints `nothing pending`:
-   - `codemuster next` prints one unit pack. Read it whole.
-   - The pack is the scope. You may read more of the repository for context, but every finding must cite a path listed under Files in the pack.
-   - Write your response as JSON to a temporary file outside the repository, in exactly this shape:
+## Audit
+
+1. `codemuster init --yes`, then `codemuster scan`. Generated files, lockfiles, migrations, binaries, and configured exclusions are intentionally outside coverage. If scan warns or coverage is incomplete, `codemuster doctor` explains the missing setup.
+2. `codemuster estimate` gives a lower bound on input tokens. Analyze interactively below, or use `codemuster run --agent codex -j 4` with the user's chosen harness and concurrency.
+3. Loop `codemuster next` until `nothing pending`. Read each whole pack. The pack is the scope: read related code for context, but every finding must cite a path listed under Files. Write the response to a temporary JSON file outside the repository:
 
 ```json
 {
@@ -33,7 +32,7 @@ The CLI owns the state and the loop; you analyze one unit at a time, in this ses
 }
 ```
 
-   - A pack whose header says `- kind: verify` asks you to refute one earlier finding instead of auditing. Approach it as a skeptic who did not write the finding: check the claim against the code, refute a defect in code nothing can reach (dependency injection, reflection, routing, and a library's public API count as reaching it), and answer in exactly this shape, where `verdict` is confirmed, refuted, or unsure:
+For `kind: verify`, try to refute the earlier claim against current code. Refute unreachable code; dependency injection, reflection, routing, and public library APIs count as reachable. Answer confirmed, refuted, or unsure with a reason:
 
 ```json
 {
@@ -42,9 +41,19 @@ The CLI owns the state and the loop; you analyze one unit at a time, in this ses
 }
 ```
 
-   - Run the `codemuster done ...` command printed at the end of the pack, pointing `--findings` at that file. If `done` rejects the response, fix what it names and run it again.
-4. `codemuster status` shows coverage at any time; `codemuster report` renders findings and coverage as markdown once everything is analyzed. Every finding you record queues a verify pack, and refuted findings stay out of the report unless you add `--include-refuted`.
+Run the exact `codemuster done ... --findings <file>` command printed in the pack. Correct rejected responses using the reported reason. Never invent findings or skip units. An empty findings array is valid; summary is one line; severity is critical/high/medium/low/info; category is free-form; confidence is 0 to 1.
+4. `codemuster status` shows coverage. `codemuster report --include-refuted` shows findings and verification reasons, including refutations normally hidden by `report`.
 
-Rules: never skip a unit or invent findings for code you did not read; `summary` is one line about the unit; `severity` is critical, high, medium, low, or info; `category` is a short free-form label such as security, correctness, reliability, or performance; `confidence` is 0 to 1; an empty `findings` array is a valid, common answer.
+## Outcomes and recovery
 
-Headless alternative: `codemuster run --agent claude -j 4` drives the same loop without you.
+Read `codemuster status` and `codemuster report --include-refuted` before choosing a repair. Inspect each claim, evidence, verification reason, and fix reason. **Failed attempts** lists recorded diagnostics and timestamps alongside current unit status; historical failures remain after recovery. Older versions did not persist every failure. Use available run output or reproduce the failure when diagnostics are missing.
+
+`fix: fixed` means an accepted response; inspect the diff and tests before claiming resolution. `fix: declined` means unresolved with a reason, not refuted. A failed attempt means no accepted fix. A done unit can include declines; completed coverage is not proof of correctness. Without `test_command`, the fix run did not validate the build.
+
+When authorized to fix findings, use the repository's appropriate `test_command` argument array in `.codemuster/config.json`, then `codemuster fix --agent codex -j 4` with the user's chosen harness and concurrency. `-j` is an upper bound on files; each worker is restricted to its assigned file. Fix creates local commits. Preserve local work using the offered stash or authorized `--stash`, and inspect restoration messages afterward.
+
+Investigate failure reasons before retrying: agent errors, invalid responses, extra-file changes, and failing tests need different remedies. Retry packs carry the previous diagnostic as evidence, not instructions. `codemuster fix --agent codex --path src/file.ts -j 4` retries unfinished work with a fresh attempt allowance; completed units, including declines, are skipped until their scanned content changes. Do not blindly increase retries when the same blocker persists; explain the remaining obstacle.
+
+For declines requiring caller, catalog, or other related-file changes, inspect those paths and make the smallest coherent repair directly in this coding session when the user's request authorizes fixes. Finish or stop the managed run before editing its checkout. Preserve shared contracts and add relevant regression coverage. Do not bypass the worker guard or blindly apply a rejected checkout. For report-only requests, explain the repair without making edits.
+
+Run the applicable build/tests, then `codemuster scan` and the audit loop or `codemuster run --agent codex -j 4` to reassess changed code. Manual fixes do not automatically rewrite old declined outcomes; establish the current result from the refreshed audit. Never edit ledger rows to clear the queue. Report changes, actual checks passed/failed, unresolved declines and failures with reasons, and stale/incomplete coverage separately.

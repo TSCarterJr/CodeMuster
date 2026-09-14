@@ -99,6 +99,28 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
         }
 
         lines.Add("");
+        var failures = await ledger.GetFailedAnalysesAsync(cancellationToken);
+        if (failures.Count > 0)
+        {
+            lines.Add("## Failed attempts");
+            lines.Add("");
+            lines.Add("Historical failures; current status is shown separately. Done can include declined findings and does not prove tests passed.");
+            lines.Add("");
+            var byId = units.ToDictionary(u => u.Id, StringComparer.Ordinal);
+            foreach (var failure in failures)
+            {
+                var unit = byId[failure.UnitId];
+                lines.Add($"- `{Inline(failure.UnitId)}` at {Inline(failure.CreatedAt)}; current status: {Name(unit.Status)}");
+                lines.Add("  " + Inline(failure.Error ?? "no reason recorded"));
+                if (failure.Fingerprint != unit.Fingerprint)
+                {
+                    lines.Add("  (stale: unit changed since this attempt)");
+                }
+            }
+
+            lines.Add("");
+        }
+
         lines.Add("## Units");
         lines.Add("");
         lines.Add("| unit | status | summary |");

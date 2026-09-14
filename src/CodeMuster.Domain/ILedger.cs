@@ -39,6 +39,9 @@ public interface ILedger
     /// <summary>What produced the latest successful analysis of each unit, for units whose analysis recorded it (D35).</summary>
     Task<IReadOnlyDictionary<string, AgentIdentity>> GetProvenanceAsync(CancellationToken cancellationToken);
 
+    /// <summary>Failed attempts for non-retired units, in insertion order, including attempts followed by success.</summary>
+    Task<IReadOnlyList<Analysis>> GetFailedAnalysesAsync(CancellationToken cancellationToken);
+
     /// <summary>Appends a run.</summary>
     Task RecordRunAsync(ScanRun run, CancellationToken cancellationToken);
 
