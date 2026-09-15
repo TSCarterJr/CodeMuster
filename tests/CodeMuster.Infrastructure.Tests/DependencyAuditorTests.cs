@@ -5,6 +5,20 @@ namespace CodeMuster.Infrastructure.Tests;
 
 public class DependencyAuditorTests
 {
+    [Fact]
+    public async Task YarnBerryUsesItsNpmAuditCommand()
+    {
+        var calls = new List<string>();
+        var auditor = new DependencyAuditor((_, args, _, _) =>
+        {
+            calls.Add(string.Join(' ', args));
+            return Task.FromResult(new ProcessResult(0, args[0] == "--version" ? "4.9.0" : "{\"advisories\":{}}", ""));
+        });
+        var result = await auditor.AuditAsync(Root, ["yarn.lock", "package.json"], null, CancellationToken.None);
+        Assert.Contains("npm audit --all --recursive --json", calls);
+        Assert.Single(result.Manifests);
+    }
+
     private const string Root = "/repo";
 
     private readonly List<(string File, string Arguments, string WorkingDirectory)> _calls = [];
@@ -16,6 +30,7 @@ public class DependencyAuditorTests
     {
         _calls.Add((file, string.Join(' ', arguments), directory));
         var key = Path.GetFileNameWithoutExtension(file);
+        if (key == "yarn" && arguments[0] == "--version") return Task.FromResult(new ProcessResult(0, "1.22.22", ""));
         return Task.FromResult(_replies.TryGetValue(key, out var reply)
             ? new ProcessResult(reply.Code, reply.Output, "")
             : new ProcessResult(127, "", $"{file} not found"));

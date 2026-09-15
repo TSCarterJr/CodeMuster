@@ -10,3 +10,5 @@ node_modules/
 .codemuster/ledger.db
 .codemuster/ledger.db-*
 TestResults/
+/plugin-dist/
+/plugin-packages/

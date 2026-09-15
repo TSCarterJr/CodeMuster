@@ -126,6 +126,8 @@ public static class Program
             return await InitAsync(command, repoRoot, fileSystem, tree, cancellationToken);
         }
 
+        using var coordinator = command.Verb is "scan" or "run" or "verify" or "fix" or "done" or "validate"
+            ? await CoordinatorLock.AcquireAsync(repoRoot, cancellationToken) : null;
         var config = await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken);
         using var ledger = await SqliteLedger.OpenAsync(Path.Combine(repoRoot, ".codemuster", "ledger.db"), cancellationToken);
         var clock = new SystemClock();
@@ -151,12 +153,12 @@ public static class Program
                 return await NextAsync(command, ledger, tree, config, cancellationToken);
             case "done":
                 var response = await File.ReadAllTextAsync(command.Options["findings"], cancellationToken);
-                var done = await new Done(ledger, clock, config).RunAsync(command.Positionals[0], command.Options["fingerprint"], response, cancellationToken);
+                var done = await new Done(ledger, clock, config, fileSystem: fileSystem, repoRoot: repoRoot, tree: tree, hasher: new GitBlobHasher(repoRoot)).RunAsync(command.Positionals[0], command.Options["fingerprint"], response, cancellationToken);
                 Console.WriteLine(done.Message);
                 return done.Outcome == DoneOutcome.Recorded ? 0 : 1;
             case "run":
             case "verify":
-                return await RunAgentAsync(command, ledger, tree, clock, config, cancellationToken);
+                return await RunAgentAsync(command, repoRoot, ledger, tree, clock, config, cancellationToken);
             case "validate":
                 ITestRunner? runner = config.TestCommand.Count == 0 ? null : new CommandTestRunner(repoRoot, config.TestCommand);
                 var validation = await new Validate(runner).RunAsync(cancellationToken);
@@ -269,7 +271,7 @@ public static class Program
         var progress = new ProgressWriter(Console.Out);
         using var fileFixer = new GitFileFixer(repoRoot, directory => AgentAdapters.Create(
             command.Options["agent"], null, command.Options.GetValueOrDefault("model"), command.Options.GetValueOrDefault("effort"), write: true, workingDirectory: directory), progress, options.RelatedFiles);
-        var fix = new Fix(ledger, tree, clock, config, workspace, tests, fileFixer);
+        var fix = new Fix(ledger, tree, clock, config, workspace, tests, fileFixer, new GitBlobHasher(repoRoot));
         var result = await fix.RunAsync(adapter, options, progress, cancellationToken);
         foreach (var unitId in result.GaveUp)
         {
@@ -305,7 +307,8 @@ public static class Program
 
     private static async Task<int> NextAsync(Command command, SqliteLedger ledger, GitSourceTree tree, Config config, CancellationToken cancellationToken)
     {
-        var packs = await new Next(ledger, tree, config).RunAsync(int.Parse(command.Options.GetValueOrDefault("batch", "1")), cancellationToken);
+        var requestedKind = command.Options.GetValueOrDefault("kind");
+        var packs = await new Next(ledger, tree, config, kind: requestedKind is null ? null : Enum.Parse<UnitKind>(requestedKind, true), path: command.Options.GetValueOrDefault("path")).RunAsync(int.Parse(command.Options.GetValueOrDefault("batch", "1")), cancellationToken);
         if (packs.Count == 0)
         {
             Console.Error.WriteLine("nothing pending; run status");
@@ -326,7 +329,7 @@ public static class Program
         return 0;
     }
 
-    private static async Task<int> RunAgentAsync(Command command, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, CancellationToken cancellationToken)
+    private static async Task<int> RunAgentAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, CancellationToken cancellationToken)
     {
         var template = Environment.GetEnvironmentVariable("CODEMUSTER_FAKE_RESPONSE");
         var adapter = AgentAdapters.Create(
@@ -335,7 +338,7 @@ public static class Program
             command.Options.GetValueOrDefault("model"),
             command.Options.GetValueOrDefault("effort"));
         var kind = command.Verb == "verify" ? "verify" : command.Options.GetValueOrDefault("kind");
-        if (kind == "verify") await new RefreshVerification(ledger, tree).RunAsync(cancellationToken);
+        if (kind == "verify") await new RefreshVerification(ledger, tree, config, new GitBlobHasher(repoRoot)).RunAsync(cancellationToken);
         var options = new RunOptions(
             int.Parse(command.Options.GetValueOrDefault("jobs", "1")),
             int.Parse(command.Options.GetValueOrDefault("attempts", "3")),
@@ -392,8 +395,9 @@ public static class Program
         "doctor" => command.Positionals.Count == 0 && command.Options.Count == 0 && command.Flags.Count == 0,
         "scan" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "mode") && command.Options.GetValueOrDefault("mode", "file") is "file" or "slice",
         "done" => command.Flags.Count == 0 && command.Positionals.Count == 1 && command.Options.ContainsKey("fingerprint") && command.Options.ContainsKey("findings"),
-        "next" => command.Flags.Count == 0 && command.Positionals.Count == 0 && IsPositiveOrAbsent(command, "batch"),
-        "run" => IsAgentRun(command, "kind") && (!command.Options.TryGetValue("kind", out var kind) || (KindNames.Contains(kind) && kind is not ("fix" or "dependency"))),
+        "next" => command.Flags.Count == 0 && command.Positionals.Count == 0 && IsPositiveOrAbsent(command, "batch")
+            && (!command.Options.TryGetValue("kind", out var nextKind) || KindNames.Contains(nextKind) && nextKind is not ("fix" or "dependency" or "deadcode")),
+        "run" => IsAgentRun(command, "kind") && (!command.Options.TryGetValue("kind", out var kind) || (KindNames.Contains(kind) && kind is not ("fix" or "dependency" or "deadcode"))),
         "verify" => IsAgentRun(command),
         "fix" => command.Positionals.Count == 0
             && command.Flags.All(f => f is "stash" or "retry-declined")

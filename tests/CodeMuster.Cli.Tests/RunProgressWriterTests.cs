@@ -1,5 +1,5 @@
-using CodeMuster.Domain;
 using CodeMuster.Application;
+using CodeMuster.Domain;
 
 namespace CodeMuster.Cli.Tests;
 

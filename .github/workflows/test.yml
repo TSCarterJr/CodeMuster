@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -12,7 +16,7 @@ jobs:
       matrix:
         include:
           - name: linux
-            runner: ['self-hosted', 'Linux', 'X64']
+            runner: 'ubuntu-latest'
           - name: windows
             runner: 'windows-latest'
           - name: macos
@@ -33,6 +37,6 @@ jobs:
       - run: dotnet restore fixtures/mixed-repo/MixedRepo.sln
       - run: dotnet restore fixtures/minimal-api/MinimalApi.sln
       - run: npm ci --prefix fixtures/mixed-repo/web
-      - run: node --test npm/test/launcher.test.js
+      - run: npm test --prefix npm
       - run: dotnet build --no-restore
       - run: dotnet test --no-build

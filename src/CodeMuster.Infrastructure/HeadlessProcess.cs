@@ -5,7 +5,7 @@ namespace CodeMuster.Infrastructure;
 
 internal static class HeadlessProcess
 {
-    public static async Task<string> RunAsync(string executable, IReadOnlyList<string> arguments, string standardInput, CancellationToken cancellationToken, string? workingDirectory = null)
+    public static async Task<string> RunAsync(string executable, IReadOnlyList<string> arguments, string standardInput, CancellationToken cancellationToken, string? workingDirectory = null, IReadOnlyDictionary<string, string>? environment = null)
     {
         var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
         var startInfo = new ProcessStartInfo(executable)
@@ -23,6 +23,8 @@ internal static class HeadlessProcess
         {
             startInfo.ArgumentList.Add(argument);
         }
+        foreach (var (key, value) in environment ?? new Dictionary<string, string>()) startInfo.Environment[key] = value;
+        startInfo.Environment["CODEMUSTER_WORKER"] = "1";
 
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"{executable} did not start.");
         try

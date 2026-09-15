@@ -8,7 +8,7 @@
     "type": "git",
     "url": "git+https://github.com/TSCarterJr/CodeMuster.git"
   },
-  "homepage": "https://codemuster.com",
+  "homepage": "https://github.com/TSCarterJr/CodeMuster",
   "keywords": ["code-audit", "code-review", "security", "coverage", "ai", "agent-skill", "claude-code", "codex", "gemini-cli", "opencode"],
   "bin": {
     "codemuster": "bin/codemuster.js"
@@ -18,7 +18,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test test/launcher.test.js"
+    "test": "node --test test/launcher.test.js test/plugin.test.js test/release.test.js"
   },
   "optionalDependencies": {
     "@codemuster/darwin-arm64": "0.1.0-dev",

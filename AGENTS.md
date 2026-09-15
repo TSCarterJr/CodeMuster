@@ -2,6 +2,158 @@
 
 ## Current task status
 
+- 2026-09-15, codex: INT1 integrates the completed candidate for Tim's explicit
+  commit/push-to-main request. This snapshot includes the shared distribution and
+  setup work, isolated repair/release safeguards, settings-driven proactive hooks,
+  and evidence-backed dead-code/UX reviews. The prior tasks share implementation
+  and test changes; the integration task keeps their tested dependency set together.
+  Local validation remains 1,094 .NET and 40 npm passes with zero skips; formatting,
+  plugin parity/strict validation, diff checks and NuGet advisory checks pass.
+  Main requires Linux, Windows and macOS CI before integration; retain that
+  protection. This source delivery does not publish packages or satisfy live
+  proactive plugin, representative UI repair, or published-install acceptance.
+  Both existing stashes and ignored browser/test/package evidence are retained.
+- 2026-09-15, codex: REVIEW1 implemented locally under D48. Opt-in `dead_code`
+  records conservative usage assessments while protecting HTTP/external entry
+  points; candidates never authorize automatic deletion. Opt-in `user_experience`
+  plans UI-only browser work with primary task flow, readability, graphics/rendering/
+  clipping, pressed/loading feedback, wording/typos, and validation/recovery checks.
+  Receipts require current source, screenshot hashes, measured contrast and explicit
+  observations; source-only or blocked reviews cannot complete UX. Definitive UX
+  verdicts also require browser evidence, and automatic repairs exclude stale
+  observations and recommendations. SQLite schema 6 retains review evidence.
+  A real browser fixture plus CLI ingestion recorded low contrast (1.94:1), missing
+  invoice payment placement, task detours, and absent button-press feedback despite
+  empty submitted findings; a wrong artifact hash was rejected and kept UX incomplete.
+  All 1,094 .NET and 40 npm tests pass with zero skips; formatting, plugin strict
+  validation, generated/installed copy parity and diff checks pass. Receipts are in
+  ignored TestResults/review1-complete-20260915/ and ux-browser-acceptance-20260915/.
+  See docs/application-reviews.md and stages 24-27. Actual proactive host-plugin
+  acceptance, representative UI repair/reverification, hosted OS validation and
+  publication remain release/pilot gates. Existing work and both stashes remain
+  preserved; no repository commit, push or release. The disposable browser server
+  was stopped after verifying its process identity; all evidence was retained.
+- 2026-09-15, codex: Refreshed release readiness after HOOK2. Ready for a controlled
+  pilot with matching candidate artifacts; public launch still needs actual proactive
+  Claude/Codex session acceptance, exact committed-revision hosted CI/package rehearsal,
+  all-package npm publisher verification and successful publication, then fresh published
+  install/upgrade acceptance. Retained receipts confirm 862 .NET passes, zero skips;
+  the latest local npm suite has 40 passes and generated plugin parity still passes.
+  GitHub latest release and checked npm launcher/darwin-arm64 remain 0.2.0; latest
+  hosted tests cover d65558c, excluding the uncommitted candidate. Updated
+  docs/launch-readiness.md with current gates and expanded P1–P8/N1–N4 acceptance.
+  No runtime changes, live-agent runs, commit, push, or publication in this reassessment.
+- 2026-09-15, codex: HOOK2 implemented locally under D47. Repository `automation`
+  settings select off, update (default), review, or review_and_fix. Claude/Codex
+  plugin session/edit context hooks read current settings; the shared skill checks
+  them again before review/repair and treats configured review_and_fix as authority
+  for scoped local repairs. Added next --path, literal file/folder matching,
+  review-queue exclusion of repair units, and CODEMUSTER_WORKER suppression.
+  All 862 .NET and 40 npm tests pass with zero skips; new regressions failed first.
+  Formatting, skill/plugin validators, generated/installed copy parity, Markdown
+  links, and diff checks pass. Hook-process fixtures cover settings changes,
+  bootstrap, invalid config, filesystem identity, and Windows CMD/PowerShell.
+  Actual agent-triggered plugin acceptance and publication remain unverified.
+  Existing local work and both stashes are preserved; no commit, push, or release.
+- 2026-09-15, codex: Tim clarified HOOK1's intended product behavior: the plugin
+  should teach CLI use and direct the AI to use CodeMuster proactively during
+  normal coding, without a separate CodeMuster request. Updated the review with
+  proposed standing instructions, broader skill activation, session-context hooks,
+  and path-aware change signals. Current hooks record a repository fingerprint,
+  not a per-file dirty list. CLI fingerprints and the ledger remain authoritative.
+  This updates the design direction; proactive plugin behavior is not implemented.
+- 2026-09-15, codex: Fetched and fast-forward checked main; HEAD and origin/main
+  both remain d65558c, with existing local work and both stashes preserved.
+  HOOK1 reviews setup and hook utilization in docs/setup-hooks-review.md.
+  All 41 selected setup/skill/change-tracking tests pass with zero skips. A real
+  disposable CLI/Git smoke confirms freshness warnings without installed hooks
+  and a false warning after staging unchanged working-file content. Current
+  hooks only record fingerprints; plugin setup skips them and has no hooks-only
+  option. Official docs confirm the current Codex hook format; Claude's matcher
+  omits PowerShell. Recommend checkpoint reminders, independent hook setup, and
+  managed upgrade/removal before optional automatic reviews. This is a proposal;
+  D42 behavior is unchanged. No production edits or agent settings changes;
+  actual agent-triggered hook acceptance remains unverified.
+- 2026-09-14, codex: npm step-up authentication succeeded for codemuster.
+  Its trusted publisher is GitHub TSCarterJr/CodeMuster, release.yml, with
+  createPackage/createStagedPackage permissions. Checking darwin-arm64 requests
+  a separate EOTP challenge; the six platform publishers are not yet verified.
+  Login is working, but hosted candidate validation and actual publication remain
+  pending; this is not a completed launch gate.
+- 2026-09-14, codex: npm login now verified as tscarterjr. Trusted-publisher
+  inspection progressed from E401 to npm step-up authentication (EOTP). Started
+  interactive trust inspection and opened the npm browser challenge; awaiting
+  account authentication before publisher configuration can be read. No package
+  publication or publisher configuration change performed.
+- 2026-09-14, codex: LIVE1 launch remediation implemented locally under D46.
+  Default and parallel fixes share isolated workers; validation scope is enforced,
+  commits precede ledger success, integration failures preserve recovery, and
+  mutating commands use a common-Git-directory coordinator lock. Packs render on
+  worker acquisition and oversized whole-file packs fail explicitly. Skill checks
+  stable CLI 0.2.7+ and capabilities; launcher supports exact version pins and
+  architecture-partitioned caches. Added Codex/OpenCode/Gemini tool restrictions,
+  Yarn Berry command/parser support, hosted-only workflow runners, exact-revision
+  full-test release gates, packaged runtime smokes, and resumable npm publication.
+  All 831 .NET and 28 npm tests pass with zero skips; full formatting, plugin
+  parity/Claude strict validation, diff checks and NuGet advisory scan pass.
+  Final self-contained Windows 0.2.7 package passed installed-runtime fixture
+  smoke. Real published 0.2.0 ledger upgrade and exact binary rollback passed.
+  Live Claude and Codex each repaired a real fixture defect with configured tests,
+  verified resolution, and passed final validation. Live main protection now
+  requires all three strict OS checks with admins enforced; fork approval is
+  all_external_contributors. Existing work and both stashes remain intact.
+  Code/workflows remain uncommitted and unpublished; hosted candidate tests,
+  fresh published-plugin acceptance and live Gemini/OpenCode acceptance remain
+  pending. npm 11 publisher inspection returned E401; requested npm login.
+  See docs/launch-readiness.md for the reconciled evidence and release gates.
+- 2026-09-14, codex: Completed setup/release-readiness review in
+  `docs/launch-readiness.md`. All 815 .NET and 22 npm tests pass, plugin parity
+  and Claude strict validation pass, and the NuGet advisory check is clean.
+  Disposable real-CLI/Git checks reproduced serial fixes committing out-of-scope
+  tracked edits and recording fixed before a rejected commit. Hold the next
+  launch for these fixes, public-PR/self-hosted runner isolation, exact-revision
+  release gates, and skill/CLI compatibility checks. Live npm/GitHub remains
+  0.2.0; local plugin prepares 0.2.7. Latest tagged workflow failed publishing;
+  current trusted-publisher authorization and live-agent acceptance remain
+  unverified. Updated review/status documentation only; preserved existing work.
+  No production-code edits, real-repository commits, push, release, or settings
+  changes performed.
+- 2026-09-14, codex: Synced main from `744132a` to `d65558c` (four commits), then
+  reconciled all six instruction/documentation conflicts. Preserved upstream
+  D42/D43 and the T16 setup, declined-fix recovery, resolved verification, and
+  final validation workflow; local setup/distribution decisions are D44/D45.
+  Plugin init uses `--no-skills` to avoid duplicate skills (also skips project
+  hooks). Prepared plugin version is now 0.2.7, superseding the earlier 0.2.1
+  artifacts after Tim reported 0.2.6 on his MacBook. All 815 .NET and 22 npm
+  tests pass; plugin validators, isolated plugin updates, init smoke, copy hashes,
+  formatting, syntax, and diff checks pass. HEAD matches origin/main, with no
+  remaining conflicts. Local changes remain uncommitted; all 31 preserved files
+  remain present. Recovery stash `e711f0f` and the older license stash are retained.
+  No push or release performed; published GitHub/npm still reported 0.2.0, and
+  the MacBook installation was not inspected.
+- 2026-09-14, codex: DIST1 (D45) implements marketplace-first distribution with
+  one generated plugin for Claude/Codex and the standalone CLI preserved. Source
+  metadata is in `distribution/`; run `node scripts/stage-plugin.js` after changing
+  it, the skill, or LICENSE. CI checks parity; tagged releases require matching
+  plugin versions and attach plugin/skill archives. Prepared version 0.2.1 locally.
+  All 800 .NET and 22 npm tests pass, as do manifest, formatting, syntax, YAML, and
+  diff checks. Both agents installed matching skill copies in isolated profiles.
+  Codex's temporary profile reported a helper-alias warning; plugin installation
+  and listing succeeded. Local archives are in ignored `plugin-packages/`.
+  Onboarding and `docs/marketplace-submission.md` cover release and directory review.
+  No commit, push, hosted workflow, release, or official-directory submission was
+  performed. Fresh-machine CLI bootstrap and live reviewer cases remain unverified.
+- 2026-09-14, codex: SK1 (D44) adds skill-driven CLI setup: check version, try
+  `npm i -g codemuster` once only when missing, verify, and explain failures with
+  manual install instructions. Updated both local skill copies and user docs.
+  Regression test failed before implementation; all 800 .NET tests and 16 npm
+  tests now pass locally, with formatting and diff checks passing. Fresh-machine
+  agent installation and package publication were not exercised.
+- 2026-09-14, codex: Installed the current bundled CodeMuster skill for Claude and
+  Codex in this repository at `.claude/skills/codemuster/SKILL.md` and
+  `.codex/skills/codemuster/SKILL.md`. Both installed copies match `skill/SKILL.md`.
+  Installation is repository-local; skill discovery in a new agent session has
+  not yet been verified.
 - 2026-09-14, codex: LIC1 replaces MIT with the CodeMuster Personal and Internal
   Business Use License at Tim's request (D41). Personal and internal company use,
   including private modifications, is permitted; resale, commercial forks, and
@@ -79,6 +231,9 @@ src/CodeMuster.Cli/                 composition root, verb dispatch, console out
 tests/<project>.Tests/               one test project per source project.
 fixtures/                            small repos with known call graphs and planted defects.
 skill/SKILL.md                       the one skill file, installed by the CLI.
+distribution/                       authoritative plugin metadata and README (D45).
+plugins/codemuster/                  generated plugin bundle; run scripts/stage-plugin.js.
+.claude-plugin/ and .agents/plugins/ generated marketplace catalogs (D45).
 npm/                                 the `codemuster` npm launcher (D33) and its `node --test` tests.
 .github/workflows/                   test matrix (3 OSes) and release matrix.
 ```
@@ -92,5 +247,5 @@ Nothing depends on `Cli`. `Application` never references `Infrastructure` or `Ma
 - Do not use modified time to decide staleness (D05).
 - Do not branch on unit kind in `next`, `done`, `status`, or `run` (D06), except for the verify pack and its verdict (D27).
 - Do not change the findings schema without a new decision (D11).
-- Do not auto-install anything. `doctor` prints commands. Exceptions: the npm launcher keeps CodeMuster itself up to date (D33), and `init` installs the user-selected project skills and hooks (D42).
+- Do not auto-install dependencies. `doctor` prints commands. Exceptions: the npm launcher keeps CodeMuster itself up to date (D33), `init` installs user-selected project skills and hooks (D42), and the skill attempts `npm i -g codemuster` when the CLI is missing, with manual instructions on failure (D44).
 - Do not commit `.codemuster/ledger.db` in any repo, including fixtures.

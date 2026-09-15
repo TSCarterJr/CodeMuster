@@ -14,6 +14,38 @@ public class FixRunTests
     private readonly List<string> notes = [];
     private readonly FakeTestRunner tests = new();
 
+    [Fact]
+    public async Task LedgerFailureAfterCommitPreservesTheCommitAndLeavesFindingUnfixed()
+    {
+        var ids = await SeedAsync("a.cs", 10);
+        ledger.OnRecordFix = () => throw new InvalidOperationException("disk full");
+        var editor = new PackFixer(_ => new FileFixEdit(FixResponseJson.Serialize(new FixResponse("fixed", ids, [])), "a.cs"));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new Fix(ledger, tree, clock, Config.Default, workspace, tests, editor)
+            .RunAsync(Fixer(_ => throw new Exception()), new FixOptions(), null, CancellationToken.None));
+        Assert.Contains("preserved", error.Message);
+        Assert.Contains("disk full", error.Message);
+        Assert.Single(workspace.Commits);
+        Assert.Empty(workspace.RestoredFiles);
+        Assert.Empty(ledger.Fixes);
+        Assert.Contains(ledger.Analyses, a => !a.Analysis.Succeeded && a.Analysis.Error!.Contains("disk full", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task WaitingPacksAreNotReadUntilAWorkerSlotIsAvailable()
+    {
+        var a = await SeedAsync("a.cs", 10);
+        var b = await SeedAsync("b.cs", 10);
+        tree.Contents.Remove("b.cs");
+        var editor = new FileFixer((path, _) =>
+        {
+            if (path == "a.cs") tree.Contents["b.cs"] = "class B {}";
+            return Task.FromResult(new FileFixEdit(FixResponseJson.Serialize(new FixResponse("fixed", path == "a.cs" ? a : b, [])), path));
+        });
+        var result = await new Fix(ledger, tree, clock, Config.Default, workspace, tests, editor)
+            .RunAsync(Fixer(_ => throw new Exception()), new FixOptions(), null, CancellationToken.None);
+        Assert.Equal(2, result.Fixed);
+    }
+
     private async Task<IReadOnlyList<long>> SeedAsync(string path, params int[] lines)
     {
         tree.Add(path, $"// {path}\nclass A {{ }}");
@@ -35,11 +67,30 @@ public class FixRunTests
     }
 
     private Task<FixResult> RunAsync(FakeAgentAdapter adapter, int attempts = 2, ITestRunner? runner = null) =>
-        new Fix(ledger, tree, clock, Config.Default, workspace, runner).RunAsync(
+        CreateFix(adapter, runner).RunAsync(
             adapter,
             new FixOptions(attempts),
             new ListProgress(notes),
             CancellationToken.None);
+
+    private Fix CreateFix(FakeAgentAdapter adapter, ITestRunner? runner = null) =>
+        new(ledger, tree, clock, Config.Default, workspace, runner, new AdapterFixer(adapter, workspace));
+
+    private sealed class AdapterFixer(IAgentAdapter adapter, FakeWorkspace workspace) : IFileFixer
+    {
+        public async Task<FileFixEdit> RunAsync(string path, string pack, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var response = await adapter.RunAsync(pack, cancellationToken);
+                return new FileFixEdit(response, workspace.Clean ? "" : path);
+            }
+            finally
+            {
+                workspace.Clean = true;
+            }
+        }
+    }
 
     private FakeAgentAdapter Fixer(Func<string, FixResponse> respond, bool touchesFiles = true) =>
         new((pack, _) =>
@@ -59,7 +110,7 @@ public class FixRunTests
         await RunAsync(Fixer(_ => new FixResponse("partly fixed", [ids[0]], [new DeclinedFix(ids[1], "needs precise formatting in caller")])));
         string? pack = null;
         var retry = Fixer(text => { pack = text; return new FixResponse("caller fixed", [ids[1]], []); });
-        var result = await new Fix(ledger, tree, clock, Config.Default, workspace).RunAsync(retry, new FixOptions(RetryDeclined: true), null, CancellationToken.None);
+        var result = await CreateFix(retry).RunAsync(retry, new FixOptions(RetryDeclined: true), null, CancellationToken.None);
         Assert.Equal(1, result.Fixed);
         Assert.Contains("needs precise formatting in caller", pack);
         Assert.DoesNotContain("claim 10", pack);
@@ -331,7 +382,7 @@ public class FixRunTests
 
             throw new InvalidOperationException("agent failed");
         });
-        var run = new Fix(ledger, tree, clock, Config.Default, workspace).RunAsync(
+        var run = CreateFix(adapter).RunAsync(
             adapter, new FixOptions(1, Stash: true), new ListProgress(notes), cancellation.Token);
 
         if (cancel)
@@ -354,8 +405,9 @@ public class FixRunTests
     {
         var ids = await SeedAsync("src/a.cs", 10);
 
-        await new Fix(ledger, tree, clock, Config.Default, workspace).RunAsync(
-            Fixer(_ => new FixResponse("Fixed", ids, [])), new FixOptions(Stash: true), null, CancellationToken.None);
+        var adapter = Fixer(_ => new FixResponse("Fixed", ids, []));
+        await CreateFix(adapter).RunAsync(
+            adapter, new FixOptions(Stash: true), null, CancellationToken.None);
 
         Assert.Equal(0, workspace.Stashes);
         Assert.Null(workspace.RestoredStash);
@@ -390,7 +442,7 @@ public class FixRunTests
         Assert.Equal(2, adapter.Packs.Count);
         Assert.Equal([UnitIds.Fix("src/a.cs")], result.GaveUp);
         Assert.Empty(workspace.Commits);
-        Assert.Equal(2, workspace.Restores);
+        Assert.Equal(0, workspace.Restores);
     }
 
     [Fact]
@@ -401,7 +453,8 @@ public class FixRunTests
 
         await RunAsync(adapter);
 
-        Assert.Equal(["fixing src/a.cs, 1 finding(s)"], notes);
+        Assert.StartsWith("fixing src/a.cs, 1 finding(s)", notes[0]);
+        Assert.Contains("finished src/a.cs", notes);
     }
 
     [Fact]
@@ -433,7 +486,7 @@ public class FixRunTests
         Assert.Equal([UnitIds.Fix("src/a.cs")], result.GaveUp);
         Assert.Equal(0, result.Fixed);
         Assert.Empty(workspace.Commits);
-        Assert.Equal(2, workspace.Restores);
+        Assert.Equal(0, workspace.Restores);
         Assert.Empty(ledger.Fixes);
         Assert.Contains(notes, note => note.Contains("expected 2, got 3", StringComparison.Ordinal));
     }

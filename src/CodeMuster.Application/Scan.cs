@@ -40,6 +40,19 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         var mapped = await CompositeMapper.MapAsync(active, repoRoot, included, progress, cancellationToken);
         progress?.Report("planning units");
         var planned = SliceBuilder.Build(mapped, included);
+        planned = [.. planned, .. UxReview.Plan(included, config.UserExperience)];
+        DeadCodeScan? deadCode = null;
+        if (config.DeadCode)
+        {
+            var sources = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var file in included)
+            {
+                try { sources[file.Path] = await tree.ReadFileAsync(file.Path, cancellationToken); }
+                catch (IOException ex) { progress?.Report($"dead-code source unavailable for {file.Path}: {ex.Message}"); }
+            }
+            deadCode = DeadCodeScan.Build(mapped, included, sources);
+            planned = [.. planned, .. deadCode.Plans];
+        }
         if (config.Verify)
         {
             planned = [.. planned, .. await PlanVerifyUnitsAsync(planned, cancellationToken)];
@@ -86,6 +99,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         progress?.Report($"saving {units.Count} units");
         await ledger.UpsertUnitsAsync([.. units, .. retired], members, cancellationToken);
         var vulnerabilities = audit is null ? null : await RecordVulnerabilitiesAsync(audit, units, now, cancellationToken);
+        if (deadCode is not null) await deadCode.RecordAsync(ledger, config, now, cancellationToken);
 
         foreach (var unit in units.Concat(retired))
         {
@@ -107,7 +121,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
 
     private async Task<IEnumerable<PlannedUnit>> PlanVerifyUnitsAsync(IReadOnlyList<PlannedUnit> planned, CancellationToken cancellationToken)
     {
-        var sources = planned.Where(p => p.Kind != UnitKind.Dependency).ToDictionary(p => p.Id, StringComparer.Ordinal);
+        var sources = planned.Where(p => p.Kind is not (UnitKind.Dependency or UnitKind.DeadCode)).ToDictionary(p => p.Id, StringComparer.Ordinal);
         return (await ledger.GetCurrentFindingsAsync(cancellationToken))
             .Where(f => sources.TryGetValue(f.UnitId, out var source) && Fingerprints.Compute(source.Members) == f.Fingerprint)
             .Select(f => PlannedUnit.Verify(f, sources[f.UnitId].Members, sources[f.UnitId].Fidelity));

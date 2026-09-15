@@ -13,6 +13,17 @@ public static class YarnAuditJson
         foreach (var line in output.Split('\n').Select(line => line.Trim()).Where(line => line.StartsWith('{')))
         {
             using var document = JsonDocument.Parse(line);
+            if (document.RootElement.TryGetProperty("value", out var name)
+                && document.RootElement.TryGetProperty("children", out var details)
+                && details.TryGetProperty("URL", out var url))
+            {
+                var link = url.GetString() ?? "";
+                found.Add(new VulnerablePackage(name.GetString() ?? "", details.GetProperty("Vulnerable Versions").GetString() ?? "",
+                    AuditSeverity.Parse(details.GetProperty("Severity").GetString()), link[(link.LastIndexOf('/') + 1)..], link,
+                    details.GetProperty("Issue").GetString() ?? "", null,
+                    details.TryGetProperty("Dependents", out var dependents) && dependents.EnumerateArray().Any(d => d.GetString()?.Contains("@workspace:", StringComparison.Ordinal) == true)));
+                continue;
+            }
             if (document.RootElement.TryGetProperty("type", out var type)
                 && type.GetString() == "auditAdvisory"
                 && document.RootElement.TryGetProperty("data", out var data)

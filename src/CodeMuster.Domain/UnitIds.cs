@@ -20,6 +20,12 @@ public static class UnitIds
     /// <summary>Id of the dependency unit for a manifest (D38).</summary>
     public static string Dependency(string manifest) => "dependency:" + manifest;
 
+    /// <summary>Id of the browser review for a UI source path.</summary>
+    public static string Ux(string path) => "ux:" + path;
+
+    /// <summary>Id of static reachability analysis for a source path.</summary>
+    public static string DeadCode(string path) => "dead_code:" + path;
+
     /// <summary>Id of the slice unit that starts at an entry point's symbol.</summary>
     public static string Slice(string entrySymbolId) => "slice:" + entrySymbolId;
 }

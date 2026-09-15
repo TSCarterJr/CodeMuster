@@ -15,4 +15,8 @@ public enum UnitKind
     Fix,
     /// <summary>One manifest's vulnerable packages, as its ecosystem's audit tool reported them (D38).</summary>
     Dependency,
+    /// <summary>A UI target requiring rendered readability and business-workflow evidence.</summary>
+    Ux,
+    /// <summary>Static reachability assessments for one source file; candidates do not authorize deletion.</summary>
+    DeadCode,
 }

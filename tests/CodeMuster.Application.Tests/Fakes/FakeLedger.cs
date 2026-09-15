@@ -13,6 +13,7 @@ public sealed class FakeLedger : ILedger
     public Dictionary<long, FixOutcome> Fixes { get; } = [];
     private List<(string UnitId, VerifyResponse Verdict)> PendingVerdicts { get; } = [];
     public Action<Analysis>? OnRecordAnalysis { get; set; }
+    public Action? OnRecordFix { get; set; }
 
     public Task<IReadOnlyList<FileRecord>> GetFilesAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<FileRecord>>(Files.Values.ToList());
@@ -63,7 +64,7 @@ public sealed class FakeLedger : ILedger
         bool Under(Unit unit) => folder is null || Members.Any(m =>
             m.UnitId == unit.Id && (m.Path == folder || m.Path.StartsWith(folder + "/", StringComparison.Ordinal)));
         return Task.FromResult<IReadOnlyList<Unit>>(Units
-            .Where(u => (u.Status is UnitStatus.Pending or UnitStatus.Stale or UnitStatus.Failed) && u.Kind != UnitKind.Dependency && (kind is null || u.Kind == kind) && Under(u))
+            .Where(u => (u.Status is UnitStatus.Pending or UnitStatus.Stale or UnitStatus.Failed) && u.Kind != UnitKind.Dependency && (kind is null ? u.Kind != UnitKind.Fix : u.Kind == kind) && Under(u))
             .Take(batch)
             .ToList());
     }
@@ -87,6 +88,7 @@ public sealed class FakeLedger : ILedger
 
     public Task RecordFixAsync(Analysis analysis, IReadOnlyList<(long FindingId, FixOutcome Outcome)> outcomes, CancellationToken cancellationToken)
     {
+        OnRecordFix?.Invoke();
         foreach (var (findingId, outcome) in outcomes)
         {
             Fixes[findingId] = outcome;
@@ -137,6 +139,18 @@ public sealed class FakeLedger : ILedger
             .OrderBy(f => f.Id)
             .ToList();
         return Task.FromResult<IReadOnlyList<UnitFinding>>(current);
+    }
+
+    public Task<IReadOnlyDictionary<string, Analysis>> GetLatestEvidenceAsync(CancellationToken cancellationToken)
+    {
+        var active = Units.Where(unit => unit.Status != UnitStatus.Retired).Select(unit => unit.Id).ToHashSet(StringComparer.Ordinal);
+        var evidence = Analyses.Select(attempt => attempt.Analysis)
+            .Where(analysis => analysis.Succeeded && active.Contains(analysis.UnitId))
+            .GroupBy(analysis => analysis.UnitId, StringComparer.Ordinal)
+            .Select(group => group.Last())
+            .Where(analysis => analysis.EvidenceJson is not null)
+            .ToDictionary(analysis => analysis.UnitId, StringComparer.Ordinal);
+        return Task.FromResult<IReadOnlyDictionary<string, Analysis>>(evidence);
     }
 
     public Task<IReadOnlyList<Analysis>> GetFailedAnalysesAsync(CancellationToken cancellationToken) =>

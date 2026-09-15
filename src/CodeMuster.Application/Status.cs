@@ -20,6 +20,10 @@ public sealed class Status(ILedger ledger, Config config)
             .OrderBy(g => g.Key)
             .Select(g => new KindStatus(g.Key, g.Count(u => u.Status == UnitStatus.Done), g.Count(), g.Count(u => u.Status == UnitStatus.Stale)))
             .ToList();
+        var uxUnits = units.Where(u => u.Kind == UnitKind.Ux).ToList();
+        var receipts = config.UserExperience.Enabled ? await ledger.GetLatestEvidenceAsync(cancellationToken) : new Dictionary<string, Analysis>();
+        var reviewed = uxUnits.Count(u => u.Status == UnitStatus.Done && receipts.TryGetValue(u.Id, out var receipt)
+            && receipt.Fingerprint == u.Fingerprint && receipt.LensHash == Config.HashOf(config.LensesFor([(u.Key, Languages.FromPath(u.Key))])));
         return new StatusReport(
             run?.HeadCommit,
             units.Count(u => u.Status == UnitStatus.Done),
@@ -31,6 +35,11 @@ public sealed class Status(ILedger ledger, Config config)
             kinds,
             config.ResolutionThreshold,
             run?.TopUnresolvedNames,
-            vulnerable);
+            vulnerable)
+        {
+            UxStatus = !config.UserExperience.Enabled ? null : run is null ? "UX: no scan yet" : uxUnits.Count == 0 ? "UX: not applicable (no UI targets in the configured scope)"
+                : $"UX: browser evidence recorded for {reviewed}/{uxUnits.Count} UI targets; {uxUnits.Count - reviewed} incomplete",
+            UxIncomplete = config.UserExperience.Enabled && reviewed < uxUnits.Count,
+        };
     }
 }

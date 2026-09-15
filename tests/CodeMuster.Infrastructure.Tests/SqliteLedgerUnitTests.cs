@@ -87,6 +87,46 @@ public class SqliteLedgerUnitTests
         Assert.Empty(await ledger.NextAsync(10, UnitKind.Slice, null, CancellationToken.None));
     }
 
+    [Theory]
+    [InlineData(UnitStatus.Pending, null)]
+    [InlineData(UnitStatus.Stale, null)]
+    [InlineData(UnitStatus.Failed, null)]
+    [InlineData(UnitStatus.Pending, "src")]
+    [InlineData(UnitStatus.Stale, "src")]
+    [InlineData(UnitStatus.Failed, "src")]
+    public async Task Next_DefaultQueueExcludesFixes_WhileExplicitFixSelectionStillWorks(UnitStatus status, string? path)
+    {
+        using var temp = new TempDirectory();
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+        var file = Pending("src/A.cs");
+        var fix = file with { Id = UnitIds.Fix(file.Key), Kind = UnitKind.Fix, Status = status };
+        var dependency = file with { Id = "dependency:package.json", Kind = UnitKind.Dependency };
+        var verify = file with { Id = UnitIds.Verify(1), Kind = UnitKind.Verify };
+        await ledger.UpsertUnitsAsync([fix, dependency, file, verify],
+            [Member(fix, "h"), Member(dependency, "h"), Member(file, "h"), Member(verify, "h")], CancellationToken.None);
+
+        Assert.Equal([file, verify], await ledger.NextAsync(10, null, path, CancellationToken.None));
+        Assert.Equal([file], await ledger.NextAsync(1, null, path, CancellationToken.None));
+        Assert.Equal([fix], await ledger.NextAsync(10, UnitKind.Fix, path, CancellationToken.None));
+        Assert.Empty(await ledger.NextAsync(10, UnitKind.Fix, "other", CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("src/api_v1", "src/apiXv1")]
+    [InlineData("src/api%v1", "src/apiExtraV1")]
+    [InlineData("src/Api", "src/api")]
+    public async Task Next_PathUsesALiteralCaseSensitiveFolderPrefix(string folder, string otherFolder)
+    {
+        using var temp = new TempDirectory();
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+        var target = Pending(folder + "/A.cs");
+        var other = Pending(otherFolder + "/A.cs");
+        await ledger.UpsertUnitsAsync([other, target], [Member(other, "h"), Member(target, "h")], CancellationToken.None);
+
+        Assert.Equal([target], await ledger.NextAsync(10, null, folder, CancellationToken.None));
+        Assert.Equal([target], await ledger.NextAsync(10, null, target.Key, CancellationToken.None));
+    }
+
     [Fact]
     public async Task Next_ReturnsPendingStaleAndFailedInInsertionOrderAndHonoursBatch()
     {

@@ -6,6 +6,9 @@ public interface IWorkspace
     /// <summary>True when the working tree has no uncommitted changes to tracked files.</summary>
     Task<bool> IsCleanAsync(CancellationToken cancellationToken);
 
+    /// <summary>Lists tracked files changed in the index or working tree.</summary>
+    Task<IReadOnlyList<string>> ChangedPathsAsync(CancellationToken cancellationToken);
+
     /// <summary>Commits changes to tracked files with <paramref name="message"/>, leaving untracked files alone. Never pushes.</summary>
     Task CommitAsync(string message, CancellationToken cancellationToken);
 

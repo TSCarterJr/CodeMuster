@@ -7,6 +7,25 @@ public sealed class HeadlessProcessTests : IDisposable
     private readonly TempDirectory _dir = new();
 
     [Fact]
+    public async Task ChildProcessesSuppressProactivePluginHooksWithoutChangingTheParent()
+    {
+        var parent = Environment.GetEnvironmentVariable("CODEMUSTER_WORKER");
+        var output = await HeadlessProcess.RunAsync("node", ["-e", "process.stdout.write(process.env.CODEMUSTER_WORKER || '')"], "", CancellationToken.None);
+
+        Assert.Equal("1", output);
+        Assert.Equal(parent, Environment.GetEnvironmentVariable("CODEMUSTER_WORKER"));
+    }
+
+    [Fact]
+    public async Task ChildEnvironmentOverridesDoNotChangeTheParent()
+    {
+        var output = await HeadlessProcess.RunAsync("node", ["-e", "process.stdout.write(process.env.CODEMUSTER_TEST_POLICY)"], "", CancellationToken.None,
+            environment: new Dictionary<string, string> { ["CODEMUSTER_TEST_POLICY"] = "restricted" });
+        Assert.Equal("restricted", output);
+        Assert.Null(Environment.GetEnvironmentVariable("CODEMUSTER_TEST_POLICY"));
+    }
+
+    [Fact]
     public async Task Runs_the_executable_with_an_argument_list_and_returns_stdout()
     {
         var shim = WriteShim("echo shim %~1\r\n", "echo shim $1\n");

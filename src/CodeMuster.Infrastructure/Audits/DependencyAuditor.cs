@@ -30,13 +30,21 @@ public sealed class DependencyAuditor : IDependencyAuditor
     {
         var manifests = new List<ManifestVulnerabilities>();
         var diagnostics = new List<string>();
-        foreach (var job in Jobs(paths))
+        foreach (var candidate in Jobs(paths))
         {
+            var job = candidate;
             progress?.Report($"auditing {job.Manifest} with {job.Executable}");
             var directory = Path.GetFullPath(Path.Combine(repoRoot, job.WorkingDirectory));
             ProcessResult result;
             try
             {
+                if (job.Executable == "yarn")
+                {
+                    var version = await _run("yarn", ["--version"], directory, cancellationToken);
+                    if (version.ExitCode != 0 || !Version.TryParse(version.Output.Trim(), out var parsed))
+                        throw new InvalidOperationException("could not determine Yarn version: " + version.Output + version.Error);
+                    if (parsed.Major >= 2) job = job with { Tool = "yarn npm audit", Arguments = ["npm", "audit", "--all", "--recursive", "--json"] };
+                }
                 result = await _run(job.Executable, job.Arguments, directory, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)

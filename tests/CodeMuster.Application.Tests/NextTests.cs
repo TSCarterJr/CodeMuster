@@ -5,6 +5,16 @@ namespace CodeMuster.Application.Tests;
 
 public class NextTests
 {
+    [Fact]
+    public async Task OversizedWholeFileStopsWithoutRecordingCoverage()
+    {
+        var unit = AddFileUnit("large.txt", new string('x', Config.Default.SliceTokenBudget * 4 + 1));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync());
+        Assert.Contains("large.txt", error.Message);
+        Assert.Contains("slice_token_budget", error.Message);
+        Assert.Equal(UnitStatus.Pending, ledger.Units.Single(u => u.Id == unit.Id).Status);
+    }
+
     private static readonly Lens Tenancy = new("tenancy", "Every query must filter by tenant.", ["web/**"], []);
 
     private readonly FakeLedger ledger = new();
@@ -31,6 +41,20 @@ public class NextTests
 
     private Task<IReadOnlyList<UnitPack>> RunAsync(int batch = 1, Config? config = null) =>
         new Next(ledger, tree, config ?? Config.Default).RunAsync(batch, CancellationToken.None);
+
+    [Fact]
+    public async Task DefaultQueueDoesNotGiveInteractiveReviewAFixPack()
+    {
+        var fixId = UnitIds.Fix("src/A.cs");
+        var fix = AddUnit(fixId, UnitKind.Fix, "src/A.cs", new UnitMember(fixId, "src/A.cs", null, "hash", 0));
+        var file = AddFileUnit("src/A.cs", "class A { }");
+
+        var pack = Assert.Single(await new Next(ledger, tree, Config.Default, path: "src/A.cs").RunAsync(1, CancellationToken.None));
+
+        Assert.Equal(file.Id, pack.UnitId);
+        Assert.DoesNotContain("Fix the confirmed findings below", pack.Markdown);
+        Assert.Equal(fix, ledger.Units.Single(unit => unit.Id == fix.Id));
+    }
 
     [Theory]
     [InlineData(false)]
@@ -104,7 +128,7 @@ public class NextTests
         ledger.Verifications[1] = new VerifyResponse(Verdict.Confirmed, "Line 1 really is public.");
         AddUnit(UnitIds.Fix("src/A.cs"), UnitKind.Fix, "src/A.cs", new UnitMember(UnitIds.Fix("src/A.cs"), "src/A.cs", null, "hash-src/A.cs", 0));
 
-        var pack = Assert.Single(await RunAsync());
+        var pack = Assert.Single(await new Next(ledger, tree, Config.Default, kind: UnitKind.Fix).RunAsync(1, CancellationToken.None));
 
         Assert.Contains("- kind: fix", pack.Markdown);
         Assert.Contains("Fix the confirmed findings below", pack.Markdown);

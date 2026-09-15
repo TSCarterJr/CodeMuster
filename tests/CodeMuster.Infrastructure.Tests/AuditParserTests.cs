@@ -5,6 +5,19 @@ namespace CodeMuster.Infrastructure.Tests;
 
 public class AuditParserTests
 {
+    [Fact]
+    public void YarnBerryReadsCapturedAdvisoryTrees()
+    {
+        var found = YarnAuditJson.Parse(Fixture("yarn-berry.json"));
+        Assert.Equal(2, found.Count);
+        Assert.All(found, p => Assert.Equal("minimist", p.Package));
+        var critical = Assert.Single(found, p => p.Severity == Severity.Critical);
+        Assert.Equal("GHSA-xvch-5gv4-984h", critical.AdvisoryId);
+        Assert.Equal("<0.2.4", critical.VulnerableVersions);
+        Assert.True(critical.Direct);
+        Assert.Null(critical.FixedVersion);
+    }
+
     private static string Fixture(string name) => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "audits", name));
 
     [Fact]

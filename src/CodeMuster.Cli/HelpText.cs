@@ -85,6 +85,7 @@ public static class HelpText
               --mode file    Plan one unit per included file without code mapping
 
             Also runs dependency audit tools when vulnerabilities is enabled in config.
+            Optional dead_code records static candidates; user_experience.enabled queues UI browser reviews.
             Uses no agent calls. Run scan again after changing code or configuration.
             Next: codemuster estimate, then codemuster run --agent codex -j 4.
             """,
@@ -105,34 +106,40 @@ public static class HelpText
             This is an approximate input estimate, not a price or total-token guarantee.
             """,
         "next" => """
-            usage: codemuster next [--batch N] [--out <file>]
+            usage: codemuster next [--batch N] [--out <file>] [--path <path>] [--kind <kind>]
 
             Read pending work as Markdown packs for a manually driven agent session.
               --batch N      Number of packs to read (default: 1)
               --out <file>   Write packs to a file instead of stdout
+              --path <path>  Select units touching a repo-relative file or folder
+              --kind <kind>  Select file, slice, orphan, verify, or ux work
 
             Follow each pack's response schema and done command. Reading does not reserve work.
             Do not run independent writers against the same ledger.
+            UX needs a browser-capable session and the pack's evidence receipt.
             """,
         "done" => """
             usage: codemuster done <unit> --fingerprint <fp> --findings <file>
 
             Validate and record the JSON response for a work pack.
             Copy the unit and fingerprint from the pack; --findings names the response file.
+            UX validates current source, browser screenshots/hashes, readability, and task-flow checks.
             Next: codemuster next, or codemuster status when no work remains.
             """,
         "run" => "usage: codemuster run --agent <name> [options]\n\n"
             + "Analyze pending units, then verify their findings when verification is enabled.\n\n"
             + AgentOptions + "\n"
-            + "  --kind <kind>  Limit work to file, slice, orphan, or verify\n"
+            + "  --kind <kind>  Limit work to file, slice, orphan, verify, or ux\n"
             + "  --force        Re-run completed units in the selected scope\n\n"
             + "Repeat the command to resume unfinished work. Use fix to edit code.\n"
+            + "Browser work stays incomplete without model calls here; use next --kind ux in a browser-capable session.\n"
             + "Example: codemuster run --agent codex -j 4 --path src\n",
         "verify" => "usage: codemuster verify --agent <name> [options]\n\n"
             + "Recheck current code; record confirmed, refuted, resolved, or unsure. Resolved records fixed with evidence.\n\n"
             + AgentOptions + "\n"
             + "  --force        Re-run completed verification units in the selected scope\n\n"
-            + "Equivalent to run --kind verify. Only confirmed findings are eligible for fix.\n",
+            + "Equivalent to run --kind verify. UX verdicts require browser evidence through next --kind verify and done.\n"
+            + "Static dead-code candidates and UX recommendations are excluded from automatic fix.\n",
         "fix" => "usage: codemuster fix --agent <name> [options]\n\n"
             + "Fix confirmed findings, grouped by file. Creates local commits; never pushes.\n\n"
             + AgentOptions + "\n"

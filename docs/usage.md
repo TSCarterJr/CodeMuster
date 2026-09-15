@@ -17,6 +17,14 @@ Fixing is a separate, explicit command that edits code and creates commits.
 
 ### 1. Set up
 
+For AI-driven use, install the [Claude or Codex plugin](distribution.md), start a new session
+in the repository, and ask it to audit with CodeMuster. The skill attempts CLI installation
+if missing. Plugin users do not also need `skill install`.
+Plugin-driven setup uses `init --yes --no-skills` without `--for`, skipping project skills and hooks.
+The plugin supplies its own session/edit context hooks. They tell the active agent to follow
+the repository's `automation` setting during coding without a separate CodeMuster request.
+The integrated project setup described below remains available for standalone skill use.
+
 From a Git repository:
 
 ```sh
@@ -52,6 +60,10 @@ Agent configuration references: [Claude hooks](https://code.claude.com/docs/en/h
 [Codex hooks](https://learn.chatgpt.com/docs/hooks),
 [Gemini hooks](https://geminicli.com/docs/hooks/).
 
+To use a standalone skill instead of the plugin, `codemuster skill install`
+accepts `--for claude|codex|gemini|opencode`; add `--global` to install in your home directory.
+Repeat installation after updating CodeMuster to refresh the copied instructions.
+
 ### 2. Scan and estimate
 
 ```sh
@@ -63,6 +75,13 @@ Default slice mode maps entry points and their call paths. Orphan units cover ma
 reached by those slices. File units cover files without mapped symbols or a supported mapper.
 Mapping failures may fall back to file coverage with low fidelity; inspect diagnostics and
 `status`. `scan --mode file` skips code mapping and plans one unit per included file.
+
+Opt-in `dead_code` assessments also run during scan without model calls. Opt-in
+`user_experience` settings add separate UI browser-review units. An orphan is not proof of
+dead code, and source coverage does not count as a visual or workflow review. Browser reviews
+check whether the primary flow makes sense, plus rendering, button feedback, readability,
+text quality and error recovery; technical success alone is insufficient. See
+[application reviews](application-reviews.md) for configuration, evidence and repair rules.
 
 With `vulnerabilities` enabled, scanning also invokes dependency audit tools for supported
 manifests. These tools may need network access. Their diagnostics are printed separately from
@@ -91,6 +110,10 @@ model, and effort as provenance; it cannot prove a provider did not fall back to
 `verify` re-runs completed units in the selected scope. Use it deliberately: it spends calls on
 work already recorded.
 
+Browser work uses `next --kind ux` in an active browser-capable agent, followed by the pack's
+`done` command and evidence receipt. Headless `run` leaves these units pending without a
+model call; it reports the browser requirement while continuing eligible source work.
+
 ### 4. Fix and review
 
 Configure a test command before fixing. Then:
@@ -99,11 +122,13 @@ Configure a test command before fixing. Then:
 codemuster fix --agent codex -j 4
 ```
 
-Only confirmed findings not already marked fixed are eligible. Eligible findings in a file go to one worker, even
+Only confirmed, repair-eligible findings not already marked fixed are selected. Unused-code
+candidates and UX recommendations stay report-only. Browser-derived findings also require
+current completed UI evidence. Eligible findings in a file go to one worker, even
 when different audit units reported them. A worker can address findings or decline them with a
 reason. Declining records an outcome; it does not mark the finding fixed.
 
-Parallel workers edit isolated Git worktrees. The coordinator accepts only the assigned file's
+All fix workers, including the default single worker, edit isolated Git worktrees. The coordinator accepts only the assigned file's
 patch, runs the configured tests against accumulated fixes, commits the changed file, and
 records outcomes. Tests, commits, and ledger writes are serialized. A response that changes no
 file creates no commit. CodeMuster never pushes.
@@ -120,6 +145,8 @@ codemuster report --out audit-after.md
 A fix record says that the response was accepted and any configured test command passed. It is
 not an independent proof that the defect is gone. Resolve remaining confirmed findings and
 inspect unsure/declined reasons. Then use `scan` and `run` when refreshed full coverage is needed.
+Confirmed or resolved UX verification additionally requires a fresh browser receipt; finish it
+with `next --kind verify` and `done` through the active browser host.
 
 ## Parallelism and scope
 
@@ -145,15 +172,57 @@ you want to process one area first without changing the repository's audit confi
 
 ## Configuration
 
+### Automatic use during coding
+
+Set `automation` in `.codemuster/config.json`. The plugin reads the current value each time
+its context hook runs, and the skill checks it again before the completion checkpoint:
+
+| Value | Automatic behavior |
+|---|---|
+| `off` | No automatic CodeMuster work. Explicit CLI/skill requests still work. |
+| `update` | Refresh the coverage/work queue with `scan` after changes. No AI review or repair. This is the default when the setting is absent. |
+| `review` | Scan, review affected units, verify when configured, and report findings. No CodeMuster repairs. |
+| `review_and_fix` | Review affected work, verify candidate findings, repair through `fix`, independently verify repairs, and run configured validation. |
+
+For example, add this field to the existing config without replacing its other settings:
+
+```json
+"automation": "review_and_fix"
+```
+
+This setting authorizes the selected automatic workflow, so the agent should not ask for the
+mode again. Review and fix includes local repair commits; isolated workers need the reviewed
+source committed, so a scoped local checkpoint of task-owned changes may be necessary.
+Pre-existing work must remain separate. A missing test command, inseparable edits, unavailable
+agent, or failed checks remain concrete blockers to report. This mode never authorizes a push.
+Explicit instructions for the current task take precedence over automatic settings.
+
+Routine reviews use `next --path <file-or-folder>` and each pack's `done` command, or a scoped
+headless `run`, rather than auditing unrelated pending work. New files must be deliberately
+tracked before scan can include them. The plugin's hooks supply instructions to the active
+agent; they do not perform model calls or mutate the ledger. CodeMuster-owned child processes
+set `CODEMUSTER_WORKER=1` so their plugin hooks remain quiet and do not recurse.
+
+Generic review queues exclude repair units; repairs use the dedicated `fix` workflow.
+File/folder scope is literal and case-sensitive, including underscores and percent signs.
+
+Invalid automation values are rejected by the CLI. Hook diagnostics also leave automatic
+work paused until the settings are corrected; they never guess a more permissive mode.
+
+### Configuration fields
+
 Edit the existing `.codemuster/config.json`; keep lenses that are already useful to your team.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `lenses` | One `default` lens | Named audit instructions with an `id`, `instructions`, and optional `globs` and `languages`. |
+| `automation` | `update` | Automatic plugin workflow: `off`, `update`, `review`, or `review_and_fix`. |
 | `slice_token_budget` | `24000` | Approximate amount of full code in a slice before farther members are reduced to signatures. |
 | `resolution_threshold` | `0.9` | Required fraction of resolved calls for slice coverage to be considered complete. |
 | `verify` | `true` | Create a verification pass for reported findings. |
 | `vulnerabilities` | `true` | Run ecosystem dependency audit tools during scanning. |
+| `dead_code` | `false` | Record conservative static usage assessments and report-only unused candidates during scan. |
+| `user_experience` | Disabled | UI-only browser review settings: `enabled`, optional HTTP(S) `base_url`, and `include`/`exclude` globs. See [application reviews](application-reviews.md). |
 | `exclude` | `[]` | Additional repo-relative exclusion globs. |
 | `test_command` | `[]` | Program and arguments to run after each fix attempt; empty means no configured validation. |
 
@@ -197,6 +266,8 @@ without running your repository's tests.
 | No fix outcome | No fix outcome has been recorded for that finding. |
 | `stale` | The unit changed since its recorded analysis and needs another pass. |
 | `low-fidelity` | Coverage lacks the normal mapping fidelity; inspect mapping diagnostics. |
+| UX not applicable | UX is enabled but no included source files match UI conventions or configured UI includes. |
+| Browser evidence incomplete | Applicable UI work remains pending, stale or failed; source analysis does not complete it. |
 
 The report preserves findings and their verification history after fixing. It excludes refuted
 code findings by default; use `--include-refuted` to see them. A completed file count is different
@@ -331,7 +402,7 @@ and manage them.
 | `validate` | No options; runs configured final build/tests |
 | `hook` | No options; used by installed agent hooks |
 | `report` | `--out <file>`, `--include-refuted` |
-| `next` | `--batch N`, `--out <file>` |
+| `next` | `--batch N`, `--out <file>`, `--path <path>` |
 | `done <unit>` | Required `--fingerprint <fp>` and `--findings <json-file>` |
 | `skill install` | Required `--for claude\|codex\|gemini\|opencode`, optional `--global` |
 | `update` | `--check` to check without installing; handled by the npm launcher |
@@ -353,3 +424,48 @@ The npm launcher checks for updates at most daily, verifies the downloaded packa
 and uses the new build on a later command. `CI` or `CODEMUSTER_NO_UPDATE` disables automatic
 checks. Explicit `update` remains available; `update --check` does not install. Updating the CLI
 does not replace the binary already running in another process.
+
+
+## Recovery, process ownership, and supported limits
+
+The 0.2.7 npm launcher can select an exact binary with `CODEMUSTER_VERSION`. For example,
+in PowerShell set `$env:CODEMUSTER_VERSION = '0.2.0'`, then run `codemuster --version`.
+In POSIX shells use `CODEMUSTER_VERSION=0.2.0 codemuster --version`. The pin suppresses
+background updates and refuses explicit `update`; unavailable versions fail without falling
+back. Unset the variable to resume normal version selection. Install the current npm launcher
+first: binary self-updates do not upgrade launcher JavaScript. Disabling update checks alone
+does not downgrade a binary.
+
+Caches are partitioned by operating system and architecture. Older shared cache entries are
+ignored, not deleted. Stop active commands and back up the entire `.codemuster` directory
+before a version change. Opening a newer ledger with an older binary is not guaranteed; use a
+compatible backup when rolling back. The published 0.2.0 ledger was successfully reopened by
+the 0.2.7 candidate with completed coverage preserved; this is not a guarantee for future schemas.
+
+`scan`, `run`, `verify`, `fix`, `done`, and `validate` hold one exclusive coordinator lock in
+the common Git directory. A competing command, including in a linked worktree, fails clearly.
+The lock is released when the process exits; a leftover lock file need not be deleted. Reading
+packs is not a work lease, so manual reviewers still need one owner per assigned unit.
+
+Validation edits outside the selected tracked-file scope stop integration and are preserved
+for inspection. A failed commit never records a successful fix. If a commit succeeds but the
+ledger write fails, keep the commit, inspect the diagnostic, and run forced verification to
+reconcile the finding. Avoid concurrent edits to the checkout during integration.
+
+Fix packs are rendered only when a worker slot is available. Whole-file packs exceeding
+`slice_token_budget * 4` characters fail with a path-specific diagnostic before recording
+coverage. Increase the budget deliberately or split the file; no silent truncation counts as
+analysis. This bounds individual prompt construction, not total repository memory. No
+representative maximum-scale benchmark has been completed.
+
+Yarn Classic uses `yarn audit --json`; Yarn 2+ uses `yarn npm audit --all --recursive --json`.
+Yarn 4.9.0's real JSON output and command behavior have been exercised. Dependency repairs
+that change a manifest and lockfile require both files in the explicit allowed scope.
+
+Claude uses a tool allowlist. Codex disables its shell tool. OpenCode uses a named agent with
+read/search permissions, edit permission only for repairs, and denied bash/task tools. Gemini
+uses a temporary system tool allowlist and disables extensions and MCP servers for the child.
+These are harness controls, not an operating-system security boundary. Trusted harness
+configuration, hooks, providers, and repository test commands remain part of the environment.
+Claude and Codex completed live repair/test/verification fixtures on Windows; Gemini and
+OpenCode currently have automated adapter coverage but no equivalent live acceptance result.

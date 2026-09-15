@@ -1,0 +1,16 @@
+{
+  "name": "codemuster",
+  "owner": {
+    "name": "Tim Carter",
+    "url": "https://github.com/TSCarterJr"
+  },
+  "description": "CodeMuster codebase audits, verification, and fixes.",
+  "plugins": [
+    {
+      "name": "codemuster",
+      "source": "./plugins/codemuster",
+      "description": "Use CodeMuster during coding according to repository automation settings, or audit an entire codebase with tracked coverage and verified fixes.",
+      "category": "development"
+    }
+  ]
+}

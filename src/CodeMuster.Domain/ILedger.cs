@@ -21,7 +21,7 @@ public interface ILedger
     /// <summary>Inserts or replaces unit rows by id and replaces the members of every unit in the list.</summary>
     Task UpsertUnitsAsync(IReadOnlyList<Unit> units, IReadOnlyList<UnitMember> members, CancellationToken cancellationToken);
 
-    /// <summary>Up to <paramref name="batch"/> units that need work (pending, stale, or failed), only of <paramref name="kind"/> when it is given, oldest first by insertion order.</summary>
+    /// <summary>Up to <paramref name="batch"/> units that need work (pending, stale, or failed), only of <paramref name="kind"/> when it is given, oldest first by insertion order. Dependencies are excluded; fixes require explicit kind selection.</summary>
     Task<IReadOnlyList<Unit>> NextAsync(int batch, UnitKind? kind, string? path, CancellationToken cancellationToken);
 
     /// <summary>Stores an analysis and its findings atomically and moves the unit to Done (with summary, summary hash, and lens hash) or Failed.</summary>
@@ -38,6 +38,9 @@ public interface ILedger
 
     /// <summary>What produced the latest successful analysis of each unit, for units whose analysis recorded it (D35).</summary>
     Task<IReadOnlyDictionary<string, AgentIdentity>> GetProvenanceAsync(CancellationToken cancellationToken);
+
+    /// <summary>The latest successful analysis of each non-retired unit whose latest success supplied evidence, retaining the reviewed fingerprint and lens hash for freshness checks.</summary>
+    Task<IReadOnlyDictionary<string, Analysis>> GetLatestEvidenceAsync(CancellationToken cancellationToken);
 
     /// <summary>Failed attempts for non-retired units, in insertion order, including attempts followed by success.</summary>
     Task<IReadOnlyList<Analysis>> GetFailedAnalysesAsync(CancellationToken cancellationToken);

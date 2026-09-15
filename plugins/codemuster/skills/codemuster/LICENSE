@@ -1,0 +1,74 @@
+CodeMuster Personal and Internal Business Use License
+Version 1.0 - September 14, 2026
+
+Copyright (c) 2026 Tim Carter. All rights reserved.
+
+1. Scope
+
+"Software" means CodeMuster's source code, binaries, launcher, skill files,
+and associated documentation supplied under this license. "You" means the
+individual or legal entity exercising the permissions below.
+
+2. Permitted use
+
+Subject to these terms, you may download, install, run, and copy the Software
+free of charge for your own personal use or your organization's internal
+business use. You may inspect and modify the Software solely for those uses.
+Employees and contractors may use it on your behalf subject to these terms.
+Keep this license and the copyright notice with all copies and modifications.
+
+You may use the Software to analyze and improve code that you or your
+organization owns or is authorized to work on, including code for commercial
+products and client projects. You may sell that code and those products and
+use the resulting reports and fixes in your work. Merely using the Software
+does not subject your code, products, reports, or fixes to this license.
+These permissions do not authorize including the Software itself in a
+product or providing its functionality to third parties.
+
+3. Restrictions
+
+Without separate written permission from Tim Carter, you may not:
+
+(a) Sell, resell, rent, lease, sublicense, or charge for the Software or any
+    modified version, in whole or in part.
+(b) Modify, rebrand, bundle, or incorporate the Software into a product or
+    service for sale or other commercial distribution.
+(c) Offer the Software or a modified version as a hosted service, API,
+    subscription, paid auditing service, or other offering that sells access
+    to or the functionality of the Software, including through bundled fees.
+(d) Distribute the Software or modified versions outside your organization,
+    except to contractors solely for the permitted use on your behalf.
+    You may share links to the copyright holder's official distributions.
+(e) Market or offer for sale any of the Software's code, skill files, or
+    documentation as your own product or implementation.
+
+4. Ownership and limits
+
+The Software is licensed, not sold. All rights not expressly granted are
+reserved. This license grants no right to use CodeMuster's name or branding
+to imply ownership, endorsement, or affiliation.
+
+This license restricts use of the Software and its modified versions. It
+does not claim ownership of abstract ideas, concepts, or methods, or impose
+restrictions on independently developed software that does not copy protected
+material from the Software. Rights provided by applicable law that cannot
+be restricted by a license remain unaffected.
+
+Third-party components remain subject to their own licenses. This license
+does not replace those licenses or revoke rights already granted for copies
+previously distributed under another license.
+
+5. Termination
+
+Your permissions under this license terminate automatically if you violate
+its terms. Upon termination, stop using and distributing the Software and
+delete your copies, except where retention is required by applicable law.
+
+6. Disclaimer
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED
+"AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+LIMITED TO MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
+NONINFRINGEMENT. THE AUTHORS AND COPYRIGHT HOLDERS SHALL NOT BE LIABLE FOR
+ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM OR IN CONNECTION WITH
+THE SOFTWARE OR ITS USE, WHETHER IN CONTRACT, TORT, OR OTHERWISE.

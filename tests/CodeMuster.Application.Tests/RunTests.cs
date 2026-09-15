@@ -47,6 +47,26 @@ public class RunTests
 
     private Unit Stored(string unitId) => ledger.Units.Single(u => u.Id == unitId);
 
+    [Theory]
+    [InlineData(false, UnitStatus.Pending)]
+    [InlineData(true, UnitStatus.Done)]
+    public async Task DefaultRun_DoesNotReviewCountOrRestaleFixUnits(bool force, UnitStatus status)
+    {
+        var file = AddFileUnit("src/a.cs");
+        var fix = file with { Id = UnitIds.Fix(file.Key), Kind = UnitKind.Fix, Status = status };
+        ledger.Units.Insert(0, fix);
+        ledger.Members.Add(new UnitMember(fix.Id, fix.Key, null, "hash", 0));
+        var adapter = Always(EmptyResponse);
+
+        var result = await RunAsync(adapter, new RunOptions(1, 1, force, Path: "src"));
+
+        Assert.Equal(1, result.Completed);
+        Assert.Empty(result.GaveUp);
+        Assert.Equal([file.Id], adapter.Packs.Select(UnitIdOf));
+        Assert.Equal((1, 1), (reports.Single().Completed, reports.Single().Total));
+        Assert.Equal(fix, Stored(fix.Id));
+    }
+
     private sealed class RecordingProgress(List<RunProgress> reports, Action<RunProgress>? onReport) : IProgress<RunProgress>
     {
         public void Report(RunProgress value)

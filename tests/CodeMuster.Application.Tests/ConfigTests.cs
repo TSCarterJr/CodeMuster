@@ -98,6 +98,47 @@ public class ConfigTests
     }
 
     [Fact]
+    public void Json_WritesAutomation_AndDefaultsToUpdateForOlderConfigs()
+    {
+        var older = ConfigJson.Parse("""{ "lenses": [] }""");
+
+        Assert.Contains("\"automation\": \"update\"", ConfigJson.Serialize(Config.Default));
+        Assert.Contains("\"automation\": \"update\"", ConfigJson.Serialize(older));
+    }
+
+    [Theory]
+    [InlineData("off")]
+    [InlineData("update")]
+    [InlineData("review")]
+    [InlineData("review_and_fix")]
+    public void Json_RoundTripsExplicitAutomationModes(string mode)
+    {
+        var config = ConfigJson.Parse("{\"lenses\": [], \"automation\": \"" + mode + "\"}");
+
+        using var serialized = JsonDocument.Parse(ConfigJson.Serialize(config));
+
+        Assert.Equal(mode, serialized.RootElement.GetProperty("automation").GetString());
+    }
+
+    [Theory]
+    [InlineData("\"unknown\"")]
+    [InlineData("\"Review\"")]
+    [InlineData("\" review \"")]
+    [InlineData("\"1\"")]
+    [InlineData("null")]
+    [InlineData("1")]
+    [InlineData("true")]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    public void Json_RejectsInvalidAutomationWithAllowedModes(string value)
+    {
+        var error = Assert.Throws<JsonException>(() => ConfigJson.Parse("{\"lenses\": [], \"automation\": " + value + "}"));
+
+        Assert.Contains("automation", error.Message);
+        Assert.Contains("off, update, review, review_and_fix", error.Message);
+    }
+
+    [Fact]
     public void ExcludedReason_PutsBuiltInRulesFirst_ThenTheFirstMatchingExcludeGlob()
     {
         var config = Config.Default with { Exclude = ["web/**", "*.ts"] };

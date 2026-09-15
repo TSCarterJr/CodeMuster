@@ -6,7 +6,7 @@ namespace CodeMuster.Application;
 /// <param name="Parallelism">Adapter calls to keep in flight at once; at least 1.</param>
 /// <param name="MaxAttempts">Attempts per unit before the run gives up on it; at least 1.</param>
 /// <param name="Force">Re-analyze Done units too, by marking them Stale first.</param>
-/// <param name="Kind">Work only units of this kind, or every kind when null.</param>
+/// <param name="Kind">Work only units of this kind, or analysis and verification units when null.</param>
 /// <param name="Path">Work only units with a member under this repo-relative folder, or anywhere when null.</param>
 public sealed record RunOptions(int Parallelism, int MaxAttempts, bool Force, UnitKind? Kind = null, string? Path = null)
 {

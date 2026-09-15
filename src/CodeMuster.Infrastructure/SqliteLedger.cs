@@ -6,7 +6,7 @@ namespace CodeMuster.Infrastructure;
 
 public sealed class SqliteLedger : ILedger, IDisposable
 {
-    internal const int SchemaVersion = 5;
+    internal const int SchemaVersion = 6;
 
     internal const string Schema = """
         CREATE TABLE files (
@@ -94,6 +94,10 @@ public sealed class SqliteLedger : ILedger, IDisposable
     internal const string SchemaVersion5 = """
         ALTER TABLE findings ADD COLUMN fix_status TEXT;
         ALTER TABLE findings ADD COLUMN fix_reason TEXT;
+        """;
+
+    internal const string SchemaVersion6 = """
+        ALTER TABLE analyses ADD COLUMN evidence_json TEXT;
         """;
 
     private const string FileColumns =
@@ -277,17 +281,18 @@ public sealed class SqliteLedger : ILedger, IDisposable
             SELECT {UnitColumns} FROM units
             WHERE status IN ($pending, $stale, $failed)
               AND kind != $dependency
-              AND ($kind IS NULL OR kind = $kind)
+              AND (($kind IS NULL AND kind != $fix) OR kind = $kind)
               AND ($path IS NULL OR EXISTS (
                     SELECT 1 FROM unit_members m
-                    WHERE m.unit_id = units.id AND (m.path = $path OR m.path LIKE $under)))
+                    WHERE m.unit_id = units.id AND (m.path = $path OR substr(m.path, 1, length($under)) = $under)))
             ORDER BY seq LIMIT $batch
             """);
         var folder = path is null ? null : RepoPath.Normalize(path).TrimEnd('/');
         command.Parameters.AddWithValue("$kind", Db(kind is { } k ? Name(k) : null));
         command.Parameters.AddWithValue("$dependency", Name(UnitKind.Dependency));
+        command.Parameters.AddWithValue("$fix", Name(UnitKind.Fix));
         command.Parameters.AddWithValue("$path", Db(folder));
-        command.Parameters.AddWithValue("$under", Db(folder is null ? null : folder + "/%"));
+        command.Parameters.AddWithValue("$under", Db(folder is null ? null : folder + "/"));
         command.Parameters.AddWithValue("$pending", Name(UnitStatus.Pending));
         command.Parameters.AddWithValue("$stale", Name(UnitStatus.Stale));
         command.Parameters.AddWithValue("$failed", Name(UnitStatus.Failed));
@@ -353,8 +358,8 @@ public sealed class SqliteLedger : ILedger, IDisposable
     private async Task<long> InsertAnalysisAsync(Analysis analysis, CancellationToken cancellationToken)
     {
         await using var insert = CreateCommand("""
-            INSERT INTO analyses (unit_id, fingerprint, lens_hash, created_at, succeeded, summary, error, agent, model, effort)
-            VALUES ($unit_id, $fingerprint, $lens_hash, $created_at, $succeeded, $summary, $error, $agent, $model, $effort)
+            INSERT INTO analyses (unit_id, fingerprint, lens_hash, created_at, succeeded, summary, error, agent, model, effort, evidence_json)
+            VALUES ($unit_id, $fingerprint, $lens_hash, $created_at, $succeeded, $summary, $error, $agent, $model, $effort, $evidence_json)
             RETURNING id
             """);
         insert.Parameters.AddWithValue("$unit_id", analysis.UnitId);
@@ -367,6 +372,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
         insert.Parameters.AddWithValue("$agent", Db(analysis.By?.Agent));
         insert.Parameters.AddWithValue("$model", Db(analysis.By?.Model));
         insert.Parameters.AddWithValue("$effort", Db(analysis.By?.Effort));
+        insert.Parameters.AddWithValue("$evidence_json", Db(analysis.EvidenceJson));
         return Convert.ToInt64(await insert.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
     }
 
@@ -431,17 +437,38 @@ public sealed class SqliteLedger : ILedger, IDisposable
         return rows.ToDictionary(row => row.UnitId, row => row.Identity, StringComparer.Ordinal);
     }
 
+    public async Task<IReadOnlyDictionary<string, Analysis>> GetLatestEvidenceAsync(CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand("""
+            SELECT a.unit_id, a.fingerprint, a.lens_hash, a.created_at, a.summary, a.error, a.agent, a.model, a.effort, a.evidence_json
+            FROM analyses a
+            JOIN (SELECT unit_id, MAX(id) AS id FROM analyses WHERE succeeded = 1 GROUP BY unit_id) latest ON latest.id = a.id
+            JOIN units u ON u.id = a.unit_id
+            WHERE u.status != 'retired' AND a.evidence_json IS NOT NULL
+            """);
+        var rows = await ReadAllAsync(command, reader => new Analysis(
+            reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), true, Text(reader, 4), Text(reader, 5),
+            reader.IsDBNull(6) ? null : new AgentIdentity(reader.GetString(6), Text(reader, 7), Text(reader, 8)))
+        {
+            EvidenceJson = reader.GetString(9)
+        }, cancellationToken);
+        return rows.ToDictionary(analysis => analysis.UnitId, StringComparer.Ordinal);
+    }
+
     public async Task<IReadOnlyList<Analysis>> GetFailedAnalysesAsync(CancellationToken cancellationToken)
     {
         await using var command = CreateCommand("""
-            SELECT a.unit_id, a.fingerprint, a.lens_hash, a.created_at, a.error, a.agent, a.model, a.effort
+            SELECT a.unit_id, a.fingerprint, a.lens_hash, a.created_at, a.error, a.agent, a.model, a.effort, a.evidence_json
             FROM analyses a JOIN units u ON u.id = a.unit_id
             WHERE a.succeeded = 0 AND u.status != 'retired'
             ORDER BY a.id
             """);
         return await ReadAllAsync(command, reader => new Analysis(
             reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), false, null, Text(reader, 4),
-            reader.IsDBNull(5) ? null : new AgentIdentity(reader.GetString(5), Text(reader, 6), Text(reader, 7))), cancellationToken);
+            reader.IsDBNull(5) ? null : new AgentIdentity(reader.GetString(5), Text(reader, 6), Text(reader, 7)))
+        {
+            EvidenceJson = Text(reader, 8)
+        }, cancellationToken);
     }
 
     public async Task RecordRunAsync(ScanRun run, CancellationToken cancellationToken)
@@ -496,6 +523,11 @@ public sealed class SqliteLedger : ILedger, IDisposable
         if (version < 5)
         {
             await ExecuteAsync(SchemaVersion5, cancellationToken);
+        }
+
+        if (version < 6)
+        {
+            await ExecuteAsync(SchemaVersion6, cancellationToken);
         }
 
         await ExecuteAsync(string.Create(CultureInfo.InvariantCulture, $"PRAGMA user_version = {SchemaVersion}"), cancellationToken);

@@ -9,4 +9,8 @@ namespace CodeMuster.Domain;
 /// <param name="Summary">The one-line unit summary from the response, when it succeeded.</param>
 /// <param name="Error">Why the response was unusable, when it failed.</param>
 /// <param name="By">What produced it (D35), or null when nothing recorded it, as when an agent drives the loop by hand.</param>
-public sealed record Analysis(string UnitId, string Fingerprint, string LensHash, string CreatedAt, bool Succeeded, string? Summary, string? Error, AgentIdentity? By = null);
+public sealed record Analysis(string UnitId, string Fingerprint, string LensHash, string CreatedAt, bool Succeeded, string? Summary, string? Error, AgentIdentity? By = null)
+{
+    /// <summary>Structured evidence retained with this attempt, or null when none was supplied.</summary>
+    public string? EvidenceJson { get; init; }
+}

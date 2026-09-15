@@ -8,4 +8,8 @@ namespace CodeMuster.Application;
 /// <param name="Key">The unit's short human name, such as an endpoint or a path.</param>
 /// <param name="Fingerprint">The unit fingerprint the pack was built from.</param>
 /// <param name="Markdown">The whole pack as one markdown document.</param>
-public sealed record UnitPack(string UnitId, UnitKind Kind, string Key, string Fingerprint, string Markdown);
+public sealed record UnitPack(string UnitId, UnitKind Kind, string Key, string Fingerprint, string Markdown)
+{
+    /// <summary>Whether the active agent must collect browser evidence; read-only headless adapters cannot complete it.</summary>
+    public bool RequiresBrowser { get; init; }
+}

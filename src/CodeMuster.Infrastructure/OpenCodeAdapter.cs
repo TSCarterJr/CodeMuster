@@ -7,15 +7,37 @@ public sealed class OpenCodeAdapter(string executable, string? model = null, str
 {
     public IReadOnlyList<string> Arguments { get; } =
     [
-        "run", "--agent", write ? "build" : "plan", "--format", "json",
+        "run", "--agent", "codemuster", "--format", "json",
         .. model is null ? Array.Empty<string>() : ["-m", model],
         .. effort is null ? Array.Empty<string>() : ["--variant", effort],
     ];
 
     public AgentIdentity Identity { get; } = new("opencode", model, effort);
 
+    internal string Settings => JsonSerializer.Serialize(new
+    {
+        agent = new Dictionary<string, object>
+        {
+            ["codemuster"] = new
+            {
+                mode = "primary",
+                permission = new Dictionary<string, string>
+                {
+                    ["*"] = "deny",
+                    ["read"] = "allow",
+                    ["glob"] = "allow",
+                    ["grep"] = "allow",
+                    ["edit"] = write ? "allow" : "deny",
+                    ["bash"] = "deny",
+                    ["task"] = "deny",
+                },
+            },
+        },
+    });
+
     public async Task<string> RunAsync(string pack, CancellationToken cancellationToken) =>
-        FinalText(await HeadlessProcess.RunAsync(executable, Arguments, pack, cancellationToken, workingDirectory).ConfigureAwait(false));
+        FinalText(await HeadlessProcess.RunAsync(executable, Arguments, pack, cancellationToken, workingDirectory,
+            new Dictionary<string, string> { ["OPENCODE_CONFIG_CONTENT"] = Settings }).ConfigureAwait(false));
 
     internal static string FinalText(string output)
     {

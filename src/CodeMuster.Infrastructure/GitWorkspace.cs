@@ -5,6 +5,9 @@ namespace CodeMuster.Infrastructure;
 /// <summary>The working tree, as fix mode reads and commits it (D37). Commits locally; never pushes.</summary>
 public sealed class GitWorkspace(string repoRoot) : IWorkspace
 {
+    public async Task<IReadOnlyList<string>> ChangedPathsAsync(CancellationToken cancellationToken) =>
+        (await GitProcess.RunAsync(repoRoot, ["diff", "--name-only", "-z", "HEAD"], null, cancellationToken)).Split('\0', StringSplitOptions.RemoveEmptyEntries);
+
     public async Task<bool> IsCleanAsync(CancellationToken cancellationToken)
     {
         var status = await GitProcess.RunAsync(repoRoot, ["status", "--porcelain", "--untracked-files=no"], null, cancellationToken).ConfigureAwait(false);

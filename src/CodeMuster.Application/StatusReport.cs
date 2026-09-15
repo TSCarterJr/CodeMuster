@@ -35,6 +35,12 @@ public sealed record StatusReport(
     IReadOnlyList<string>? TopUnresolvedNames,
     IReadOnlyDictionary<Severity, int>? VulnerablePackages = null)
 {
+    /// <summary>Browser review applicability and recorded evidence, separate from code coverage.</summary>
+    public string? UxStatus { get; init; }
+
+    /// <summary>Whether required browser work lacks a current recorded receipt.</summary>
+    public bool UxIncomplete { get; init; }
+
     /// <summary>The plain-text block the CLI prints, lines joined with LF and no trailing newline.</summary>
     public string Render()
     {
@@ -59,6 +65,7 @@ public sealed record StatusReport(
         lines.Add(string.Create(CultureInfo.InvariantCulture, $"stale {Stale}"));
         lines.Add(string.Create(CultureInfo.InvariantCulture, $"excluded {Excluded}"));
         lines.Add(string.Create(CultureInfo.InvariantCulture, $"low-fidelity {LowFidelity}"));
+        if (UxStatus is not null) lines.Add(UxStatus);
         if (ResolutionRate is { } rate)
         {
             lines.Add(string.Create(CultureInfo.InvariantCulture, $"resolution {rate * 100:0.0}%"));
@@ -75,6 +82,10 @@ public sealed record StatusReport(
         else if (LowFidelity > 0)
         {
             lines.Add(string.Create(CultureInfo.InvariantCulture, $"incomplete: {LowFidelity} unit(s) have no call map because their language's mapper failed"));
+        }
+        else if (UxIncomplete)
+        {
+            lines.Add("incomplete: browser readability and workflow evidence is still required");
         }
         else if (Total > 0 && Analyzed == Total)
         {

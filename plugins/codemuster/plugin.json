@@ -1,0 +1,43 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "codemuster",
+  "version": "0.2.7",
+  "description": "Use CodeMuster during coding according to repository automation settings, or audit an entire codebase with tracked coverage and verified fixes.",
+  "author": {
+    "name": "Tim Carter",
+    "url": "https://github.com/TSCarterJr"
+  },
+  "homepage": "https://github.com/TSCarterJr/CodeMuster",
+  "repository": "https://github.com/TSCarterJr/CodeMuster",
+  "license": "SEE LICENSE IN LICENSE",
+  "keywords": [
+    "code-audit",
+    "code-review",
+    "security",
+    "coverage",
+    "verification",
+    "remediation",
+    "codemuster"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "CodeMuster",
+        "shortDescription": "Settings-driven code reviews and tracked audits",
+        "longDescription": "Use CodeMuster proactively during coding according to repository settings: update coverage, review, or review and fix. Also map and audit whole repositories. Uses the CLI and attempts npm installation if missing. Requires terminal access.",
+        "developerName": "Tim Carter",
+        "category": "Developer tools",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "websiteURL": "https://github.com/TSCarterJr/CodeMuster",
+        "defaultPrompt": [
+          "Audit this repository with CodeMuster.",
+          "Show CodeMuster coverage and unresolved findings.",
+          "Fix confirmed CodeMuster findings and run tests."
+        ]
+      }
+    }
+  }
+}

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
@@ -118,6 +119,34 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
                 }
             }
 
+            lines.Add("");
+        }
+
+        if (status.UxStatus is not null)
+        {
+            lines.Insert(3, status.UxStatus);
+            lines.Insert(4, "");
+        }
+        var evidence = await ledger.GetLatestEvidenceAsync(cancellationToken);
+        foreach (var unit in units.Where(u => u.Kind is UnitKind.Ux or UnitKind.DeadCode))
+        {
+            lines.Add($"## {(unit.Kind == UnitKind.Ux ? "Browser review" : "Static reachability")}: {Inline(unit.Key)}");
+            lines.Add("");
+            if (evidence.TryGetValue(unit.Id, out var recorded))
+            {
+                var currentEvidence = unit.Status == UnitStatus.Done && recorded.Fingerprint == unit.Fingerprint
+                    && recorded.LensHash == Config.HashOf(config.LensesFor([(unit.Key, Languages.FromPath(unit.Key))]));
+                lines.Add(currentEvidence ? "Recorded evidence for this source fingerprint; findings and verification remain separate."
+                    : "Historical evidence: source or review settings changed, or the review is incomplete.");
+                lines.Add(unit.Kind == UnitKind.Ux ? "Browser observations cover only the recorded routes, states, themes and viewports. Screenshot bytes and hashes were checked when recorded; runtime/source correspondence is reported by the reviewing agent."
+                    : "Static absence of reachability is a candidate, not proof that nothing uses the code; candidates are excluded from automatic deletion.");
+                lines.Add("");
+                lines.Add("````json");
+                using var parsed = JsonDocument.Parse(recorded.EvidenceJson!);
+                lines.Add(JsonSerializer.Serialize(parsed.RootElement, DomainJson.Options));
+                lines.Add("````");
+            }
+            else lines.Add(unit.Kind == UnitKind.Ux ? "Incomplete: current browser readability and workflow evidence has not been recorded." : "No static reachability evidence recorded.");
             lines.Add("");
         }
 

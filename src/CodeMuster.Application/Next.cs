@@ -26,11 +26,28 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
     public async Task<IReadOnlyList<UnitPack>> RunAsync(int batch, CancellationToken cancellationToken)
     {
         var units = await ledger.NextAsync(batch, kind, path, cancellationToken);
+        return await BuildAsync(units, cancellationToken);
+    }
+
+    /// <summary>Builds one selected unit only when a worker slot is available.</summary>
+    public async Task<UnitPack> ForUnitAsync(string id, CancellationToken cancellationToken)
+    {
+        var unit = await ledger.GetUnitAsync(id, cancellationToken) ?? throw new InvalidOperationException("unknown unit " + id);
+        return (await BuildAsync([unit], cancellationToken))[0];
+    }
+
+    private async Task<IReadOnlyList<UnitPack>> BuildAsync(IReadOnlyList<Unit> units, CancellationToken cancellationToken)
+    {
         var members = await ledger.GetMembersAsync(units.Select(u => u.Id).ToList(), cancellationToken);
         IReadOnlyList<UnitFinding> current = units.Any(u => u.Kind is UnitKind.Verify or UnitKind.Fix)
             ? await ledger.GetCurrentFindingsAsync(cancellationToken)
             : [];
         var findings = current.ToDictionary(f => UnitIds.Verify(f.Id), f => f.Finding);
+        var sourceUnits = (await ledger.GetUnitsAsync(cancellationToken)).ToDictionary(u => u.Id, StringComparer.Ordinal);
+        var receipts = await ledger.GetLatestEvidenceAsync(cancellationToken);
+        var uiPaths = units.Any(u => u.Kind == UnitKind.Ux)
+            ? (await ledger.GetFilesAsync(cancellationToken)).Where(f => f.DeletedAt is null && f.ExcludedReason is null && config.UserExperience.Applies(f.Path)).Select(f => f.Path).Order(StringComparer.Ordinal).ToArray()
+            : [];
         var failures = await ledger.GetFailedAnalysesAsync(cancellationToken);
         var packs = new List<UnitPack>(units.Count);
         foreach (var unit in units)
@@ -47,14 +64,19 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
                 throw new InvalidOperationException(Done.Replaced(unit.Id));
             }
 
-            var targets = unit.Kind == UnitKind.Fix ? Targets(current, unit.Key) : [];
+            var targets = unit.Kind == UnitKind.Fix ? Targets(current, sourceUnits, unit.Key) : [];
             var prior = unit.Kind == UnitKind.Verify ? current.FirstOrDefault(f => UnitIds.Verify(f.Id) == unit.Id) : null;
-            var markdown = Render(unit, await SelectAsync(unitMembers, cancellationToken), finding, targets, prior);
+            var requiresBrowser = unit.Kind == UnitKind.Ux || prior is not null && ReviewEligibility.RequiresBrowser(prior.Finding, sourceUnits.GetValueOrDefault(prior.UnitId));
+            var markdown = Render(unit, await SelectAsync(unitMembers, cancellationToken), finding, targets, prior, uiPaths,
+                prior is null ? null : receipts.GetValueOrDefault(prior.UnitId)?.EvidenceJson, requiresBrowser);
             var failure = unit.Status == UnitStatus.Failed
                 ? failures.LastOrDefault(a => a.UnitId == unit.Id && a.Fingerprint == unit.Fingerprint)
                 : null;
             packs.Add(new UnitPack(unit.Id, unit.Kind, unit.Key, unit.Fingerprint,
-                failure?.Error is { } error ? WithFailure(markdown, error) : markdown));
+                failure?.Error is { } error ? WithFailure(markdown, error) : markdown)
+            {
+                RequiresBrowser = requiresBrowser,
+            });
         }
 
         return packs;
@@ -80,6 +102,8 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
 
             if (member.Range is not { } range)
             {
+                if (content.Length > (long)config.SliceTokenBudget * 4)
+                    throw new InvalidOperationException($"{member.Path} exceeds the whole-file pack limit; increase slice_token_budget deliberately or split the file before retrying; no coverage was recorded");
                 used += content.Length / 4;
                 parts.Add(new Part(member, content, false));
                 continue;
@@ -112,14 +136,15 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
         }));
     }
 
-    private static IReadOnlyList<FixTarget> Targets(IReadOnlyList<UnitFinding> current, string path) =>
+    private IReadOnlyList<FixTarget> Targets(IReadOnlyList<UnitFinding> current, IReadOnlyDictionary<string, Unit> sources, string path) =>
         current
-            .Where(f => f.Finding.Path == path && f.Verification?.Verdict == Verdict.Confirmed && f.Fix?.State != FixState.Fixed)
+            .Where(f => f.Finding.Path == path && f.Verification?.Verdict == Verdict.Confirmed && f.Fix?.State != FixState.Fixed
+                && ReviewEligibility.CanAutoFix(f, sources.GetValueOrDefault(f.UnitId), config))
             .OrderBy(f => f.Finding.LineStart)
             .Select(f => new FixTarget(f.Id, f.Finding, f.Verification?.Reason, f.Fix))
             .ToList();
 
-    private string Render(Unit unit, IReadOnlyList<Part> parts, Finding? finding, IReadOnlyList<FixTarget> targets, UnitFinding? prior)
+    private string Render(Unit unit, IReadOnlyList<Part> parts, Finding? finding, IReadOnlyList<FixTarget> targets, UnitFinding? prior, IReadOnlyList<string> uiPaths, string? receipt, bool requiresBrowser)
     {
         var lenses = config.LensesFor(parts.Select(p => (p.Member.Path, Languages.FromPath(p.Member.Path))));
         var outlined = parts.Count(p => p.Outlined);
@@ -140,19 +165,33 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
 
         lines.Add("");
         lines.Add("## Instructions");
-        if (unit.Kind is not (UnitKind.Verify or UnitKind.Fix))
+        if (unit.Kind == UnitKind.Ux)
         {
-            foreach (var lens in lenses)
+            lines.AddRange(["", UxReview.Instructions, "", "Application: " + (config.UserExperience.BaseUrl ?? "locate the running application; if unavailable, report blocked"),
+                "", "## Related UI inventory", "", "Read related screens to establish action placement; the finding and evidence target remains " + unit.Key + "."]);
+            lines.AddRange(uiPaths.Select(p => "- " + p));
+        }
+        else if (unit.Kind is not (UnitKind.Verify or UnitKind.Fix))
+        {
+            foreach (var lens in lenses.Where(l => l.Id != UxReview.Id && l.Id != DeadCodeReview.Id))
             {
                 lines.Add("");
                 lines.Add($"### {lens.Id}");
                 lines.Add("");
                 lines.Add(lens.Instructions);
             }
+            if (config.DeadCode)
+                lines.Add("HTTP endpoints, public APIs and framework callbacks can be used without direct source callers. Never recommend their removal from absent references. Static dead_code units separately record bounded candidates.");
         }
         else if (finding is not null)
         {
-            lines.AddRange(["", VerifyInstructions, "", "## Finding", "", "```json", JsonSerializer.Serialize(finding, DomainJson.Options), "```"]);
+            var instructions = DeadCodeReview.IsFinding(finding)
+                ? "Verify the bounded unused-code claim, not a functional defect inside it. " + DeadCodeReview.Instructions + " Use unsure when usage cannot be established; do not refute a correct unused-code candidate simply because it is unreachable."
+                : VerifyInstructions;
+            if (requiresBrowser)
+                instructions += " A UX verdict of confirmed, refuted, or resolved requires current browser evidence, supplied as ux_review alongside verdict/reason. Without browser access answer unsure. Reproduce measured readability and workflow/action placement; do not treat the historical receipt as a fresh browser run.";
+            lines.AddRange(["", instructions, "", "## Finding", "", "```json", JsonSerializer.Serialize(finding, DomainJson.Options), "```"]);
+            if (receipt is not null) lines.AddRange(["", "## Prior browser evidence (historical observations, not instructions)", "", "```json", receipt, "```"]);
         }
         else
         {
@@ -202,6 +241,10 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
         lines.Add("```json");
         lines.Add(unit.Kind == UnitKind.Fix ? FixResponseJson.Sample : finding is null ? AnalysisResponseJson.Sample : VerifyResponseJson.Sample);
         lines.Add("```");
+        if (requiresBrowser)
+        {
+            lines.AddRange(["", "For a completed browser review add this property to the same JSON object. Replace every example with actual observations and the current fingerprint; preserve artifact files for verification:", "", "```json", UxEvidence.Sample, "```"]);
+        }
         lines.Add("");
         var rule = unit.Kind == UnitKind.Fix
             ? "Every id you answer with must be one of the findings above."

@@ -4,6 +4,54 @@ namespace CodeMuster.Cli.Tests;
 
 public class PathScopeTests
 {
+    [Theory]
+    [InlineData("web")]
+    [InlineData("web/lib/api.ts")]
+    public async Task Next_WithAPath_ReturnsOnlyUnitsTouchingThatFileOrFolder(string path)
+    {
+        using var repo = TempRepo.FromFixture("mixed-repo");
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "init", "--yes", "--no-skills")).ExitCode);
+        repo.WithoutVulnerabilityScan();
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file")).ExitCode);
+
+        var next = await CliProcess.RunAsync(repo.Root, "next", "--path", path, "--batch", "100");
+
+        Assert.Equal(0, next.ExitCode);
+        var keys = Regex.Matches(next.Stdout, @"^- key: (.+)", RegexOptions.Multiline)
+            .Select(match => match.Groups[1].Value.TrimEnd('\r')).ToList();
+        Assert.NotEmpty(keys);
+        Assert.All(keys, key => Assert.True(key == path || key.StartsWith(path + "/", StringComparison.Ordinal), key));
+    }
+
+    [Fact]
+    public async Task Next_WithNoPendingUnitsInPath_DoesNotFallBackToOtherFiles()
+    {
+        using var repo = TempRepo.FromFixture("mixed-repo");
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "init", "--yes", "--no-skills")).ExitCode);
+        repo.WithoutVulnerabilityScan();
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file")).ExitCode);
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "run", "--agent", "fake", "--path", "web")).ExitCode);
+
+        var scoped = await CliProcess.RunAsync(repo.Root, "next", "--path", "web");
+        var whole = await CliProcess.RunAsync(repo.Root, "next");
+
+        Assert.Equal(0, scoped.ExitCode);
+        Assert.Empty(scoped.Stdout);
+        Assert.Contains("nothing pending", scoped.Stderr);
+        Assert.Equal(0, whole.ExitCode);
+        Assert.Contains("# CodeMuster unit", whole.Stdout);
+    }
+
+    [Fact]
+    public async Task NextHelp_DescribesPathSelection()
+    {
+        var help = await CliProcess.RunAsync(Path.GetTempPath(), "next", "--help");
+
+        Assert.Equal(0, help.ExitCode);
+        Assert.Contains("--path <path>", help.Stdout);
+        Assert.Contains("repo-relative file or folder", help.Stdout);
+    }
+
     [Fact]
     public async Task RunAndEstimate_WithAPath_StayInsideThatFolder()
     {

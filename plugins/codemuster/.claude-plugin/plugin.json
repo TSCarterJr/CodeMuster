@@ -1,0 +1,21 @@
+{
+  "name": "codemuster",
+  "version": "0.2.7",
+  "description": "Use CodeMuster during coding according to repository automation settings, or audit an entire codebase with tracked coverage and verified fixes.",
+  "author": {
+    "name": "Tim Carter",
+    "url": "https://github.com/TSCarterJr"
+  },
+  "homepage": "https://github.com/TSCarterJr/CodeMuster",
+  "repository": "https://github.com/TSCarterJr/CodeMuster",
+  "license": "SEE LICENSE IN LICENSE",
+  "keywords": [
+    "code-audit",
+    "code-review",
+    "security",
+    "coverage",
+    "verification",
+    "remediation",
+    "codemuster"
+  ]
+}

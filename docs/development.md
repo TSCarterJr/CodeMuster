@@ -16,7 +16,7 @@ dotnet restore fixtures/minimal-api/MinimalApi.sln
 npm ci --prefix fixtures/mixed-repo/web
 dotnet build --no-restore
 dotnet test --no-build
-node --test npm/test/launcher.test.js
+npm test --prefix npm
 ```
 
 On a busy machine, `dotnet test -m:1` serializes project builds and test runs. Use a test filter
@@ -50,6 +50,9 @@ interface fakes. Keep cross-platform paths normalized in assertions.
 | `src/CodeMuster.Cli` | Argument handling, help, console output, and composition |
 | `npm` | Launcher, updates, platform-package staging, and launcher tests |
 | `skill/SKILL.md` | Bundled instructions copied by `skill install` |
+| `distribution` | Source plugin metadata, README, and context hook adapter |
+| `plugins/codemuster` | Generated, self-contained marketplace plugin; do not hand-edit |
+| `.claude-plugin` / `.agents/plugins` | Generated Claude/Codex marketplace catalogs |
 | `tests` / `fixtures` | Test projects and small repositories with known code graphs |
 
 Application depends on Domain. Infrastructure and mappers implement Domain interfaces. CLI
@@ -70,3 +73,38 @@ The release workflow builds self-contained platform packages and injects the rel
 Development builds do not constitute published releases. Local installs and published versions
 use plain `0.#.#` versions; do not add a `-local` suffix. Installing, tagging, and publishing are
 separate actions from building and testing a change.
+
+After editing `skill/SKILL.md`, `LICENSE`, or `distribution/`, run
+`node scripts/stage-plugin.js`. The generated plugin and catalogs are checked in so Git
+marketplace installs work without a build. `npm test --prefix npm` checks their parity and
+rejects stale generated files. Set the next version in `distribution/plugin.json` before a
+release and regenerate; release tags must match it. See [distribution](distribution.md)
+for local plugin validation, archive staging, updates, and submission preparation.
+
+
+## Release gates and partial publication recovery
+
+The tag workflow calls the full three-OS test workflow on the same revision before building.
+PR, build, smoke, and release jobs use GitHub-hosted runners. Main requires the three OS test
+checks. Packaged smoke tests exercise init, SQLite reopening, C#/TypeScript mapping, audit,
+verification, isolated fix orchestration, and actual fixture build validation. The smoke's
+finding/fix responses are synthetic; they are not live-model acceptance.
+
+Runtime smoke targets are Windows x64, Linux x64, and macOS arm64. Windows arm64, Linux arm64,
+and macOS x64 are cross-built but are not runtime-verified by this matrix. Do not advertise
+those extra architectures as tested. Dispatch the release workflow with the candidate version
+for a no-publish rehearsal after the source is pushed; a successful local Windows run does not
+substitute for hosted execution.
+
+`scripts/publish-packages.js` verifies package identity and registry integrity for all seven
+archives before publishing any missing packages, platforms first. Identical published bytes
+are skipped; a mismatch or registry error stops the run. To resume a partially published tag,
+rerun failed jobs using the original retained packages. Do not rebuild and overwrite immutable
+npm versions. If original bytes cannot be recovered or differ, release a new version. Confirm
+all seven package versions before announcing the matching plugin. Registry preflight is not
+proof of trusted-publisher authorization; the first successful tag publication must establish it.
+
+The configured npm trusted publisher must match this repository and `release.yml` for each of
+the launcher and six platform packages. Authentication to inspect that configuration is still
+required; do not replace it with a long-lived token in source. Official marketplace review is
+separate from repository-marketplace availability.

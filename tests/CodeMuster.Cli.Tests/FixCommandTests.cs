@@ -4,6 +4,63 @@ namespace CodeMuster.Cli.Tests;
 
 public class FixCommandTests
 {
+    [Fact]
+    public async Task AnotherCoordinatorIsRefusedWithoutTouchingTheLedger()
+    {
+        using var repo = await AuditedAsync();
+        using var held = new FileStream(Path.Combine(repo.Root, ".git", "codemuster-coordinator.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        var result = await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("another CodeMuster command", result.Stderr);
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("2")]
+    public async Task ValidationCannotCommitOutsideScope(string jobs)
+    {
+        using var repo = await AuditedAsync();
+        const string target = "src/MixedRepo.Api/Program.cs";
+        const string other = "web/lib/api.ts";
+        foreach (var path in new[] { target, other })
+            await File.AppendAllTextAsync(Path.Combine(repo.Root, path), "\n// validation edit\n");
+        var patch = repo.Git("diff", "--", target, other);
+        repo.Git("restore", "--", target, other);
+        await File.WriteAllTextAsync(Path.Combine(repo.Root, "scope.patch"), patch);
+        repo.WithTestCommand("git", "apply", "scope.patch");
+        var head = repo.Git("rev-parse", "HEAD");
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--path", target, "-j", jobs, "--attempts", "1");
+        Assert.Equal(1, fix.ExitCode);
+        Assert.Equal(head, repo.Git("rev-parse", "HEAD"));
+        Assert.Contains(other, fix.Stdout + fix.Stderr);
+        Assert.DoesNotContain("fix: fixed", (await CliProcess.RunAsync(repo.Root, "report")).Stdout);
+        Assert.Contains("validation edit", await File.ReadAllTextAsync(Path.Combine(repo.Root, other)));
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("2")]
+    public async Task RejectedCommitKeepsFindingsUnfixedAndPreservesRecovery(string jobs)
+    {
+        using var repo = await AuditedAsync();
+        const string target = "src/MixedRepo.Api/Program.cs";
+        await File.AppendAllTextAsync(Path.Combine(repo.Root, target), "\n// proposed fix\n");
+        var patch = repo.Git("diff", "--", target);
+        repo.Git("restore", "--", target);
+        await File.WriteAllTextAsync(Path.Combine(repo.Root, "fix.patch"), patch);
+        repo.WithTestCommand("git", "apply", "fix.patch");
+        var hook = Path.Combine(repo.Root, ".git", "hooks", "pre-commit");
+        await File.WriteAllTextAsync(hook, "#!/bin/sh\nexit 1\n");
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(hook, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var head = repo.Git("rev-parse", "HEAD");
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--path", target, "-j", jobs, "--attempts", "1");
+        Assert.Equal(1, fix.ExitCode);
+        Assert.Equal(head, repo.Git("rev-parse", "HEAD"));
+        Assert.DoesNotContain("fix: fixed", (await CliProcess.RunAsync(repo.Root, "report")).Stdout);
+        Assert.Contains("proposed fix", await File.ReadAllTextAsync(Path.Combine(repo.Root, target)));
+        Assert.Contains("preserved", fix.Stdout + fix.Stderr);
+    }
+
     private static async Task<TempRepo> AuditedAsync()
     {
         var repo = TempRepo.FromFixture("mixed-repo");

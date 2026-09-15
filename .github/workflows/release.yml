@@ -13,9 +13,17 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  validate:
+    uses: ./.github/workflows/test.yml
+
   build:
-    runs-on: [self-hosted, Linux, X64]
+    needs: validate
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -39,7 +47,12 @@ jobs:
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - run: node --test npm/test/launcher.test.js
+      - run: npm test --prefix npm
+      - name: Require the marketplace version to match the release tag
+        if: github.event_name == 'push'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/stage-plugin.js --check --version "$VERSION"
       - name: Publish a self-contained build per platform
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -57,11 +70,24 @@ jobs:
           for dir in staged/*; do npm pack "./$dir" --pack-destination packages; done
           ls -l packages
           test "$(ls packages/*.tgz | wc -l)" -eq 7
+      - name: Package the plugin and standalone skill
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node scripts/stage-plugin.js --version "$VERSION" --out plugin-dist
+          mkdir plugin-packages
+          tar -czf "plugin-packages/codemuster-plugin-$VERSION.tar.gz" -C plugin-dist/plugins/codemuster .
+          tar -czf "plugin-packages/codemuster-skill-$VERSION.tar.gz" -C plugin-dist/plugins/codemuster/skills codemuster
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugins
+          path: plugin-packages/*.tar.gz
+          retention-days: 90
       - uses: actions/upload-artifact@v4
         with:
           name: packages
           path: packages/*.tgz
-          retention-days: 7
+          retention-days: 90
 
   smoke:
     needs: build
@@ -77,6 +103,10 @@ jobs:
             platform: darwin-arm64
     runs-on: ${{ matrix.os }}
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -95,6 +125,12 @@ jobs:
           actual="$(codemuster --version | tr -d '\r')"
           echo "codemuster --version printed $actual"
           test "$actual" = "$VERSION"
+      - name: Exercise the installed package, ledger, mappers and repair workflow
+        shell: bash
+        env:
+          CODEMUSTER_NO_UPDATE: '1'
+        run: node scripts/smoke-package.js "$(npm root -g)/codemuster/bin/codemuster.js"
+
 
   publish:
     needs: [build, smoke]
@@ -104,6 +140,7 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -115,17 +152,12 @@ jobs:
       - name: Publish to npm, platform packages before the launcher
         env:
           VERSION: ${{ needs.build.outputs.version }}
-        run: |
-          npm --version
-          for platform in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-arm64 win32-x64; do
-            npm publish "./packages/codemuster-$platform-$VERSION.tgz" --access public
-          done
-          npm publish "./packages/codemuster-$VERSION.tgz" --access public
+        run: node scripts/publish-packages.js packages "$VERSION"
 
   release:
     needs: [build, smoke, publish]
     if: github.event_name == 'push'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
@@ -133,14 +165,18 @@ jobs:
         with:
           name: packages
           path: packages
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugins
+          path: plugin-packages
       - name: Attach the packages to a GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" packages/*.tgz --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$TAG" packages/*.tgz plugin-packages/*.tar.gz --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$TAG" packages/*.tgz --repo "$GITHUB_REPOSITORY" --title "$TAG" \
-              --notes "Published to npm as ${TAG#v}."
+            gh release create "$TAG" packages/*.tgz plugin-packages/*.tar.gz --repo "$GITHUB_REPOSITORY" --title "$TAG" \
+              --notes "Published to npm as ${TAG#v}. Plugin and standalone skill bundles are attached. Marketplace setup: https://github.com/TSCarterJr/CodeMuster#install-and-set-up"
           fi

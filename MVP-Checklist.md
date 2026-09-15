@@ -230,3 +230,36 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 | T16.1 | Init agent selection, idempotent skill/hook installation, lightweight change notifications and scan acknowledgement. Tests first: preserve settings, invalid config, opt-outs, selected agents, linked worktrees and notification races. | `[x]` | codex 2026-09-14 | D42. Three CLI regressions and change-tracking regressions failed first; all 803 tests pass. Notifications live in worktree Git metadata; content fingerprints avoid read-only false alarms. |
 | T16.2 | Retry declines with an explicit related-file scope, verify current findings and record resolution, and expose final validation. Tests first: outcome transitions, resumed completed files, scope isolation and validation failures. | `[x]` | codex 2026-09-14 | D43. Resolution, recovery-option, and incomplete-response regressions failed first. All 811 tests pass; current-code rechecks, SQLite outcome transitions, scoped Git commits, retry exclusions and final validation covered. |
 | T16.3 | Update shared skill/help/user guide for setup, CLI-owned repairs, completion and final checks; validate installed workflow. | `[x]` | codex 2026-09-14 | Supersedes instructions to manually fix from the report. Help regressions failed first; all 813 .NET tests, 16 launcher tests and the skill validator pass. A temporary-repository CLI smoke recovered a decline with a two-file commit, rechecked current code after scan, recorded resolved/fixed, and passed a real build/runtime assertion. |
+
+## Skill setup (user-directed priority)
+
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| SK1 | Skill attempts npm installation when the CLI is missing and gives manual instructions on failure. | [x] | codex 2026-09-14. Prioritized at Tim's explicit request. Regression test failed first; 800 .NET and 16 npm tests pass. Both repository skill copies refreshed. Fresh-machine agent installation not exercised. |
+
+## Marketplace distribution (user-directed priority)
+
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| DIST1 | Package the shared skill for Claude/Codex marketplaces, validate distribution in CI, and document marketplace-first use alongside the CLI. | [x] | codex 2026-09-14. Tim explicitly prioritized distribution. Staging tests failed first; 815 .NET and 22 npm tests pass after syncing main. Claude/Codex manifests validated and installed in isolated profiles; release archives verified. Version 0.2.7 prepared locally; publication and live reviewer cases pending. |
+
+## Main synchronization (user-directed priority)
+
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| SYNC1 | Pull main and reconcile the local skill/plugin distribution work. | [x] | codex 2026-09-14. Fast-forwarded four commits to d65558c; resolved six documentation/instruction conflicts, preserved upstream D42/D43, and renumbered local decisions D44/D45. Real init smoke caught mutually exclusive flags; corrected and regression-tested the documented command. 815 .NET and 22 npm tests pass; stashes retained, no push. |
+
+## Launch remediation (user-directed priority)
+
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| LIVE1 | Close launch-readiness findings and verify the complete setup. | [~] | codex 2026-09-14. Tim explicitly requested all review items ahead of backlog. Local remediation complete: 831 .NET/28 npm tests, final Windows package smoke, 0.2.0 upgrade/pin and live Claude/Codex repair validation pass. GitHub protections enabled. Stages 15-16 remain open for npm auth (E401), hosted candidate validation and published-plugin acceptance. No commit/push/publication; existing work preserved. |
+
+## Setup and hook utilization (user-directed priority)
+
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| HOOK1 | Pull latest main and investigate how setup/hooks should be utilized. | [x] | codex 2026-09-15. Taken ahead of deferred backlog at Tim's request. Main already matches origin/main at d65558c; existing work and both stashes retained. Reviewed implementation and official agent docs; 41 selected tests pass with zero skips. Disposable CLI smoke confirms no-hook freshness detection and staging-only false warnings. docs/setup-hooks-review.md proposes checkpoint reminders and independent hook setup. Investigation complete; proposed behavior is not implemented or adopted as a new decision. |
+| HOOK2 | Implement proactive plugin use controlled by repository automation settings. | [x] | codex 2026-09-15. User-directed priority; D47. Strict modes, scoped interactive packs, settings-aware plugin context hooks, worker suppression, shared skill workflow, and review/repair queue separation implemented. All 862 .NET and 40 npm tests pass with zero skips; formatting, validators, parity and diff checks pass. Existing work/stashes preserved; actual live plugin acceptance and publication remain unverified. |
+| REVIEW1 | Add conservative dead-code analysis and UI-only readability/business-workflow reviews. | [x] | codex 2026-09-15. User-directed priority; D48. Implemented protected static usage assessments, UI scope, current browser/screenshot evidence, mandatory flow/validation/rendering/feedback/text checks, generated findings, retained receipts, and repair/verdict safeguards. All 1,094 .NET and 40 npm tests pass with zero skips; formatting, validators, parity and diff checks pass. Real browser plus CLI ingestion captured contrast, payment-flow and pressed-feedback defects and rejected a wrong screenshot hash. No new dependencies or release actions. Live host-plugin, representative UI repair, hosted OS and publication gates remain separate. |
+| INT1 | Integrate the validated plugin, repair and application-review candidate for protected main delivery. | [x] | codex 2026-09-15. Tim requested commit/push to main. This integration task consolidates the already-tested, interdependent SK1/DIST1/LIVE1/HOOK2/REVIEW1 source and generated artifacts instead of constructing partial historical commits from shared hunks. The combined 1,094 .NET cases and refreshed 40 npm cases pass, zero skips; formatting, validators, parity, diff and NuGet advisory checks pass. Main integration must retain the required three-OS CI gate. Package publication and live application acceptance remain separate. |

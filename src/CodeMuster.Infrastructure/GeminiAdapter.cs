@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
@@ -7,6 +8,7 @@ public sealed class GeminiAdapter : IAgentAdapter
 {
     private readonly string _executable;
     private readonly string? _workingDirectory;
+    private readonly bool _write;
 
     public GeminiAdapter(string executable, string? model = null, string? effort = null, bool write = false, string? workingDirectory = null)
     {
@@ -17,7 +19,8 @@ public sealed class GeminiAdapter : IAgentAdapter
 
         _executable = executable;
         _workingDirectory = workingDirectory;
-        Arguments = ["--output-format", "json", "--approval-mode", write ? "auto_edit" : "default", .. model is null ? Array.Empty<string>() : ["-m", model]];
+        _write = write;
+        Arguments = ["--output-format", "json", "--approval-mode", write ? "auto_edit" : "default", "--allowed-mcp-server-names", "__codemuster_no_mcp__", "--extensions", "none", .. model is null ? Array.Empty<string>() : ["-m", model]];
         Identity = new AgentIdentity("gemini", model, null);
     }
 
@@ -25,8 +28,38 @@ public sealed class GeminiAdapter : IAgentAdapter
 
     public AgentIdentity Identity { get; }
 
-    public async Task<string> RunAsync(string pack, CancellationToken cancellationToken) =>
-        FinalText(await HeadlessProcess.RunAsync(_executable, Arguments, pack, cancellationToken, _workingDirectory).ConfigureAwait(false));
+    public async Task<string> RunAsync(string pack, CancellationToken cancellationToken)
+    {
+        var system = Environment.GetEnvironmentVariable("GEMINI_CLI_SYSTEM_SETTINGS_PATH")
+            ?? (OperatingSystem.IsWindows() ? "C:/ProgramData/gemini-cli/settings.json"
+                : OperatingSystem.IsMacOS() ? "/Library/Application Support/GeminiCli/settings.json" : "/etc/gemini-cli/settings.json");
+        var file = Path.Combine(Path.GetTempPath(), $"codemuster-gemini-{Guid.NewGuid():N}.json");
+        try
+        {
+            var original = File.Exists(system) ? await File.ReadAllTextAsync(system, cancellationToken) : "{}";
+            await File.WriteAllTextAsync(file, RestrictedSettings(original, _write), cancellationToken);
+            return FinalText(await HeadlessProcess.RunAsync(_executable, Arguments, pack, cancellationToken, _workingDirectory,
+                new Dictionary<string, string>
+                {
+                    ["GEMINI_CLI_SYSTEM_SETTINGS_PATH"] = file,
+                    ["GEMINI_CLI_SYSTEM_DEFAULTS_PATH"] = Environment.GetEnvironmentVariable("GEMINI_CLI_SYSTEM_DEFAULTS_PATH") ?? Path.Combine(Path.GetDirectoryName(system)!, "system-defaults.json"),
+                }));
+        }
+        finally { File.Delete(file); }
+    }
+
+    internal static string RestrictedSettings(string original, bool write)
+    {
+        var settings = JsonNode.Parse(original, documentOptions: new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip })!.AsObject();
+        var tools = settings["tools"] as JsonObject ?? new JsonObject();
+        string[] allowed = ["list_directory", "read_file", "read_many_files", "glob", "search_file_content", .. write ? new[] { "write_file", "replace" } : []];
+        if (tools["core"] is JsonArray prior) allowed = allowed.Where(name => prior.Any(value => value?.GetValue<string>() == name)).ToArray();
+        tools["core"] = new JsonArray(allowed.Select(name => (JsonNode?)JsonValue.Create(name)).ToArray());
+        tools["discoveryCommand"] = "";
+        tools["callCommand"] = "";
+        if (settings["tools"] is null) settings["tools"] = tools;
+        return settings.ToJsonString();
+    }
 
     internal static string FinalText(string output)
     {

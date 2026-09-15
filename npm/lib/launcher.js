@@ -12,6 +12,10 @@ const KEEP_VERSIONS = 2;
 const PLATFORMS = new Set(['win32-x64', 'win32-arm64', 'darwin-x64', 'darwin-arm64', 'linux-x64', 'linux-arm64']);
 const VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 
+function versionsDirectory(stateDir, platform, arch) {
+  return path.join(stateDir, `${platform}-${arch}`, 'versions');
+}
+
 function platformPackage(platform, arch) {
   const name = `${platform}-${arch}`;
   if (!PLATFORMS.has(name)) {
@@ -70,13 +74,13 @@ function splitVersion(version) {
   return [core.split('.'), dash < 0 ? null : version.slice(dash + 1)];
 }
 
-function newestBuild({ versionsDir, bundled, platform }) {
+function newestBuild({ versionsDir, bundled, platform, pinnedVersion }) {
   const candidates = bundled ? [{ version: bundled.version, binary: path.join(bundled.dir, 'bin', binaryName(platform)) }] : [];
   for (const version of installedVersions(versionsDir)) {
     candidates.push({ version, binary: path.join(versionsDir, version, 'bin', binaryName(platform)) });
   }
 
-  const complete = candidates.filter((candidate) => fs.existsSync(candidate.binary));
+  const complete = candidates.filter((candidate) => (!pinnedVersion || candidate.version === pinnedVersion) && fs.existsSync(candidate.binary));
   complete.sort((x, y) => compareVersions(y.version, x.version));
   return complete[0] ?? null;
 }
@@ -90,7 +94,7 @@ function installedVersions(versionsDir) {
 }
 
 function shouldCheckForUpdate({ env, now, lastCheck }) {
-  return !env.CI && !env.CODEMUSTER_NO_UPDATE && (lastCheck === null || now - lastCheck >= DAY);
+  return !env.CI && !env.CODEMUSTER_NO_UPDATE && !env.CODEMUSTER_VERSION && (lastCheck === null || now - lastCheck >= DAY);
 }
 
 function readLastCheck(stateDir) {
@@ -109,7 +113,7 @@ function tar(args) {
 }
 
 async function getJson(url) {
-  const response = await fetch(url, { headers: { accept: 'application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8' } });
+  const response = await fetch(url, { signal: AbortSignal.timeout(60000), headers: { accept: 'application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8' } });
   if (!response.ok) {
     throw new Error(`GET ${url} returned ${response.status}`);
   }
@@ -118,6 +122,7 @@ async function getJson(url) {
 }
 
 async function installVersion({ registry, version, versionsDir, platform, arch }) {
+  if (!VERSION.test(version)) throw new Error(`invalid version: ${version}`);
   const pkg = platformPackage(platform, arch);
   fs.mkdirSync(versionsDir, { recursive: true });
   const packument = await getJson(`${registry}/${pkg.replace('/', '%2f')}`);
@@ -126,7 +131,7 @@ async function installVersion({ registry, version, versionsDir, platform, arch }
     throw new Error(`${pkg}@${version} is not in the registry`);
   }
 
-  const response = await fetch(dist.tarball);
+  const response = await fetch(dist.tarball, { signal: AbortSignal.timeout(60000) });
   if (!response.ok) {
     throw new Error(`GET ${dist.tarball} returned ${response.status}`);
   }
@@ -185,7 +190,7 @@ async function update({ registry, stateDir, platform, arch, currentVersion, now 
     return { latest, installed: null };
   }
 
-  const versionsDir = path.join(stateDir, 'versions');
+  const versionsDir = versionsDirectory(stateDir, platform, arch);
   await installVersion({ registry, version: latest, versionsDir, platform, arch });
   pruneVersions(versionsDir);
   return { latest, installed: latest };
@@ -244,7 +249,7 @@ async function updateNow({ args, stateDir, platform, arch, currentVersion, regis
   }
 
   out.write(`updating codemuster ${currentVersion} to ${latest}\n`);
-  const versionsDir = path.join(stateDir, 'versions');
+  const versionsDir = versionsDirectory(stateDir, platform, arch);
   try {
     await installVersion({ registry, version: latest, versionsDir, platform, arch });
   } catch (error) {
@@ -268,16 +273,22 @@ async function main(args, env = process.env) {
   const platform = process.platform;
   const arch = process.arch;
   const stateDir = path.join(os.homedir(), '.codemuster');
-  const versionsDir = path.join(stateDir, 'versions');
-  let build = newestBuild({ versionsDir, bundled: bundledBuild(platformPackage(platform, arch)), platform });
+  const versionsDir = versionsDirectory(stateDir, platform, arch);
+  const pinnedVersion = env.CODEMUSTER_VERSION;
+  if (pinnedVersion && !VERSION.test(pinnedVersion)) throw new Error(`invalid version pin: ${pinnedVersion}`);
+  let build = newestBuild({ versionsDir, pinnedVersion, bundled: bundledBuild(platformPackage(platform, arch)), platform });
   if (build === null) {
-    const version = require('../package.json').version;
+    const version = pinnedVersion || require('../package.json').version;
     process.stderr.write(`codemuster: downloading CodeMuster ${version} for ${platform}-${arch}\n`);
     await installVersion({ registry: REGISTRY, version, versionsDir, platform, arch });
-    build = newestBuild({ versionsDir, bundled: null, platform });
+    build = newestBuild({ versionsDir, pinnedVersion, bundled: null, platform });
   }
 
   if (args[0] === 'update') {
+    if (pinnedVersion) {
+      process.stderr.write(`codemuster is pinned to ${pinnedVersion}; unset CODEMUSTER_VERSION before updating\n`);
+      return 1;
+    }
     return updateNow({ args: args.slice(1), stateDir, platform, arch, currentVersion: build.version });
   }
 
@@ -292,6 +303,7 @@ async function main(args, env = process.env) {
 
 module.exports = {
   REGISTRY,
+  versionsDirectory,
   binaryName,
   compareVersions,
   installVersion,

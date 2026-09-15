@@ -46,6 +46,18 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
 
         async Task AttemptAsync(UnitPack pack)
         {
+            if (pack.RequiresBrowser)
+            {
+                await turn.WaitAsync(cancellationToken);
+                try
+                {
+                    gaveUp.Add(pack.UnitId);
+                    progress.Report(new RunProgress(pack.UnitId, pack.Kind, pack.Key, 0, DoneOutcome.Rejected,
+                        "browser evidence required: use codemuster next --kind ux (or verify) in a browser-capable agent session, then done; source review alone cannot complete this unit", completed, total));
+                }
+                finally { turn.Release(); }
+                return;
+            }
             DoneResult? failure = null;
             var text = "";
             notes?.Report($"starting {Name(pack.Kind)} {pack.Key}");
@@ -92,12 +104,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
     }
 
     private async Task<IReadOnlyList<Unit>> NeedingWorkAsync(UnitKind? kind, string? path, CancellationToken cancellationToken) =>
-        await UnderPathAsync(
-            (await ledger.GetUnitsAsync(cancellationToken))
-                .Where(u => u.Status is UnitStatus.Pending or UnitStatus.Stale or UnitStatus.Failed && (kind is null || u.Kind == kind))
-                .ToList(),
-            path,
-            cancellationToken);
+        await ledger.NextAsync(int.MaxValue, kind, path, cancellationToken);
 
     private async Task<IReadOnlyList<Unit>> UnderPathAsync(IReadOnlyList<Unit> units, string? path, CancellationToken cancellationToken)
     {
@@ -118,7 +125,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
     private async Task RestaleDoneUnitsAsync(UnitKind? kind, string? path, CancellationToken cancellationToken)
     {
         var done = (await ledger.GetUnitsAsync(cancellationToken))
-            .Where(u => u.Status == UnitStatus.Done && (kind is null || u.Kind == kind))
+            .Where(u => u.Status == UnitStatus.Done && u.Kind is not (UnitKind.Dependency or UnitKind.DeadCode) && (kind is null ? u.Kind != UnitKind.Fix : u.Kind == kind))
             .ToList();
         var stale = (await UnderPathAsync(done, path, cancellationToken))
             .Select(u => u with { Status = UnitStatus.Stale })

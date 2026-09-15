@@ -2,6 +2,34 @@ namespace CodeMuster.Infrastructure.Tests;
 
 public class HarnessAdapterTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GeminiPolicyPreservesSettingsAndRemovesShellFromCoreTools(bool write)
+    {
+        var policy = GeminiAdapter.RestrictedSettings("{\"security\":{\"disableYoloMode\":true},\"tools\":{\"core\":[\"run_shell_command\",\"read_file\",\"write_file\"]}}", write);
+        Assert.Contains("disableYoloMode", policy);
+        Assert.DoesNotContain("run_shell_command", policy);
+        Assert.Contains("read_file", policy);
+        Assert.Equal(write, policy.Contains("write_file", StringComparison.Ordinal));
+    }
+    [Fact]
+    public void CodexDisablesItsShellToolInBothModes()
+    {
+        foreach (var write in new[] { false, true })
+        {
+            var args = new CodexAdapter("codex", write: write).Arguments;
+            Assert.Contains("shell_tool", args);
+            Assert.Contains("--disable", args);
+        }
+    }
+
+    [Fact]
+    public void OpenCodeUsesAnExplicitRestrictedAgent()
+    {
+        Assert.Contains("codemuster", new OpenCodeAdapter("opencode", write: true).Arguments);
+    }
+
     [Fact]
     public void Claude_prints_text_with_read_only_tools_and_no_prompts()
     {
@@ -14,7 +42,7 @@ public class HarnessAdapterTests
     public void Codex_execs_read_only_from_stdin_and_writes_the_last_message_to_a_temp_file()
     {
         var arguments = new CodexAdapter("codex").Arguments;
-        string[] expected = ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never", "--output-last-message"];
+        string[] expected = ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never", "--disable", "shell_tool", "--output-last-message"];
 
         Assert.Equal(expected, arguments.Take(expected.Length));
         Assert.Equal(expected.Length + 2, arguments.Count);
@@ -34,7 +62,7 @@ public class HarnessAdapterTests
     [Fact]
     public void Gemini_prints_json_under_the_default_approval_mode()
     {
-        string[] expected = ["--output-format", "json", "--approval-mode", "default"];
+        string[] expected = ["--output-format", "json", "--approval-mode", "default", "--allowed-mcp-server-names", "__codemuster_no_mcp__", "--extensions", "none"];
 
         Assert.Equal(expected, new GeminiAdapter("gemini").Arguments);
     }
@@ -42,7 +70,7 @@ public class HarnessAdapterTests
     [Fact]
     public void OpenCode_runs_the_plan_agent_with_json_events()
     {
-        string[] expected = ["run", "--agent", "plan", "--format", "json"];
+        string[] expected = ["run", "--agent", "codemuster", "--format", "json"];
 
         Assert.Equal(expected, new OpenCodeAdapter("opencode").Arguments);
     }

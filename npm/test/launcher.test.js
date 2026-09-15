@@ -11,6 +11,30 @@ const launcher = require('../lib/launcher');
 
 const DAY = 24 * 60 * 60 * 1000;
 
+test('an explicit version pin selects an older build and never silently selects a newer one', (t) => {
+  const root = tempDir();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fakeBuild(path.join(root, '0.2.0'), process.platform);
+  fakeBuild(path.join(root, '0.2.7'), process.platform);
+  assert.equal(launcher.newestBuild({ versionsDir: root, platform: process.platform, pinnedVersion: '0.2.0' }).version, '0.2.0');
+  assert.equal(launcher.newestBuild({ versionsDir: root, platform: process.platform, pinnedVersion: '0.2.6' }), null);
+});
+
+test('native and emulated architectures never share an update cache', () => {
+  assert.notEqual(launcher.versionsDirectory('/home', 'darwin', 'arm64'), launcher.versionsDirectory('/home', 'darwin', 'x64'));
+});
+
+test('pinned builds never start automatic updates', () => {
+  assert.equal(launcher.shouldCheckForUpdate({ env: { CODEMUSTER_VERSION: '0.2.0' }, now: DAY, lastCheck: null }), false);
+});
+
+test('invalid versions are refused before creating directories or fetching packages', async (t) => {
+  const root = tempDir();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  await assert.rejects(launcher.installVersion({ registry: 'http://127.0.0.1:1', version: '../escape', versionsDir: path.join(root, 'versions'), platform: process.platform, arch: process.arch }), /invalid version/);
+  assert.equal(fs.existsSync(path.join(root, 'versions')), false);
+});
+
 test('release staging includes the license in the launcher and every platform package', (t) => {
   const root = tempDir();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -147,7 +171,7 @@ test('a newer version is unpacked beside the old ones, and only the newest two a
   const tarball = packTarball('0.2.0', process.platform);
   const registry = await fakeRegistry({ latest: '0.2.0', version: '0.2.0', tarball, integrity: integrityOf(tarball) });
   const stateDir = tempDir();
-  const versionsDir = path.join(stateDir, 'versions');
+  const versionsDir = launcher.versionsDirectory(stateDir, process.platform, process.arch);
   fakeBuild(path.join(versionsDir, '0.0.9'), process.platform);
   fakeBuild(path.join(versionsDir, '0.1.0'), process.platform);
   const now = Date.UTC(2026, 8, 11, 12);
@@ -201,7 +225,7 @@ test('update installs a newer version and says so', async () => {
     assert.equal(code, 0);
     assert.match(said.join(''), /updating codemuster 0\.1\.0 to 0\.2\.0/);
     assert.match(said.join(''), /0\.2\.0 is ready/);
-    assert.equal(launcher.newestBuild({ versionsDir: path.join(stateDir, 'versions'), bundled: null, platform: process.platform }).version, '0.2.0');
+    assert.equal(launcher.newestBuild({ versionsDir: launcher.versionsDirectory(stateDir, process.platform, process.arch), bundled: null, platform: process.platform }).version, '0.2.0');
   } finally {
     registry.close();
   }
@@ -225,7 +249,7 @@ test('update on the newest version downloads nothing', async () => {
     assert.equal(code, 0);
     assert.match(said.join(''), /0\.1\.0 is already the newest/);
     assert.deepEqual(registry.requests, ['/codemuster']);
-    assert.ok(!fs.existsSync(path.join(stateDir, 'versions')));
+    assert.ok(!fs.existsSync(launcher.versionsDirectory(stateDir, process.platform, process.arch)));
   } finally {
     registry.close();
   }
@@ -250,7 +274,7 @@ test('update --check says what is available without installing it', async () => 
     assert.equal(code, 0);
     assert.match(said.join(''), /codemuster 0\.2\.0 is available/);
     assert.deepEqual(registry.requests, ['/codemuster']);
-    assert.ok(!fs.existsSync(path.join(stateDir, 'versions')));
+    assert.ok(!fs.existsSync(launcher.versionsDirectory(stateDir, process.platform, process.arch)));
   } finally {
     registry.close();
   }

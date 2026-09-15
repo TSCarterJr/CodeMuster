@@ -16,6 +16,15 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     /// <summary>The repository's own test command as a program and its arguments, such as <c>["dotnet", "test"]</c>. Fix mode runs it after every unit and throws away a fix that fails it (D37).</summary>
     public IReadOnlyList<string> TestCommand { get; init; } = [];
 
+    /// <summary>The proactive work agents may perform; explicit CLI commands remain available in every mode.</summary>
+    public AutomationMode Automation { get; init; } = AutomationMode.Update;
+
+    /// <summary>Whether scan reports conservative unused-code candidates from supported call maps.</summary>
+    public bool DeadCode { get; init; }
+
+    /// <summary>Optional browser-based reviews, scoped to UI files.</summary>
+    public UserExperienceSettings UserExperience { get; init; } = new();
+
     /// <summary>True when this repository's own <see cref="Exclude"/> globs cover the path, whatever the built-in rules say about it.</summary>
     public bool ExcludedHere(string path) => Exclude.Any(glob => Glob.IsMatch(glob, path));
 
@@ -37,8 +46,12 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     public IReadOnlyList<Lens> LensesFor(IEnumerable<(string Path, string Language)> files)
     {
         var list = files.ToList();
-        return Lenses
+        var selected = Lenses
             .Where(lens => list.Any(file => lens.Applies(file.Path, file.Language)))
+            .ToList();
+        if (DeadCode) selected.Add(new Lens(DeadCodeReview.Id, DeadCodeReview.Instructions, [], []));
+        if (list.Any(file => UserExperience.Applies(file.Path))) selected.Add(UxReview.Lens(UserExperience));
+        return selected
             .OrderBy(lens => lens.Id, StringComparer.Ordinal)
             .ToList();
     }

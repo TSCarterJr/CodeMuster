@@ -9,6 +9,9 @@ public interface IFileSystem
     /// <summary>Reads a whole file as UTF-8 text.</summary>
     Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken);
 
+    /// <summary>Reads a bounded artifact as bytes; rejects files larger than the caller's limit.</summary>
+    Task<byte[]> ReadBytesAsync(string path, int maxBytes, CancellationToken cancellationToken);
+
     /// <summary>Writes a whole file as UTF-8 text without a byte-order mark, creating missing parent directories.</summary>
     Task WriteAllTextAsync(string path, string content, CancellationToken cancellationToken);
 }
