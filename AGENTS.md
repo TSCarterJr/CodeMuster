@@ -11,6 +11,13 @@
   seven npm versions and a fresh installed CLI before calling the release usable.
   Live proactive host-plugin and representative application UX acceptance remain
   separate testing work. Existing stashes and ignored evidence remain preserved.
+  The first 0.2.8 PR run passed Linux/Windows but exposed a macOS dead-code regex
+  timeout on a small fixture. Fixed with ordinal keyword checks and linear-time
+  request matching without wall-clock limits, preserving Unicode boundaries and
+  conservative incomplete-map results. All 1,119 .NET tests pass locally, zero skips;
+  25 new cases cover difficult request input and keyword boundaries. Formatting,
+  diff and NuGet advisory checks pass. No 0.2.8 tag/package has been published yet;
+  hosted revalidation remains required. Logs and fail-first receipts are retained.
 - 2026-09-15, codex: INT1 integrates the completed candidate for Tim's explicit
   commit/push-to-main request. This snapshot includes the shared distribution and
   setup work, isolated repair/release safeguards, settings-driven proactive hooks,

@@ -96,6 +96,10 @@ public class DeadCodeReviewTests
     [InlineData("const plugin = require(name);")]
     [InlineData("const plugin = import(name);")]
     [InlineData("window[handlerName]();")]
+    [InlineData("globalThis \n [handlerName]();")]
+    [InlineData("Assembly \t . \n Load(name);")]
+    [InlineData("eval \n (source);")]
+    [InlineData("services.TryAddSingleton<IWorker, Worker>();")]
     public void DynamicInvocationMakesOtherwiseUnreachableCodeUnknown(string source)
     {
         var sources = Sources();
@@ -108,9 +112,66 @@ public class DeadCodeReviewTests
     }
 
     [Theory]
+    [InlineData("const imported = importSource(name);")]
+    [InlineData("const plugin = requireValue;")]
+    [InlineData("const value = window.location;")]
+    [InlineData("const value = globalThis.document;")]
+    [InlineData("Assembly.Loaded();")]
+    [InlineData("AssemblyLoader.Load(name);")]
+    [InlineData("GetMethodName();")]
+    [InlineData("otherGetMethod();")]
+    [InlineData("GetMethod\u0301();")]
+    [InlineData("\u203fGetMethod();")]
+    [InlineData("GetMethod\u200c();")]
+    [InlineData("\u200dGetMethod();")]
+    public void SimilarIdentifiersDoNotCreateDynamicInvocationEvidence(string source)
+    {
+        var sources = Sources();
+        sources["src/bootstrap.cs"] = source;
+
+        var result = Assert.Single(DeadCodeReview.Analyze(Map([Symbol("a", "private void A()")]), sources));
+
+        Assert.Equal(DeadCodeState.Candidate, result.State);
+    }
+
+    [Theory]
+    [InlineData("private\u200c")]
+    [InlineData("internal\u200d")]
+    [InlineData("private\u0301")]
+    [InlineData("\u203finternal")]
+    public void VisibilityKeywordsInsideUnicodeIdentifiersCannotEstablishInternalDeclarations(string identifier)
+    {
+        var result = Assert.Single(DeadCodeReview.Analyze(Map([Symbol("a", identifier + " void A()")]), Sources()));
+
+        Assert.Equal(DeadCodeState.Unknown, result.State);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AdversarialRequestSourceDoesNotInterruptAnalysisOrLoseKnownEntryProtection(bool incompleteMap)
+    {
+        var sources = Sources();
+        sources["web/Invoice.tsx"] = "const label = " + string.Concat(Enumerable.Repeat("a.", 50_000)) + ";";
+        var map = Map([Symbol("endpoint", "public void Endpoint()"), Symbol("helper", "private void Helper()")],
+            entryPoints: [new EntryPoint("endpoint", "http", "GET /invoices")]);
+        if (incompleteMap) map = map with { Diagnostics = ["Mapping is incomplete."] };
+
+        var result = DeadCodeReview.Analyze(map, sources);
+
+        Assert.Equal(DeadCodeState.ProtectedEntryPoint, result.Single(item => item.SymbolId == "endpoint").State);
+        var helper = result.Single(item => item.SymbolId == "helper");
+        Assert.Equal(incompleteMap ? DeadCodeState.Unknown : DeadCodeState.Candidate, helper.State);
+        Assert.All(result, item => Assert.Empty(item.UsageEvidence));
+    }
+
+    [Theory]
     [InlineData("fetch('/customers')", "GET /customers")]
     [InlineData("axios.get('/customers/123')", "GET /customers/{id}")]
     [InlineData("api.post('/customers/123/charge', body)", "POST /customers/{id}/charge")]
+    [InlineData("fetch('/customers', { method: 'POST' })", "POST /customers")]
+    [InlineData("fetch('/customers', { METHOD: 'post' })", "POST /customers")]
+    [InlineData("services.customers.delete('/customers/123')", "DELETE /customers/{id}")]
     public void LiteralFrontendRequestsArePositiveEndpointUsageEvidence(string request, string route)
     {
         var endpoint = Symbol("endpoint", "public void Endpoint()");

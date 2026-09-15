@@ -274,6 +274,21 @@ publish a package or complete the remaining live-agent and release acceptance ga
 **Tests**: Plugin parity, npm release tests, strict plugin validation, diff checks, and hosted three-OS suite.
 **Status**: In Progress
 
+First hosted run 35013045638 passed Linux/Windows but failed one macOS Application
+test with RegexMatchTimeoutException in DeadCodeReview.DynamicInvocation. The
+version-only commit exposed a runtime failure path in the candidate; do not rerun
+past it or tag until keyword matching and incomplete request-evidence handling are
+fixed and regression-tested. The failing job log is retained under ignored
+TestResults/release-0.2.8/macos-pr-validation.log.
+
+The failure is fixed with four ordinal token checks and NonBacktracking matching
+for the two existing request patterns, without wall-clock deadlines. Unicode
+marks/connectors/joiners retain word-boundary behavior. Difficult chained-request
+input completes while endpoints stay protected and incomplete maps remain Unknown.
+The 25 added cases include fail-first timeout and Unicode-boundary receipts. All
+1,119 .NET tests pass locally with zero skips; formatting, diff and NuGet advisory
+checks pass. Full receipts are under TestResults/release-0.2.8/full-suite/.
+
 ## Stage 29: Build, test and publish the tagged revision
 **Goal**: Publish 0.2.8 through the existing release workflow without replacing older artifacts.
 **Success Criteria**: Tag resolves to the reviewed revision; full tests, platform builds and installed-runtime smokes pass; all seven npm packages and matching GitHub assets are published.

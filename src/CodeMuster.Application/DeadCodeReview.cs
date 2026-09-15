@@ -70,7 +70,7 @@ public static partial class DeadCodeReview
 
         var uncertainty = map.Diagnostics.Count > 0 || map.Resolution.Unresolved > 0
             ? "Mapping has diagnostics or unresolved calls; absent mapped reachability cannot establish unused code."
-            : sources.Values.Any(source => DynamicInvocation().IsMatch(source))
+            : sources.Values.Any(HasDynamicInvocation)
                 ? "Repository source contains dynamic invocation or runtime registration; its consumers are not fully established."
                 : null;
         var requests = Requests(sources);
@@ -106,11 +106,11 @@ public static partial class DeadCodeReview
         var declaration = symbol.Signature.Split('\n')[^1];
         if (symbol.Kind is "constructor" or "destructor" || declaration.Contains('[', StringComparison.Ordinal) || declaration.Contains('@', StringComparison.Ordinal))
             return "Constructor, attributed, or decorated code may be invoked by a framework or runtime callback.";
-        if (PublicDeclaration().IsMatch(declaration))
+        if (HasPublicDeclaration(declaration))
             return "Public, exported, protected, or virtual declarations may have consumers outside the mapped call graph.";
         if (Languages.FromPath(symbol.Path) is Languages.TypeScript or Languages.JavaScript)
         {
-            if (PublicDeclaration().IsMatch(symbol.Signature) || symbol.Kind == "method" && !PrivateDeclaration().IsMatch(declaration))
+            if (HasPublicDeclaration(symbol.Signature) || symbol.Kind == "method" && !HasPrivateDeclaration(declaration))
                 return "Exported declarations and externally accessible JavaScript or TypeScript members may be called by consumers or frameworks.";
         }
         return null;
@@ -121,8 +121,8 @@ public static partial class DeadCodeReview
         var declaration = symbol.Signature.Split('\n')[^1];
         return Languages.FromPath(symbol.Path) switch
         {
-            Languages.CSharp => InternalVisibility().IsMatch(declaration),
-            Languages.TypeScript or Languages.JavaScript => symbol.Kind == "function" || PrivateDeclaration().IsMatch(declaration),
+            Languages.CSharp => HasInternalVisibility(declaration),
+            Languages.TypeScript or Languages.JavaScript => symbol.Kind == "function" || HasPrivateDeclaration(declaration),
             _ => false,
         };
     }
@@ -165,21 +165,60 @@ public static partial class DeadCodeReview
             pair.First == pair.Second || pair.First.StartsWith('{') && pair.First.EndsWith('}') || pair.First.StartsWith(':'));
     }
 
-    [GeneratedRegex(@"\b(?:public|protected|export|virtual|override|abstract|extern)\b", RegexOptions.CultureInvariant, 100)]
-    private static partial Regex PublicDeclaration();
+    private static bool HasPublicDeclaration(string source)
+    {
+        for (var offset = 0; offset < source.Length;)
+            if (NextWord(source, ref offset) is "public" or "protected" or "export" or "virtual" or "override" or "abstract" or "extern") return true;
+        return false;
+    }
 
-    [GeneratedRegex(@"\b(?:private|internal)\b", RegexOptions.CultureInvariant, 100)]
-    private static partial Regex InternalVisibility();
+    private static bool HasInternalVisibility(string source)
+    {
+        for (var offset = 0; offset < source.Length;)
+            if (NextWord(source, ref offset) is "private" or "internal") return true;
+        return false;
+    }
 
-    [GeneratedRegex(@"\bprivate\b|^\s*#", RegexOptions.CultureInvariant, 100)]
-    private static partial Regex PrivateDeclaration();
+    private static bool HasPrivateDeclaration(string source)
+    {
+        if (source.AsSpan().TrimStart().StartsWith("#", StringComparison.Ordinal)) return true;
+        for (var offset = 0; offset < source.Length;)
+            if (NextWord(source, ref offset) is "private") return true;
+        return false;
+    }
 
-    [GeneratedRegex(@"\b(?:GetMethod|GetProperty|GetField|GetType|CreateInstance|InvokeMember|LoadFrom|LoadFile|InternalsVisibleTo|AddScoped|AddTransient|AddSingleton|TryAddScoped|TryAddTransient|TryAddSingleton)\b|\b(?:require|import|eval)\s*\(|\b(?:window|globalThis)\s*\[|\bAssembly\s*\.\s*Load\b", RegexOptions.CultureInvariant, 100)]
-    private static partial Regex DynamicInvocation();
+    private static bool HasDynamicInvocation(string source)
+    {
+        for (var offset = 0; offset < source.Length;)
+        {
+            var word = NextWord(source, ref offset);
+            if (word is "GetMethod" or "GetProperty" or "GetField" or "GetType" or "CreateInstance" or "InvokeMember"
+                or "LoadFrom" or "LoadFile" or "InternalsVisibleTo" or "AddScoped" or "AddTransient" or "AddSingleton"
+                or "TryAddScoped" or "TryAddTransient" or "TryAddSingleton") return true;
+            var tail = source.AsSpan(offset).TrimStart();
+            if (word is "require" or "import" or "eval" && tail.StartsWith("(", StringComparison.Ordinal)) return true;
+            if (word is "window" or "globalThis" && tail.StartsWith("[", StringComparison.Ordinal)) return true;
+            if (word is not "Assembly" || !tail.StartsWith(".", StringComparison.Ordinal)) continue;
+            tail = tail[1..].TrimStart();
+            if (tail.StartsWith("Load", StringComparison.Ordinal) && (tail.Length == 4 || !IsWordCharacter(tail[4]))) return true;
+        }
+        return false;
+    }
 
-    [GeneratedRegex("(?:\\bfetch|\\b(?:[A-Za-z_$][\\w$]*\\.)+(?<method>get|post|put|patch|delete|head|options))\\s*\\(\\s*(?:\"(?<url>[^\"\\r\\n]*)\"|'(?<url>[^'\\r\\n]*)')(?<tail>[^;\\r\\n]{0,500})", RegexOptions.CultureInvariant, 100)]
+    private static ReadOnlySpan<char> NextWord(string source, ref int offset)
+    {
+        while (offset < source.Length && !IsWordCharacter(source[offset])) offset++;
+        var start = offset;
+        while (offset < source.Length && IsWordCharacter(source[offset])) offset++;
+        return source.AsSpan(start, offset - start);
+    }
+
+    private static bool IsWordCharacter(char value) => char.IsLetterOrDigit(value) || value is '\u200c' or '\u200d'
+        || char.GetUnicodeCategory(value) is UnicodeCategory.NonSpacingMark or UnicodeCategory.ConnectorPunctuation;
+
+    [GeneratedRegex("(?:\\bfetch|\\b(?:[A-Za-z_$][\\w$]*\\.)+(?<method>get|post|put|patch|delete|head|options))\\s*\\(\\s*(?:\"(?<url>[^\"\\r\\n]*)\"|'(?<url>[^'\\r\\n]*)')(?<tail>[^;\\r\\n]{0,500})", RegexOptions.NonBacktracking | RegexOptions.CultureInvariant)]
     private static partial Regex LiteralRequest();
 
-    [GeneratedRegex("\\bmethod\\s*:\\s*['\"](?<method>GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)['\"]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, 100)]
+    [GeneratedRegex("\\bmethod\\s*:\\s*['\"](?<method>GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)['\"]", RegexOptions.NonBacktracking | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex FetchMethod();
 }
