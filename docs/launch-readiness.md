@@ -25,11 +25,10 @@ for those six packages and verified all seven publisher configurations. Attempt 
 reran only the failed jobs using the original artifacts and successfully published
 all seven packages, followed by the GitHub release. The original tag was unchanged.
 
-Registry visibility checks currently verify six package versions and their `latest`
-tags at 0.2.8, with SHA512 integrities matching the retained archives. The Windows
-arm64 package is not yet visible in fresh registry responses. Its publish log says
-npm is still processing it; registry visibility and integrity verification remain open.
-All nine GitHub release asset names,
+Registry checks verify all seven package versions and their `latest` tags at 0.2.8,
+with SHA512 integrities matching the retained archives. Windows arm64 took longer
+to finish npm processing; its metadata, latest tag, integrity and tarball availability
+verified at 21:05 UTC. All nine GitHub release asset names,
 sizes, and SHA256 digests match the original archives, and the annotated tag resolves
 to the release commit.
 
@@ -40,8 +39,9 @@ source revision, and GitHub artifact IDs. All package identities, platform metad
 exact launcher dependencies, three plugin manifest versions, skill bytes, and licenses
 were verified against 0.2.8 or its tagged source. `registry-verification.json` retains
 the first attempt's failed-publication state; `publishers-verified.json` records the
-authenticated publisher configuration, and `github-release-verified.json` records
-release asset and tag verification. **Keep this tag and these original bytes.**
+authenticated publisher configuration, `registry-publication-verified.json` records
+all seven published packages, and `github-release-verified.json` records release
+asset and tag verification. **Keep this tag and these original bytes.**
 For recovery, rerun failed jobs rather than moving the tag or rebuilding packages.
 The publisher resumes identical existing archives and rejects an integrity mismatch.
 
@@ -249,9 +249,8 @@ Source integration, the 0.2.8 tag, full three-OS validation, six platform builds
 installed-package smokes, publisher repair, and the publication jobs are complete for
 `bfe1290`. Fresh Windows x64 published-CLI installation and fixture workflow passed.
 
-1. Complete registry visibility/integrity verification for the Windows arm64 package.
-2. Complete the remaining published plugin installation, old-version ledger upgrade, and exact-version pin/rollback cases against 0.2.8.
-3. Complete proactive Claude/Codex sessions and a representative UX repair/reverification pilot. Announce only the verified platforms/harnesses and behaviors. Submit to official directories separately if desired.
+1. Complete the remaining published plugin installation, old-version ledger upgrade, and exact-version pin/rollback cases against 0.2.8.
+2. Complete proactive Claude/Codex sessions and a representative UX repair/reverification pilot. Announce only the verified platforms/harnesses and behaviors. Submit to official directories separately if desired.
 
 SARIF, hosted scans, Python/Go mappers, additional lenses, and frontend-to-backend graph joins are future scope, not prerequisites for a clearly described initial C#/TypeScript product.
 

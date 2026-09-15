@@ -13,9 +13,9 @@
   publishers. After npm login/2FA, configured GitHub TSCarterJr/CodeMuster,
   release.yml with direct-publish permission and verified all seven publishers.
   Attempt 2 reran only failed jobs and published the original archives. All nine
-  GitHub release asset SHA256 digests match the retained bytes. Six npm package
-  versions/latest tags and SHA512 integrities match; npm reports Windows ARM64
-  publication is still processing. Fresh registry installation on Windows x64 reports 0.2.8,
+  GitHub release asset SHA256 digests match the retained bytes. All seven npm
+  versions/latest tags and SHA512 integrities match. Windows ARM64 finished npm
+  processing and was verified at 21:05 UTC. Fresh registry installation on Windows x64 reports 0.2.8,
   exposes UX/scoped-repair commands, and passes init, C#/TS scan, ledger reopen,
   audit, verification, isolated fix and configured fixture-build validation.
   Evidence is under ignored TestResults/release-0.2.8/. Do not move the tag or

@@ -293,7 +293,7 @@ checks pass. Full receipts are under TestResults/release-0.2.8/full-suite/.
 **Goal**: Publish 0.2.8 through the existing release workflow without replacing older artifacts.
 **Success Criteria**: Tag resolves to the reviewed revision; full tests, platform builds and installed-runtime smokes pass; all seven npm packages and matching GitHub assets are published.
 **Tests**: Tagged workflow results, exact version/integrity metadata and release assets.
-**Status**: In Progress
+**Status**: Complete
 
 Hosted revalidation 35014453684 passed on all three OSes. Protected main was
 fast-forwarded to bfe1290 and annotated tag v0.2.8 was pushed at that same revision.
@@ -310,9 +310,10 @@ all seven configurations, and reran failed jobs using the original archives.
 Publisher receipts are in TestResults/release-0.2.8/publishers-verified.json.
 Attempt 2 succeeded, publishing all seven packages and the GitHub release from the
 original archives. All nine GitHub asset SHA256 digests match retained bytes.
-Six registry versions/latest tags and SHA512 integrities match; the publish log
-reports Windows ARM64 is still processing at npm, and its metadata remains absent.
-No tag or artifact was replaced.
+All seven registry versions/latest tags and SHA512 integrities match. Windows
+ARM64 finished npm processing; its metadata, latest tag, integrity and tarball
+availability verified at 21:05 UTC. The final receipt is
+TestResults/release-0.2.8/registry-publication-verified.json. No tag or artifact was replaced.
 
 ## Stage 30: Verify the published installation
 **Goal**: Make the new functionality available in a fresh install for Tim to test.
