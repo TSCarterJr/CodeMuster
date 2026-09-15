@@ -265,3 +265,23 @@ pass. Only reviewed source, docs, tests and generated plugin/skill artifacts bel
 in the commit; ignored evidence and both existing stashes remain local. Protected
 main integration requires Linux, Windows and macOS checks. Source delivery does not
 publish a package or complete the remaining live-agent and release acceptance gates.
+
+## Version 0.2.8 testing release (REL028, 2026-09-15)
+
+## Stage 28: Prepare matching release metadata
+**Goal**: Produce a version 0.2.8 source snapshot with matching generated plugin manifests.
+**Success Criteria**: Source/generated metadata agree; existing package staging injects 0.2.8 into the CLI and all npm packages; protected-main checks pass.
+**Tests**: Plugin parity, npm release tests, strict plugin validation, diff checks, and hosted three-OS suite.
+**Status**: In Progress
+
+## Stage 29: Build, test and publish the tagged revision
+**Goal**: Publish 0.2.8 through the existing release workflow without replacing older artifacts.
+**Success Criteria**: Tag resolves to the reviewed revision; full tests, platform builds and installed-runtime smokes pass; all seven npm packages and matching GitHub assets are published.
+**Tests**: Tagged workflow results, exact version/integrity metadata and release assets.
+**Status**: Not Started
+
+## Stage 30: Verify the published installation
+**Goal**: Make the new functionality available in a fresh install for Tim to test.
+**Success Criteria**: Published 0.2.8 installs in an isolated prefix and reports the requested version and application-review capabilities; release evidence and remaining live-host limits are recorded.
+**Tests**: Fresh npm install, version/help checks, packaged-runtime smoke, plugin version/parity and final repository state.
+**Status**: Not Started

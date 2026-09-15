@@ -2,6 +2,15 @@
 
 ## Current task status
 
+- 2026-09-15, codex: REL028 prepares version 0.2.8 at Tim's explicit request to
+  publish the new functionality for testing. The plugin source metadata and
+  generated manifests carry 0.2.8; the tag supplies the same version to the CLI,
+  npm launcher and all six platform packages. INT1 at 3920f9b is on main and passed
+  all three hosted OS checks. Publication uses the protected-main and tagged
+  release workflow, including full tests and installed-package smokes. Verify all
+  seven npm versions and a fresh installed CLI before calling the release usable.
+  Live proactive host-plugin and representative application UX acceptance remain
+  separate testing work. Existing stashes and ignored evidence remain preserved.
 - 2026-09-15, codex: INT1 integrates the completed candidate for Tim's explicit
   commit/push-to-main request. This snapshot includes the shared distribution and
   setup work, isolated repair/release safeguards, settings-driven proactive hooks,
