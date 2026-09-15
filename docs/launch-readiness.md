@@ -2,23 +2,64 @@
 
 ## Current assessment — 2026-09-15
 
-The candidate is ready for a controlled pilot with a matching local CLI and plugin.
-Hold the public launch for the acceptance and release gates below. The earlier fixer
-and release-workflow defects are fixed locally; the main uncertainty is whether real
-agent sessions reliably perform the new settings-driven workflow.
+Version **0.2.8** is released. Release commit
+`bfe1290843a07c0a9fe8fcb853112044962f2361` is on `main`, and the immutable
+`v0.2.8` tag points to that commit. Exact-revision validation, package builds,
+installed-package smokes, and the retried npm publication and GitHub release jobs
+have passed. A fresh Windows x64 installation from npm reports 0.2.8 and passes
+the packaged CLI fixture workflow. Broad daily-use readiness still requires the
+plugin and representative application acceptance below.
 
-Local HOOK2 validation passed **862 .NET tests and 40 npm tests, zero skips**.
-The retained .NET receipts were rechecked, and generated plugin parity passes for
-all 11 files at version 0.2.7. These are local Windows results. The older packaged
-runtime and live adapter checks below predate HOOK2 and do not validate its plugin hooks.
+Current validation passes **1,119 .NET tests and 40 npm tests, zero skips**.
+The [tagged release run](https://github.com/TSCarterJr/CodeMuster/actions/runs/35015077715)
+passed the full Windows, Linux, and macOS validation jobs, built all six platform
+packages, and passed installed-package fixture smokes on Windows x64, Linux x64,
+and macOS arm64. The release includes the dead-code analysis fix that removes
+wall-clock regex timeouts while retaining conservative usage decisions.
+
+The first attempt failed on `npm publish` for `@codemuster/darwin-arm64@0.2.8`
+with E404, before any 0.2.8 package was published. Authenticated inspection found
+the six platform packages had no trusted-publisher configuration. Added GitHub
+`TSCarterJr/CodeMuster`, workflow `release.yml`, with `createPackage` permission
+for those six packages and verified all seven publisher configurations. Attempt 2
+reran only the failed jobs using the original artifacts and successfully published
+all seven packages, followed by the GitHub release. The original tag was unchanged.
+
+Registry visibility checks currently verify six package versions and their `latest`
+tags at 0.2.8, with SHA512 integrities matching the retained archives. The Windows
+arm64 package is not yet visible in fresh registry responses. Its publish log says
+npm is still processing it; registry visibility and integrity verification remain open.
+All nine GitHub release asset names,
+sizes, and SHA256 digests match the original archives, and the annotated tag resolves
+to the release commit.
+
+Original archives are retained under ignored `TestResults/release-0.2.8/artifacts/`:
+seven npm packages in `packages/` and the plugin and standalone skill archives in
+`plugins/`. `artifact-integrities.json` records their SHA512 integrities, sizes,
+source revision, and GitHub artifact IDs. All package identities, platform metadata,
+exact launcher dependencies, three plugin manifest versions, skill bytes, and licenses
+were verified against 0.2.8 or its tagged source. `registry-verification.json` retains
+the first attempt's failed-publication state; `publishers-verified.json` records the
+authenticated publisher configuration, and `github-release-verified.json` records
+release asset and tag verification. **Keep this tag and these original bytes.**
+For recovery, rerun failed jobs rather than moving the tag or rebuilding packages.
+The publisher resumes identical existing archives and rejects an integrity mismatch.
+
+The fresh Windows x64 npm installation used an isolated prefix and cache.
+`codemuster --version` reports 0.2.8, and command help exposes UX selection and
+scoped repairs. `scripts/smoke-package.js` passed init, C#/TypeScript mapping,
+ledger reopening, audit, verification, isolated repair, and the configured fixture
+build. Receipts are `published-version.txt`, `published-next-help.txt`,
+`published-fix-help.txt`, `published-smoke.log`, and `published-install-verified.json`
+under the same evidence folder.
+This validates the published CLI on Windows x64; fresh plugin activation, old-ledger
+upgrade, rollback, and representative UX repair remain separate acceptance work.
 
 REVIEW1 adds opt-in static usage assessments and UI-only browser reviews; see
-[application reviews](application-reviews.md). Combined local validation passes
-**1,094 .NET tests and 40 npm tests, zero skips**, with formatting, strict plugin
-validation, generated/installed parity and diff checks passing. Receipts are retained
-under ignored `TestResults/review1-complete-20260915/`; the final CLI receipt replaces
-an earlier failure caused by a stale expected instruction string. These local Windows
-results supersede the earlier HOOK2 counts, while its live acceptance gates remain.
+[application reviews](application-reviews.md). Its earlier local validation passed
+1,094 .NET and 40 npm tests, superseding HOOK2's 862 .NET and 40 npm tests. Those
+counts are historical; the current 0.2.8 results above supersede them. REVIEW1
+receipts remain under ignored `TestResults/review1-complete-20260915/`.
 A real two-page browser fixture and
 the built CLI recorded unreadable invoice text (1.94:1), payment collection outside
 the invoice task, and absent pressed-button feedback. The CLI derived findings even
@@ -30,17 +71,11 @@ representative application coverage. Include the five mandatory experience areas
 blocked browser states, evidence freshness, and post-repair browser verification in
 the live pilot. Full accessibility or dead-code-removal guarantees are not implied.
 
-Live checks still show GitHub's latest release, the npm launcher, and the checked
-darwin-arm64 package at 0.2.0. The latest hosted test run passed at d65558c; the
-candidate remains uncommitted and is absent from that run. Both recovery stashes
-remain present.
-
 | Priority | Remaining gate | Evidence required |
 |---|---|---|
-| 1 | Real proactive Claude/Codex acceptance | Install the matching candidate plugin in fresh isolated sessions. Make an ordinary coding request without naming CodeMuster. Exercise off, update, review, and review_and_fix; settings changes, restart/resume, dirty work preservation, and worker recursion. Confirm scoped repair and configured tests without a repeated mode-selection question. |
-| 2 | Exact candidate release rehearsal | Review and commit the intended local changes, pass the hosted three-OS suite, and build/install/smoke the final packages through the no-publish workflow. Repeat upgrade and version-pin checks against those artifacts. |
-| 3 | Publishing authorization and delivery | Verify all seven npm package publishers; only the launcher was authenticated previously. Complete a successful tagged release and verify every package/version plus the matching plugin artifacts. The no-publish rehearsal cannot prove npm authorization. |
-| 4 | Published installation and daily use | Run the expanded P1–P8/N1–N4 cases in the submission packet against published artifacts, including missing/old CLI and failed install. Pilot a representative repository to check checkpoint frequency, useful scope, review cost, and repair/test outcomes before announcing broad daily-use readiness. |
+| 1 | Remaining published installation and upgrade cases | Fresh Windows x64 CLI installation and packaged workflow passed. Check fresh plugin installation, missing/old CLI, failed install, ledger upgrade, and exact-version pin/rollback against 0.2.8. Earlier 0.2.7 fixture results do not close these cases. |
+| 2 | Real proactive Claude/Codex acceptance | Install the matching plugin in fresh isolated sessions. Make an ordinary coding request without naming CodeMuster. Exercise off, update, review, and review_and_fix; settings changes, restart/resume, dirty work preservation, and worker recursion. Confirm scoped repair and configured tests without a repeated mode-selection question. |
+| 3 | Representative UX and daily-use pilot | Run the expanded P1–P8/N1–N4 cases in the submission packet and pilot a representative repository. Check checkpoint frequency, useful scope, review cost, the five UX experience areas, evidence freshness, and browser verification after an actual repair before announcing broad daily-use readiness. |
 
 Start with the real plugin-session cases in disposable repositories, then a scoped
 pilot in a working project. Use the repository's chosen automation mode and configure
@@ -53,8 +88,10 @@ making equivalent support claims. Official directory approval and maximum-scale
 benchmarking can follow a verified initial release; direct repository-marketplace use
 does not depend on an official directory listing.
 
-Current provider evidence: [hosted test run](https://github.com/TSCarterJr/CodeMuster/actions/runs/34848733860),
-[published release](https://github.com/TSCarterJr/CodeMuster/releases/tag/v0.2.0).
+Current provider evidence: [successful 0.2.8 release run, attempt 2](https://github.com/TSCarterJr/CodeMuster/actions/runs/35015077715),
+[published release and archives](https://github.com/TSCarterJr/CodeMuster/releases/tag/v0.2.8),
+[immutable source tag](https://github.com/TSCarterJr/CodeMuster/tree/v0.2.8),
+[npm launcher](https://www.npmjs.com/package/codemuster/v/0.2.8).
 
 ## Review scope and historical evidence
 
@@ -63,18 +100,19 @@ This is a setup and release-readiness assessment, not a claim that every source 
 ## Remediation status after the requested fixes
 
 The original findings below describe the pre-fix snapshot; their old line numbers are historical.
-The next release remains on hold for authenticated npm publisher verification, hosted candidate
-validation, and fresh published-plugin acceptance. Production fixes and workflow changes are
-local and uncommitted. Existing distribution work and recovery stashes are preserved.
+The fixes and distribution changes are committed in the 0.2.8 source tag. Hosted validation,
+builds, package smokes, publisher repair, and publication have passed. Fresh Windows x64
+published-CLI acceptance also passed; published-plugin and representative application
+acceptance remain open. Recovery stashes are preserved.
 
 | Item | Current result |
 |---|---|
-| R1: scope | Fixed locally. Single and parallel repairs use the same isolated coordinator. Validation edits outside allowed tracked paths abort and remain recoverable. Real CLI/Git regressions cover jobs 1 and 2. |
-| R2: commit ordering | Fixed locally. Commit precedes successful ledger recording. Rejected commits preserve edits and leave findings unfixed. Injected ledger failure after a successful commit preserves the commit and unresolved state. |
-| R3: runners | Both workflow files now use hosted runners. Live fork policy requires approval from all external contributors. Workflow migration takes effect after these changes are pushed. |
-| R4: release gates | Tag builds now depend on the reusable full three-OS test workflow. Installed-package smokes exercise SQLite, both mappers, orchestration and actual fixture validation. Main protection is enabled live with strict OS checks and enforced administrators. Hosted candidate run remains pending. |
-| R5: compatibility | Skill requires stable 0.2.7+, one explicit update attempt for an older CLI, capability checks, and respect for version pins. All source/generated/local copies match. Compatible public CLI must precede marketplace rollout. |
-| R6: publishing | Added immutable-integrity preflight and safe partial-publication resume; regression tested. npm login and step-up authentication succeeded for the launcher: its trusted publisher matches GitHub TSCarterJr/CodeMuster and release.yml with createPackage/createStagedPackage permissions. The darwin-arm64 check requests a separate EOTP challenge; all six platform publisher checks and a successful tag publication remain pending. |
+| R1: scope | Integrated in 0.2.8. Single and parallel repairs use the same isolated coordinator. Validation edits outside allowed tracked paths abort and remain recoverable. Real CLI/Git regressions cover jobs 1 and 2. |
+| R2: commit ordering | Integrated in 0.2.8. Commit precedes successful ledger recording. Rejected commits preserve edits and leave findings unfixed. Injected ledger failure after a successful commit preserves the commit and unresolved state. |
+| R3: runners | Both workflow files use hosted runners, including the completed 0.2.8 validation/build/smoke jobs. The previously verified fork policy requires approval from all external contributors. |
+| R4: release gates | Tag builds depend on the reusable full three-OS test workflow. Run 35015077715 passed those checks and the installed-package SQLite, mapper, orchestration, and fixture-validation smokes before attempting npm publication. Main protection remains enabled with strict OS checks and enforced administrators. |
+| R5: compatibility | Skill requires stable 0.2.7+, one explicit update attempt for an older CLI, capability checks, and respect for version pins. All source/generated/local copies match. Compatible CLI 0.2.8 is now published; fresh Windows x64 installation and packaged workflow passed. |
+| R6: publishing | Repaired six missing platform trusted publishers and verified all seven configurations. Tagged run 35015077715 attempt 2 published all seven packages from the original artifacts and created the GitHub release. Immutable-integrity preflight and partial-publication resume remain enforced; keep the original tag and archives. |
 | Adapter permissions | Codex shell tool disabled; OpenCode gets a named restricted agent; Gemini gets a temporary system allowlist with extensions/MCP disabled. Claude already has an allowlist. Automated contracts pass. These controls are not an OS sandbox. |
 | Rollback/cache | Exact `CODEMUSTER_VERSION` pin added to launcher; caches partition by platform/architecture. Real published 0.2.0 selected despite bundled 0.2.7, then unpin returned to 0.2.7. Older launcher must be upgraded to obtain this feature. |
 | Scale | Fix pack rendering now waits for a worker slot; oversized whole-file packs fail clearly before completion is recorded. No representative maximum-scale performance claim is made. |
@@ -83,14 +121,17 @@ local and uncommitted. Existing distribution work and recovery stashes are prese
 | Website | Listing/package homepage now points to the working GitHub repository. No custom-domain hosting repair is claimed. |
 | Live acceptance | Claude and Codex each confirmed a real addition defect, repaired it, passed configured assertions, force-verified resolution, and passed final validation in disposable repositories. Full fresh-plugin P1–P8/N1–N4 and live Gemini/OpenCode evaluation remain pending. |
 
-Final local checks: **831 .NET tests and 28 npm tests passed, zero skips**. Full
+### Historical LIVE1 validation — 2026-09-14
+
+At this earlier stage, **831 .NET tests and 28 npm tests passed, zero skips**. Full
 `dotnet format --verify-no-changes --no-restore`, `git diff --check`, generated
 plugin parity, four matching skill hashes, and Claude strict plugin validation
 passed. NuGet direct/transitive advisory scan reported no known vulnerabilities.
 The final self-contained Windows 0.2.7 packages were packed, installed into an
 isolated prefix, and passed `scripts/smoke-package.js`. A full-test attempt during
 a live CLI process failed from locked build DLLs; the clean rerun after process
-exit is the reported pass. No macOS/Linux candidate runtime result is implied.
+exit is the reported pass. These historical checks supplied no macOS/Linux runtime
+evidence; the current 0.2.8 tagged smokes above now cover those operating systems.
 
 Evidence retained locally under ignored `plugin-packages/readiness/` (candidate build, staged
 packages and installs), and these disposable folders:
@@ -124,7 +165,10 @@ remain older-revision evidence, not proof that this candidate is deployed.
 
 Hosted evidence: [test run](https://github.com/TSCarterJr/CodeMuster/actions/runs/34848733860), [tagged release run](https://github.com/TSCarterJr/CodeMuster/actions/runs/34762927801), [published release](https://github.com/TSCarterJr/CodeMuster/releases/tag/v0.2.0).
 
-## Original blockers
+## Original blockers (historical pre-fix snapshot)
+
+These descriptions preserve the original failures and requested outcomes. The remediation
+table and current 0.2.8 assessment above state which items are fixed and which gates remain.
 
 ### R1 — High: default serial fixing does not enforce the selected file boundary
 
@@ -164,16 +208,19 @@ Required outcome: define and check the minimum compatible CLI version or capabil
 
 ### R6 — Release gate: npm trusted publishing has not been proven working
 
-The latest tagged run failed on the first platform publish with npm E404 for @codemuster/darwin-arm64@0.2.0, reporting missing package or permission. This does not establish the precise authentication cause or prove the configuration is still broken today. The currently installed npm 10.9.0 cannot execute `npm trust list`, so this review could not inspect the current publisher configuration through that command.
+At the initial review, the latest tagged run failed on the first platform publish with npm E404 for @codemuster/darwin-arm64@0.2.0, reporting missing package or permission. That error did not establish the precise authentication cause. The installed npm 10.9.0 could not execute `npm trust list`, so that review could not inspect publisher configuration through the command. The current 0.2.8 failure is recorded separately above.
 
-Required outcome: verify publisher authorization for all seven packages and the release workflow identity, then retain evidence of a successful publish. A workflow-dispatch rehearsal does not exercise publish. Document recovery from partial publication: the current loop will fail on an already-published immutable version when rerun. Do not replace existing versions or assume a later manually created release proves the automation is repaired.
+Required outcome at that stage: verify publisher authorization for all seven packages and the release workflow identity, then retain evidence of a successful publish. A workflow-dispatch rehearsal does not exercise publish. The then-current loop failed on already-published immutable versions; the replacement publisher now checks integrity and safely resumes identical artifacts. Successful publication remains required evidence.
 
-## Additional issues and acceptance limits
+## Initial additional issues and acceptance limits (historical)
+
+The implementation concerns below describe the initial review or the stated intermediate
+stage. Read them alongside the remediation table; they are not a list of unfixed 0.2.8 defects.
 
 | Area | Assessment / next action |
 |---|---|
 | Agent permissions | D37 claims no fixer gets a shell. Claude explicitly limits tools, but Codex only chooses a sandbox (installed help describes it as the policy for model-generated shell commands); OpenCode selects the built-in build agent. OpenCode documents build as having all tools/system commands. Reconcile this contract and enforce the intended tool restrictions; a Git worktree is not an OS sandbox. Gemini's approval mode alone is not an explicit tool allowlist. No live misuse was attempted. [OpenCode agent documentation](https://opencode.ai/docs/agents/#use-build). |
-| Skill and hook setup | HOOK2 (2026-09-15) adds settings-driven proactive use and plugin-bundled session/edit context hooks; plugin init still skips duplicate project skills/change hooks. Current local validation passes 862 .NET and 40 npm tests, including deterministic hook-process fixtures. Fresh-session discovery and actual tool-triggered behavior still need live acceptance evidence. Standalone OpenCode is supported by skill install but not by integrated init's agent selection. |
+| Skill and hook setup | HOOK2 (2026-09-15) added settings-driven proactive use and plugin-bundled session/edit context hooks; plugin init still skips duplicate project skills/change hooks. Validation at that stage passed 862 .NET and 40 npm tests, including deterministic hook-process fixtures. Fresh-session discovery and actual tool-triggered behavior still need live acceptance evidence. Standalone OpenCode is supported by skill install but not by integrated init's agent selection. |
 | Live agent acceptance | Run P1–P8 and N1–N4 in docs/marketplace-submission.md with Claude/Codex, including proactive settings-driven use, resume, missing/old CLI, denied install, report-only requests, fix, decline recovery and final validation. Fake-agent tests prove orchestration, not model compliance or authentication. Qualify Gemini/OpenCode support unless tested too. |
 | npm rollback | The launcher chooses the newest cached or bundled binary. Installing an older npm version does not force a downgrade while a newer cached build remains; disabling automatic updates does not change this selection. Establish a tested version-pinning/rollback procedure before relying on emergency rollback. Cache directories are also not partitioned by architecture, relevant to native/Rosetta use on one home directory. |
 | Audit scale | Parallel fix eagerly renders every queued pack before starting workers (`Fix.cs:125`). Whole-file packs are not capped by the slice budget. Large repositories/files can create memory/context pressure. Benchmark representative large repositories before scale claims; no maximum-scale benchmark was run here. |
@@ -189,17 +236,23 @@ Required outcome: verify publisher authorization for all seven packages and the 
 - Verification distinguishes false positives from resolved defects, recovery retains reasons, and final validation fails without a configured command.
 - Parallel worktrees restrict integrated files, scoped commits preserve unrelated untracked work, and stash restoration retains a recovery reference.
 - npm uses platform packages and registry-integrity verification; plugin generation checks byte parity and includes license copies.
-- Documentation is explicit about local commits, no push, source coverage limits, prerequisites and plugin-versus-standalone setup.
+- Documentation distinguishes source delivery, hosted checks, publication, source coverage limits, prerequisites, and plugin-versus-standalone setup.
 
-Dimension assessment: correctness requires the serial-fix repairs; security requires runner separation and a truthful/enforced adapter boundary; performance is adequate for tested fixtures with large-repository evidence still missing; maintainability is generally good, with divergent serial/parallel fix implementations creating avoidable inconsistency.
+The initial dimension assessment called for serial-fix repairs, runner separation, and a
+truthful/enforced adapter boundary; these are addressed in the remediation table. Performance
+is established for tested fixtures only, with representative large-repository evidence still
+missing. The shared isolated repair coordinator removes the earlier serial/parallel divergence.
 
 ## Remaining release sequence
 
-1. Review and commit the local remediation and preserved distribution changes in deliberate scope. R1–R5 code fixes and adapter permission changes are implemented with regressions.
-2. Run full CI and a no-publish package rehearsal on the exact candidate revision. Exercise packaged init/scan/run/verify/fix/validate with deterministic fixtures on Windows, macOS and Linux; test old-version upgrades and rollback behavior.
-3. Verify npm publishing authorization/recovery, publish the compatible CLI, confirm all seven package versions, then make the matching repository marketplace available. Publication has not been performed by this remediation task.
-4. Run fresh-environment live-agent acceptance against published artifacts. Announce only the verified platforms/harnesses. Submit to official directories separately if desired.
+Source integration, the 0.2.8 tag, full three-OS validation, six platform builds, three
+installed-package smokes, publisher repair, and the publication jobs are complete for
+`bfe1290`. Fresh Windows x64 published-CLI installation and fixture workflow passed.
+
+1. Complete registry visibility/integrity verification for the Windows arm64 package.
+2. Complete the remaining published plugin installation, old-version ledger upgrade, and exact-version pin/rollback cases against 0.2.8.
+3. Complete proactive Claude/Codex sessions and a representative UX repair/reverification pilot. Announce only the verified platforms/harnesses and behaviors. Submit to official directories separately if desired.
 
 SARIF, hosted scans, Python/Go mappers, additional lenses, and frontend-to-backend graph joins are future scope, not prerequisites for a clearly described initial C#/TypeScript product.
 
-Disposable reproduction repositories retained at `C:/Users/timot/AppData/Local/Temp/codemuster-readiness-091a8f0e07a84f60b3ab8b3d804fa12d/` (scope and commit-failure). That was the initial review state. Subsequent production/workflow fixes and live GitHub protection changes are recorded above. No real-repository commit, push, workflow dispatch, or publication has been performed.
+Disposable reproduction repositories remain at `C:/Users/timot/AppData/Local/Temp/codemuster-readiness-091a8f0e07a84f60b3ab8b3d804fa12d/` (scope and commit-failure). They represent the initial review state. The subsequent source commits, immutable 0.2.8 tag, hosted checks, repaired publication, and fresh Windows CLI acceptance are recorded above; they supersede earlier statements that the work was uncommitted, unpushed, or unpublished.

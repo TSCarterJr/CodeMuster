@@ -272,7 +272,7 @@ publish a package or complete the remaining live-agent and release acceptance ga
 **Goal**: Produce a version 0.2.8 source snapshot with matching generated plugin manifests.
 **Success Criteria**: Source/generated metadata agree; existing package staging injects 0.2.8 into the CLI and all npm packages; protected-main checks pass.
 **Tests**: Plugin parity, npm release tests, strict plugin validation, diff checks, and hosted three-OS suite.
-**Status**: In Progress
+**Status**: Complete
 
 First hosted run 35013045638 passed Linux/Windows but failed one macOS Application
 test with RegexMatchTimeoutException in DeadCodeReview.DynamicInvocation. The
@@ -293,10 +293,39 @@ checks pass. Full receipts are under TestResults/release-0.2.8/full-suite/.
 **Goal**: Publish 0.2.8 through the existing release workflow without replacing older artifacts.
 **Success Criteria**: Tag resolves to the reviewed revision; full tests, platform builds and installed-runtime smokes pass; all seven npm packages and matching GitHub assets are published.
 **Tests**: Tagged workflow results, exact version/integrity metadata and release assets.
-**Status**: Not Started
+**Status**: In Progress
+
+Hosted revalidation 35014453684 passed on all three OSes. Protected main was
+fast-forwarded to bfe1290 and annotated tag v0.2.8 was pushed at that same revision.
+The first tagged workflow attempt reached publication but failed there.
+
+Tagged run 35015077715 passed all validation jobs, six platform builds, and all
+three installed-runtime smokes. npm then rejected the first darwin-arm64 upload
+with E404; checks then confirmed all seven 0.2.8 versions absent and latest at 0.2.0.
+Original packages, plugins, SHA512 manifest, logs and registry verification remain
+under TestResults/release-0.2.8/. npm login and publisher 2FA completed on a fresh challenge.
+Inspection found no trusted publisher on any of the six platform packages. Added
+GitHub TSCarterJr/CodeMuster / release.yml with direct-publish permission, verified
+all seven configurations, and reran failed jobs using the original archives.
+Publisher receipts are in TestResults/release-0.2.8/publishers-verified.json.
+Attempt 2 succeeded, publishing all seven packages and the GitHub release from the
+original archives. All nine GitHub asset SHA256 digests match retained bytes.
+Six registry versions/latest tags and SHA512 integrities match; the publish log
+reports Windows ARM64 is still processing at npm, and its metadata remains absent.
+No tag or artifact was replaced.
 
 ## Stage 30: Verify the published installation
 **Goal**: Make the new functionality available in a fresh install for Tim to test.
 **Success Criteria**: Published 0.2.8 installs in an isolated prefix and reports the requested version and application-review capabilities; release evidence and remaining live-host limits are recorded.
 **Tests**: Fresh npm install, version/help checks, packaged-runtime smoke, plugin version/parity and final repository state.
-**Status**: Not Started
+**Status**: Complete
+
+A fresh registry install in an isolated Windows x64 prefix/cache reports 0.2.8;
+next/fix help exposes UX and scoped repair. The installed launcher passed the real
+package smoke: init, C#/TS scan, ledger reopen, audit, verification, isolated fix,
+and configured fixture build. Receipts are published-install-verified.json,
+published-version.txt, published-next-help.txt, published-fix-help.txt and
+published-smoke.log under TestResults/release-0.2.8/. An initial ETARGET before
+registry propagation is retained; the later fresh install is the reported pass.
+This is not live proactive host-plugin or representative UX repair acceptance.
+Retain the broader plan until those staging/production pilot gates are complete.

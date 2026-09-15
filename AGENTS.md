@@ -2,22 +2,25 @@
 
 ## Current task status
 
-- 2026-09-15, codex: REL028 prepares version 0.2.8 at Tim's explicit request to
-  publish the new functionality for testing. The plugin source metadata and
-  generated manifests carry 0.2.8; the tag supplies the same version to the CLI,
-  npm launcher and all six platform packages. INT1 at 3920f9b is on main and passed
-  all three hosted OS checks. Publication uses the protected-main and tagged
-  release workflow, including full tests and installed-package smokes. Verify all
-  seven npm versions and a fresh installed CLI before calling the release usable.
-  Live proactive host-plugin and representative application UX acceptance remain
-  separate testing work. Existing stashes and ignored evidence remain preserved.
-  The first 0.2.8 PR run passed Linux/Windows but exposed a macOS dead-code regex
-  timeout on a small fixture. Fixed with ordinal keyword checks and linear-time
-  request matching without wall-clock limits, preserving Unicode boundaries and
-  conservative incomplete-map results. All 1,119 .NET tests pass locally, zero skips;
-  25 new cases cover difficult request input and keyword boundaries. Formatting,
-  diff and NuGet advisory checks pass. No 0.2.8 tag/package has been published yet;
-  hosted revalidation remains required. Logs and fail-first receipts are retained.
+- 2026-09-15, codex: REL028 publishes version 0.2.8 for Tim's functionality testing.
+  Release commit bfe1290 is on main and annotated tag v0.2.8 points to it. Fixed a
+  macOS dead-code regex timeout with ordinal token checks and linear-time request
+  matching, preserving Unicode boundaries and conservative incomplete-map results.
+  All 1,119 .NET and 40 npm tests pass, zero skips; formatting, plugin validation,
+  diff and NuGet advisory checks pass. Hosted run 35015077715 passed three-OS
+  validation, six platform builds and three installed-package smokes. Its first
+  publication failed with E404 because all six platform packages lacked trusted
+  publishers. After npm login/2FA, configured GitHub TSCarterJr/CodeMuster,
+  release.yml with direct-publish permission and verified all seven publishers.
+  Attempt 2 reran only failed jobs and published the original archives. All nine
+  GitHub release asset SHA256 digests match the retained bytes. Six npm package
+  versions/latest tags and SHA512 integrities match; npm reports Windows ARM64
+  publication is still processing. Fresh registry installation on Windows x64 reports 0.2.8,
+  exposes UX/scoped-repair commands, and passes init, C#/TS scan, ledger reopen,
+  audit, verification, isolated fix and configured fixture-build validation.
+  Evidence is under ignored TestResults/release-0.2.8/. Do not move the tag or
+  rebuild published versions. Live proactive host-plugin and representative UX
+  repair/reverification remain separate pilot work. Both stashes are preserved.
 - 2026-09-15, codex: INT1 integrates the completed candidate for Tim's explicit
   commit/push-to-main request. This snapshot includes the shared distribution and
   setup work, isolated repair/release safeguards, settings-driven proactive hooks,
