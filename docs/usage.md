@@ -420,6 +420,7 @@ and manage them.
 | `done <unit>` | Required `--fingerprint <fp>` and `--findings <json-file>` |
 | `skill install` | Required `--for claude\|codex\|gemini\|opencode`, optional `--global` |
 | `update` | `--check` to check without installing; handled by the npm launcher |
+| `intelligent-config` | `--agent` (default codex), `--model`, `--effort`; apply AI-recommended config additions after init |
 
 `--version` prints the version. `--help`, `-h`, and `help` show the overview. Command-specific
 help accepts `codemuster help fix` or `codemuster fix --help`.
@@ -428,16 +429,73 @@ For manual sessions, `next` prints packs and `done` records responses using the 
 fingerprint, and JSON schema. Reading a pack does not reserve it. Use one coordinator rather than
 several independent manual writers.
 
+## Intelligent configuration
+
+`codemuster intelligent-config` uses Codex by default. Select another supported harness with
+`--agent claude`, `--agent gemini`, or `--agent opencode`; `--model` and `--effort` use the same
+pass-through settings as audit commands (Gemini does not support effort). Run `init` first.
+The command shows the agent settings and the same interactive countdown before its one AI call.
+
+The AI receives the current configuration, tracked-file inventory and language counts, plus
+bounded manifest and representative source samples. It is configuration discovery, not an
+exhaustive source audit. Inventory and sample truncation are identified in the context.
+Document/data files and unrecognized formats such as `.env` and `.pem` are not sampled as
+source; selected build/package manifests provide setup evidence. No untracked files are scanned.
+
+Validated recommendations are applied immediately:
+
+- Add exclusions for evidenced generated/vendor/build output. Patterns must match tracked paths;
+  a recommendation excluding all remaining source is rejected.
+- Add focused lenses using the existing `globs`, `languages` and `instructions` fields. Existing
+  lens definitions are preserved, and new lenses must match included source.
+- Fill an empty `test_command` from detected `.sln`/`.slnx` solutions or `package.json` test scripts.
+  Existing commands are preserved. Discovery configures a command; it does not run it.
+
+The command preserves all other settings, including automation permissions, verification,
+vulnerability checks, budgets and optional review toggles, as well as unknown config properties.
+It prints the changes and their reasons. Before replacement, the exact original config is saved
+as `.codemuster/config.backup-<UTC timestamp>.json` (with a suffix when necessary). A changed config
+is written atomically. Invalid responses, cancellation before application, or config edits made
+during analysis prevent application. The ledger is not opened or changed.
+
+Review the resulting config diff and run `codemuster scan` to refresh the audit scope. To undo a
+configuration change, copy the reported backup over `.codemuster/config.json`, then rescan.
+Use `codemuster validate` separately when you want to execute the configured test command.
+
 ## Exit codes and updates
 
 `0` means the command completed successfully, not that no findings exist. `1` means a runtime
 failure, cancellation, or exhausted retries. `2` generally means invalid usage or missing setup.
 `next` with no pending work exits successfully. `doctor` exits `1` when its checks are not ready.
 
-The npm launcher checks for updates at most daily, verifies the downloaded package's integrity,
-and uses the new build on a later command. `CI` or `CODEMUSTER_NO_UPDATE` disables automatic
-checks. Explicit `update` remains available; `update --check` does not install. Updating the CLI
-does not replace the binary already running in another process.
+The npm launcher checks update availability on every normal invocation, including `scan`,
+`init`, `verify`, `report`, and `--version`. It prints the installed/latest version status to
+stderr so command stdout remains usable. The check has a two-second timeout; offline, timed-out
+or invalid registry responses print that the check was unavailable and let your command continue.
+It never claims you are up to date when the check fails.
+
+Available updates still install in the background at most daily, with package-integrity
+verification, and take effect on a later command. `CI`, `CODEMUSTER_NO_UPDATE`, and exact
+version pins disable automatic checks and downloads. Explicit `update` remains available when
+not pinned; `update --check` does not install. Updating does not replace a running binary.
+
+[`CHANGELOG.md`](../CHANGELOG.md) records changes by version and ships in every npm package.
+After a successful `codemuster update`, the launcher displays each release newer than the old
+version through the installed version, excluding Unreleased and later entries. Older packages
+without notes still install successfully and say that release notes were not included.
+Run `npm install -g codemuster` to get updated launcher JavaScript; binary self-updates alone
+cannot add these new notices to an older launcher.
+
+Before `run`, `verify`, `fix`, or `intelligent-config` calls any agents, a preview prints the maximum worker count,
+provider, model and thinking/effort setting to stderr. `-j 50` means up to 50 concurrent calls;
+fewer pending units may use fewer workers. The preview reflects the values requested with
+`--model` and `--effort`. Omitted values say `provider default`, because the external agent owns
+those defaults; Gemini's unsupported effort setting says `not supported`.
+
+Interactive terminals show a ten-second countdown. Enter starts immediately; Escape or Ctrl+C
+cancels so you can rerun with different settings. Verification refresh, force requeue and fix
+work start after the countdown. CI or redirected input/output skips the wait while retaining
+the settings preview. Commands that do not launch agents have no countdown.
 
 
 ## Recovery, process ownership, and supported limits

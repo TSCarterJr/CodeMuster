@@ -6,6 +6,16 @@ namespace CodeMuster.Infrastructure.Tests;
 public class FakeAgentAdapterTests
 {
     [Fact]
+    public async Task RawResponseMode_ReturnsConfigurationWithoutAnAnalysisEnvelope()
+    {
+        const string response = "{\"changes\":{},\"reasons\":{}}";
+        var adapter = new FakeAgentAdapter(response, "test-model", "high", rawResponse: true);
+
+        Assert.Equal(response, await adapter.RunAsync("configuration context", CancellationToken.None));
+        Assert.Equal("test-model", adapter.Identity.Model);
+    }
+
+    [Fact]
     public void DefaultTemplate_is_the_sample_formatting_with_no_findings()
     {
         Assert.Equal("{\n  \"summary\": \"fake analysis\",\n  \"findings\": []\n}", FakeAgentAdapter.DefaultTemplate);

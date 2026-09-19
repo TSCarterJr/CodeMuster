@@ -69,6 +69,12 @@ For CLI changes, cover the real binary's exit code and output where practical. K
 READMEs aligned. Update [the user guide](usage.md) and command help when an option or workflow
 changes. Do not advertise planned features as available.
 
+Maintain user-visible changes under `Unreleased` in the root `CHANGELOG.md`. Before a release,
+move that section to `## X.Y.Z - YYYY-MM-DD`. Stable package staging requires a nonempty entry
+for the target version and includes the complete changelog in the launcher and every platform
+package. Use the same version entry for GitHub release notes. Do not edit already-published
+package bytes to retrofit notes.
+
 The release workflow builds self-contained platform packages and injects the release version.
 Development builds do not constitute published releases. Local installs and published versions
 use plain `0.#.#` versions; do not add a `-local` suffix. Installing, tagging, and publishing are

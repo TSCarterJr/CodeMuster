@@ -14,7 +14,7 @@ public static class Program
 {
     public const string Usage = HelpText.Overview;
 
-    private static readonly string[] Verbs = ["init", "doctor", "scan", "status", "estimate", "next", "done", "run", "verify", "report", "skill", "fix", "hook", "validate"];
+    private static readonly string[] Verbs = ["init", "intelligent-config", "doctor", "scan", "status", "estimate", "next", "done", "run", "verify", "report", "skill", "fix", "hook", "validate"];
 
     private static readonly string[] KindNames = Enum.GetNames<UnitKind>().Select(name => name.ToLowerInvariant()).ToArray();
 
@@ -126,9 +126,11 @@ public static class Program
             return await InitAsync(command, repoRoot, fileSystem, tree, cancellationToken);
         }
 
-        using var coordinator = command.Verb is "scan" or "run" or "verify" or "fix" or "next" or "done" or "validate"
+        using var coordinator = command.Verb is "scan" or "run" or "verify" or "fix" or "next" or "done" or "validate" or "intelligent-config"
             ? await CoordinatorLock.AcquireAsync(repoRoot, cancellationToken) : null;
         var config = await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken);
+        if (command.Verb == "intelligent-config")
+            return await IntelligentConfigAsync(command, repoRoot, fileSystem, tree, cancellationToken);
         using var ledger = await SqliteLedger.OpenAsync(Path.Combine(repoRoot, ".codemuster", "ledger.db"), cancellationToken);
         var clock = new SystemClock();
         if (command.Verb is "status" or "report" or "fix" or "verify" && await changes.HasChangesAsync(cancellationToken))
@@ -260,6 +262,7 @@ public static class Program
             if (options.Parallelism != 1 || options.Path is null || !tracked.Contains(options.Path) || options.RelatedFiles.Any(p => !tracked.Contains(p)))
                 throw new ArgumentException("--include-related requires -j 1, an exact tracked --path, and exact existing tracked related files");
         }
+        await PreviewAgentAsync(adapter.Identity, options.Parallelism, clock, cancellationToken);
         var concurrency = options.Parallelism == 1 ? "one file at a time" : string.Create(CultureInfo.InvariantCulture, $"up to {options.Parallelism} files at a time");
         Console.WriteLine($"fixing with {command.Options["agent"]}, {concurrency}; each file it changes becomes a commit");
         ITestRunner? tests = config.TestCommand.Count > 0 ? new CommandTestRunner(repoRoot, config.TestCommand) : null;
@@ -338,13 +341,14 @@ public static class Program
             command.Options.GetValueOrDefault("model"),
             command.Options.GetValueOrDefault("effort"));
         var kind = command.Verb == "verify" ? "verify" : command.Options.GetValueOrDefault("kind");
-        if (kind == "verify") await new RefreshVerification(ledger, tree, config, new GitBlobHasher(repoRoot)).RunAsync(cancellationToken);
         var options = new RunOptions(
             int.Parse(command.Options.GetValueOrDefault("jobs", "1")),
             int.Parse(command.Options.GetValueOrDefault("attempts", "3")),
             command.Flags.Contains("force"),
             kind is null ? null : Enum.Parse<UnitKind>(kind, ignoreCase: true),
             command.Options.GetValueOrDefault("path"));
+        await PreviewAgentAsync(adapter.Identity, options.Parallelism, clock, cancellationToken);
+        if (kind == "verify") await new RefreshVerification(ledger, tree, config, new GitBlobHasher(repoRoot)).RunAsync(cancellationToken);
         Console.WriteLine($"running {command.Options["agent"]} on up to {options.Parallelism} unit(s) at a time; a line prints as each unit finishes");
         var result = await new Run(ledger, tree, clock, config, adapter, new RunProgressWriter(Console.Out), new ProgressWriter(Console.Out)).RunAsync(options, cancellationToken);
         foreach (var unitId in result.GaveUp)
@@ -355,6 +359,39 @@ public static class Program
         var skipped = result.Skipped.Count == 0 ? "" : $", {result.Skipped.Count} skipped";
         Console.WriteLine((result.Cancelled ? $"cancelled after {result.Completed} unit(s)" : $"completed {result.Completed} unit(s), {result.GaveUp.Count} gave up") + skipped);
         return result.Cancelled || result.GaveUp.Count > 0 ? 1 : 0;
+    }
+
+    private static Task PreviewAgentAsync(AgentIdentity identity, int parallelism, IClock clock, CancellationToken cancellationToken)
+    {
+        var interactive = !Console.IsInputRedirected && !Console.IsOutputRedirected && !Console.IsErrorRedirected
+            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI"));
+        return new AgentStartPreview(Console.Error, clock,
+            () => Console.KeyAvailable ? Console.ReadKey(intercept: true).Key : null,
+            Task.Delay).RunAsync(identity, parallelism, interactive, cancellationToken);
+    }
+
+    private static async Task<int> IntelligentConfigAsync(Command command, string repoRoot, IFileSystem fileSystem, ISourceTree tree, CancellationToken cancellationToken)
+    {
+        var name = command.Options.GetValueOrDefault("agent", "codex");
+        var model = command.Options.GetValueOrDefault("model");
+        var effort = command.Options.GetValueOrDefault("effort");
+        var template = Environment.GetEnvironmentVariable("CODEMUSTER_FAKE_RESPONSE");
+        IAgentAdapter adapter = name == "fake"
+            ? new FakeAgentAdapter(template is null ? "{\"changes\":{},\"reasons\":{}}" : await fileSystem.ReadAllTextAsync(template, cancellationToken), model, effort, rawResponse: true)
+            : AgentAdapters.Create(name, null, model, effort, workingDirectory: repoRoot);
+        var clock = new SystemClock();
+        await PreviewAgentAsync(adapter.Identity, 1, clock, cancellationToken);
+        Console.WriteLine("inspecting repository structure and configuration with the selected agent...");
+        var result = await new IntelligentConfig(tree, fileSystem, adapter, clock).RunAsync(repoRoot, cancellationToken);
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"inspected {result.TrackedFiles} tracked file paths with bounded manifest/source samples"));
+        foreach (var change in result.Changes) Console.WriteLine($"- {change}");
+        if (result.Changed)
+        {
+            Console.WriteLine($"updated .codemuster/config.json; backup: {result.BackupPath}");
+            Console.WriteLine("run codemuster scan to apply the new audit scope; configured test commands have not been executed");
+        }
+        else Console.WriteLine("no configuration changes needed");
+        return 0;
     }
 
     private static async Task<int> InitAsync(Command command, string repoRoot, PhysicalFileSystem fileSystem, GitSourceTree tree, CancellationToken cancellationToken)
@@ -389,6 +426,8 @@ public static class Program
 
     private static bool HasRequiredArguments(Command command) => command.Verb switch
     {
+        "intelligent-config" => command.Flags.Count == 0 && command.Positionals.Count == 0
+            && command.Options.Keys.All(k => k is "agent" or "model" or "effort"),
         "init" => command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "for")
             && command.Flags.All(f => f is "yes" or "no-gitignore" or "no-hooks" or "no-skills")
             && !(command.Flags.Contains("no-skills") && command.Options.ContainsKey("for")),

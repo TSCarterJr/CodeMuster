@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { releases } = require('./changelog');
 
 const REGISTRY = 'https://registry.npmjs.org';
 const DAY = 24 * 60 * 60 * 1000;
@@ -112,13 +113,49 @@ function tar(args) {
   childProcess.execFileSync(command, args, { stdio: 'pipe' });
 }
 
-async function getJson(url) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(60000), headers: { accept: 'application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8' } });
+async function getJson(url, timeoutMs = 60000) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), headers: { accept: 'application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8' } });
   if (!response.ok) {
     throw new Error(`GET ${url} returned ${response.status}`);
   }
 
   return response.json();
+}
+
+async function checkForUpdate({ currentVersion, registry = REGISTRY, timeoutMs = 2000, out = process.stderr }) {
+  try {
+    const packument = await getJson(`${registry}/codemuster`, timeoutMs);
+    const latest = packument['dist-tags']?.latest;
+    if (typeof latest !== 'string' || !VERSION.test(latest)) throw new Error('the registry named no valid latest version');
+    const comparison = compareVersions(latest, currentVersion);
+    if (comparison > 0) {
+      out.write(`codemuster ${latest} is available; running ${currentVersion}. Run codemuster update to install it.\n`);
+    } else if (comparison === 0) {
+      out.write(`codemuster ${currentVersion} is up to date\n`);
+    } else {
+      out.write(`codemuster ${currentVersion} is newer than the latest published version (${latest})\n`);
+    }
+    return latest;
+  } catch {
+    out.write(`codemuster: update check unavailable; continuing with ${currentVersion}\n`);
+    return null;
+  }
+}
+
+function showChanges(dir, currentVersion, latest, out) {
+  let entries = [];
+  try {
+    entries = releases(fs.readFileSync(path.join(dir, 'CHANGELOG.md'), 'utf8'))
+      .filter((entry) => compareVersions(entry.version, currentVersion) > 0 && compareVersions(entry.version, latest) <= 0)
+      .sort((a, b) => compareVersions(b.version, a.version));
+  } catch {
+  }
+  if (entries.length === 0) {
+    out.write('Release notes were not included in this package.\n');
+    return;
+  }
+  out.write(`\nWhat's changed since ${currentVersion}:\n\n`);
+  for (const entry of entries) out.write(`${entry.version}\n${entry.body}\n\n`);
 }
 
 async function installVersion({ registry, version, versionsDir, platform, arch }) {
@@ -250,8 +287,9 @@ async function updateNow({ args, stateDir, platform, arch, currentVersion, regis
 
   out.write(`updating codemuster ${currentVersion} to ${latest}\n`);
   const versionsDir = versionsDirectory(stateDir, platform, arch);
+  let installedDir;
   try {
-    await installVersion({ registry, version: latest, versionsDir, platform, arch });
+    installedDir = await installVersion({ registry, version: latest, versionsDir, platform, arch });
   } catch (error) {
     out.write(`codemuster: ${latest} could not be installed: ${error.message}\n`);
     return 1;
@@ -260,13 +298,14 @@ async function updateNow({ args, stateDir, platform, arch, currentVersion, regis
   fs.mkdirSync(stateDir, { recursive: true });
   fs.writeFileSync(path.join(stateDir, 'last-update-check'), String(Date.now()));
   out.write(`codemuster ${latest} is ready; the next command uses it\n`);
+  showChanges(installedDir, currentVersion, latest, out);
   return 0;
 }
 
 async function main(args, env = process.env) {
   if ((args[0] === 'update' && args.slice(1).some((arg) => arg === '--help' || arg === '-h'))
       || (args.length === 2 && args[0] === 'help' && args[1] === 'update')) {
-    process.stdout.write('usage: codemuster update [--check]\n\nUpdate CodeMuster itself through the npm launcher.\n  --check   Show the available version without installing it\n\nAutomatic background checks can be disabled with CI or CODEMUSTER_NO_UPDATE.\n');
+    process.stdout.write('usage: codemuster update [--check]\n\nUpdate CodeMuster itself and show the intervening release notes.\n  --check   Show the available version without installing it\n\nNormal commands check availability with a two-second timeout.\nAutomatic checks and background updates can be disabled with CI or CODEMUSTER_NO_UPDATE.\n');
     return 0;
   }
 
@@ -292,10 +331,18 @@ async function main(args, env = process.env) {
     return updateNow({ args: args.slice(1), stateDir, platform, arch, currentVersion: build.version });
   }
 
-  if (shouldCheckForUpdate({ env, now: Date.now(), lastCheck: readLastCheck(stateDir) })) {
-    childProcess
-      .spawn(process.execPath, [path.join(__dirname, 'update.js'), stateDir, build.version], { detached: true, stdio: 'ignore', windowsHide: true })
-      .unref();
+  if (!env.CI && !env.CODEMUSTER_NO_UPDATE && !pinnedVersion) {
+    const latest = await checkForUpdate({ currentVersion: build.version });
+    if (latest && compareVersions(latest, build.version) > 0
+        && shouldCheckForUpdate({ env, now: Date.now(), lastCheck: readLastCheck(stateDir) })) {
+      try {
+        childProcess
+          .spawn(process.execPath, [path.join(__dirname, 'update.js'), stateDir, build.version], { detached: true, stdio: 'ignore', windowsHide: true })
+          .on('error', () => {})
+          .unref();
+      } catch {
+      }
+    }
   }
 
   return runBuild(build.binary, args);
@@ -306,6 +353,7 @@ module.exports = {
   versionsDirectory,
   binaryName,
   compareVersions,
+  checkForUpdate,
   installVersion,
   main,
   newestBuild,

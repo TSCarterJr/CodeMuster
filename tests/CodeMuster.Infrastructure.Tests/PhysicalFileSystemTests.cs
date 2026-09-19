@@ -5,6 +5,24 @@ namespace CodeMuster.Infrastructure.Tests;
 public class PhysicalFileSystemTests
 {
     [Fact]
+    public async Task AtomicWrite_ReplacesText_AndCancellationPreservesOriginal()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "codemuster-config-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "config.json");
+        IFileSystem fs = new PhysicalFileSystem();
+        await fs.WriteAllTextAsync(path, "original", CancellationToken.None);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fs.WriteAllTextAtomicallyAsync(path, "cancelled", cancellation.Token));
+        Assert.Equal("original", await File.ReadAllTextAsync(path));
+        await fs.WriteAllTextAtomicallyAsync(path, "{\"name\":\"héllo\"}", CancellationToken.None);
+        Assert.Equal("{\"name\":\"héllo\"}", await File.ReadAllTextAsync(path));
+        Assert.Single(Directory.GetFiles(dir));
+    }
+
+    [Fact]
     public async Task FileExists_and_ReadAllTextAsync_round_trip_in_a_temp_dir()
     {
         var dir = Path.Combine(Path.GetTempPath(), "codemuster-tests", Guid.NewGuid().ToString("N"));

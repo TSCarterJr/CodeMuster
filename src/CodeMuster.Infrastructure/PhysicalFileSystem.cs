@@ -26,4 +26,21 @@ public sealed class PhysicalFileSystem : IFileSystem
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         return File.WriteAllTextAsync(path, content, Utf8NoBom, cancellationToken);
     }
+
+    public async Task WriteAllTextAtomicallyAsync(string path, string content, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        var temporary = path + ".tmp-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            await File.WriteAllTextAsync(temporary, content, Utf8NoBom, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(temporary, path, overwrite: true);
+        }
+        finally
+        {
+            File.Delete(temporary);
+        }
+    }
 }

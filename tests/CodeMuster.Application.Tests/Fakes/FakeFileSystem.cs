@@ -8,6 +8,7 @@ public sealed class FakeFileSystem : IFileSystem
     public Dictionary<string, byte[]> BinaryFiles { get; } = [];
 
     public int Writes { get; private set; }
+    public bool FailAtomicWrite { get; set; }
 
     public bool FileExists(string path) => Files.ContainsKey(path) || BinaryFiles.ContainsKey(path);
 
@@ -25,5 +26,12 @@ public sealed class FakeFileSystem : IFileSystem
         Files[path] = content;
         Writes++;
         return Task.CompletedTask;
+    }
+
+    public Task WriteAllTextAtomicallyAsync(string path, string content, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (FailAtomicWrite) throw new IOException("simulated atomic replacement failure");
+        return WriteAllTextAsync(path, content, cancellationToken);
     }
 }
