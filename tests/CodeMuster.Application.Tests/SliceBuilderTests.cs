@@ -179,7 +179,7 @@ public class SliceBuilderTests
 
         Assert.Equal(new[] { UnitIds.Orphan(RepositoryPath), UnitIds.Orphan(ServicePath) }, units.Where(u => u.Kind == UnitKind.Orphan).Select(u => u.Id));
         Assert.Equal(RepositoryConstructor, Assert.Single(units.Single(u => u.Id == UnitIds.Orphan(RepositoryPath)).Members).Symbol);
-        var files = new[] { ".gitignore", "Directory.Build.props", "MixedRepo.sln", QuotePath, "src/MixedRepo.Api/MixedRepo.Api.csproj", ProgramPath, InterfacePath, BarrelPath, PackageJsonPath, "web/tsconfig.json" };
+        var files = new[] { QuotePath, ProgramPath, InterfacePath, BarrelPath };
         Assert.Equal(files.Select(UnitIds.File), units.Where(u => u.Kind == UnitKind.File).Select(u => u.Id));
         Assert.All(units.Where(u => u.Kind == UnitKind.File), u =>
         {

@@ -20,28 +20,48 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
         using var turn = new SemaphoreSlim(1, 1);
         var attempts = new Dictionary<string, int>(StringComparer.Ordinal);
         var gaveUp = new List<string>();
+        var skipped = new List<string>();
         var completed = 0;
 
         try
         {
             while (true)
             {
-                var packs = (await next.RunAsync(options.Parallelism + gaveUp.Count, cancellationToken))
-                    .Where(pack => !gaveUp.Contains(pack.UnitId))
+                var units = (await ledger.NextAsync(options.Parallelism + gaveUp.Count, options.Kind, options.Path, cancellationToken))
+                    .Where(unit => !gaveUp.Contains(unit.Id))
                     .Take(options.Parallelism)
                     .ToList();
-                if (packs.Count == 0)
+                if (units.Count == 0)
                 {
-                    return new RunResult(completed, gaveUp, false);
+                    return new RunResult(completed, gaveUp, false) { Skipped = skipped };
                 }
 
-                total = completed + (await NeedingWorkAsync(options.Kind, options.Path, cancellationToken)).Count;
+                total = completed + skipped.Count + (await NeedingWorkAsync(options.Kind, options.Path, cancellationToken)).Count;
+                var packs = new List<UnitPack>(units.Count);
+                foreach (var unit in units)
+                {
+                    try
+                    {
+                        packs.Add(await next.ForUnitAsync(unit.Id, cancellationToken));
+                    }
+                    catch (PackTooLargeException ex)
+                    {
+                        await ledger.SkipUnitAsync(unit.Id, unit.Fingerprint, ex.Message, cancellationToken);
+                        skipped.Add(unit.Id);
+                        progress.Report(new RunProgress(unit.Id, unit.Kind, unit.Key, 0, DoneOutcome.Skipped,
+                            "skipped: " + ex.Message, completed, total));
+                    }
+                    catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        Record(unit.Id, unit.Kind, unit.Key, new DoneResult(DoneOutcome.Rejected, ex.Message));
+                    }
+                }
                 await Task.WhenAll(packs.Select(AttemptAsync));
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return new RunResult(completed, gaveUp, true);
+            return new RunResult(completed, gaveUp, true) { Skipped = skipped };
         }
 
         async Task AttemptAsync(UnitPack pack)
@@ -75,7 +95,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
             try
             {
                 var result = failure ?? await done.RunAsync(pack.UnitId, pack.Fingerprint, ResponseText.ExtractJson(text), cancellationToken);
-                Record(pack, result);
+                Record(pack.UnitId, pack.Kind, pack.Key, result);
             }
             finally
             {
@@ -83,9 +103,8 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
             }
         }
 
-        void Record(UnitPack pack, DoneResult result)
+        void Record(string unitId, UnitKind kind, string key, DoneResult result)
         {
-            var unitId = pack.UnitId;
             var attempt = attempts.GetValueOrDefault(unitId) + 1;
             attempts[unitId] = attempt;
             var message = result.Message;
@@ -99,7 +118,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                 message = string.Create(CultureInfo.InvariantCulture, $"gave up after {attempt} attempt(s): {result.Message}");
             }
 
-            progress.Report(new RunProgress(unitId, pack.Kind, pack.Key, attempt, result.Outcome, message, completed, total));
+            progress.Report(new RunProgress(unitId, kind, key, attempt, result.Outcome, message, completed, total));
         }
     }
 
@@ -125,10 +144,12 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
     private async Task RestaleDoneUnitsAsync(UnitKind? kind, string? path, CancellationToken cancellationToken)
     {
         var done = (await ledger.GetUnitsAsync(cancellationToken))
-            .Where(u => u.Status == UnitStatus.Done && u.Kind is not (UnitKind.Dependency or UnitKind.DeadCode) && (kind is null ? u.Kind != UnitKind.Fix : u.Kind == kind))
+            .Where(u => u.Status is UnitStatus.Done or UnitStatus.Skipped && u.Kind is not (UnitKind.Dependency or UnitKind.DeadCode) && (kind is null ? u.Kind != UnitKind.Fix : u.Kind == kind))
             .ToList();
         var stale = (await UnderPathAsync(done, path, cancellationToken))
-            .Select(u => u with { Status = UnitStatus.Stale })
+            .Select(u => u.Status == UnitStatus.Skipped
+                ? u with { Status = UnitStatus.Pending, Summary = null, SummaryHash = null }
+                : u with { Status = UnitStatus.Stale })
             .ToList();
         if (stale.Count == 0)
         {

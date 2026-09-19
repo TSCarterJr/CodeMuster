@@ -8,6 +8,31 @@ public class SqliteLedgerUnitTests
     private const string At = "2026-09-10T03:00:00.0000000Z";
 
     [Fact]
+    public async Task SkipUnit_PersistsReasonAndHistory_AndRejectsAChangedFingerprint()
+    {
+        using var temp = new TempDirectory();
+        var unit = Pending("src/Large.cs");
+        var member = Member(unit, "hash");
+        using (var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None))
+        {
+            await ledger.UpsertUnitsAsync([unit], [member], CancellationToken.None);
+            await ledger.RecordAnalysisAsync(new Analysis(unit.Id, unit.Fingerprint, "lens", At, true, "old summary", null),
+                [new Finding(unit.Key, 1, 1, Severity.High, "bug", "retained claim", "evidence", 1, "default")], CancellationToken.None);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => ledger.SkipUnitAsync(unit.Id, "wrong", "wrong skip", CancellationToken.None));
+            Assert.Equal(UnitStatus.Done, (await ledger.GetUnitAsync(unit.Id, CancellationToken.None))!.Status);
+            await ledger.SkipUnitAsync(unit.Id, unit.Fingerprint, "too large", CancellationToken.None);
+        }
+
+        using var reopened = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+        var skipped = await reopened.GetUnitAsync(unit.Id, CancellationToken.None);
+        Assert.Equal(UnitStatus.Skipped, skipped!.Status);
+        Assert.Equal("too large", skipped.Summary);
+        Assert.Equal("retained claim", Assert.Single(await reopened.GetCurrentFindingsAsync(CancellationToken.None)).Finding.Claim);
+        Assert.Equal([member], await reopened.GetMembersAsync([unit.Id], CancellationToken.None));
+        Assert.Empty(await reopened.NextAsync(1, null, null, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task GetUnit_ReturnsNullForUnknownId()
     {
         using var temp = new TempDirectory();

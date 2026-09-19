@@ -5,7 +5,7 @@ using CodeMuster.Domain;
 namespace CodeMuster.Application;
 
 /// <summary>Hands out the next units that need work, each as one markdown pack (D01). A verify unit's pack asks the model to refute its finding instead of auditing (D27).</summary>
-public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool interactive = true, UnitKind? kind = null, string? path = null)
+public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool interactive = true, UnitKind? kind = null, string? path = null, IProgress<string>? notes = null)
 {
     private const string FixInstructions =
         "Fix the confirmed findings below in the file under Files. Change only what a finding calls for, keep the file's existing style, "
@@ -25,8 +25,23 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
     /// <summary>Builds a pack for up to <paramref name="batch"/> units; empty when nothing needs work.</summary>
     public async Task<IReadOnlyList<UnitPack>> RunAsync(int batch, CancellationToken cancellationToken)
     {
-        var units = await ledger.NextAsync(batch, kind, path, cancellationToken);
-        return await BuildAsync(units, cancellationToken);
+        var packs = new List<UnitPack>();
+        while (packs.Count < batch)
+        {
+            var units = (await ledger.NextAsync(batch, kind, path, cancellationToken))
+                .Where(unit => packs.All(pack => pack.UnitId != unit.Id)).ToList();
+            if (units.Count == 0) break;
+            foreach (var unit in units)
+            {
+                try { packs.Add(await ForUnitAsync(unit.Id, cancellationToken)); }
+                catch (PackTooLargeException ex)
+                {
+                    await ledger.SkipUnitAsync(unit.Id, unit.Fingerprint, ex.Message, cancellationToken);
+                    notes?.Report("skipped: " + ex.Message);
+                }
+            }
+        }
+        return packs;
     }
 
     /// <summary>Builds one selected unit only when a worker slot is available.</summary>
@@ -103,7 +118,7 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
             if (member.Range is not { } range)
             {
                 if (content.Length > (long)config.SliceTokenBudget * 4)
-                    throw new InvalidOperationException($"{member.Path} exceeds the whole-file pack limit; increase slice_token_budget deliberately or split the file before retrying; no coverage was recorded");
+                    throw new PackTooLargeException(member.Path);
                 used += content.Length / 4;
                 parts.Add(new Part(member, content, false));
                 continue;

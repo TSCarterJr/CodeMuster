@@ -49,16 +49,17 @@ public class SliceScanTests
 
         var result = await ScanAsync();
 
-        Assert.Equal((20, 4, 17, 0, 17), (result.FilesIncluded, result.FilesExcluded, result.UnitsCreated, result.UnitsStale, result.UnitsTotal));
+        Assert.Equal((14, 10, 11, 0, 11), (result.FilesIncluded, result.FilesExcluded, result.UnitsCreated, result.UnitsStale, result.UnitsTotal));
         var slice = Assert.IsType<SliceModeResult>(result.SliceMode);
-        Assert.Equal((5, 2, 10, 0.875), (slice.Slices, slice.Orphans, slice.Files, slice.ResolutionRate));
+        Assert.Equal((5, 2, 4, 0.875), (slice.Slices, slice.Orphans, slice.Files, slice.ResolutionRate));
         Assert.Equal(new[] { "typescript: no jsx factory" }, slice.Diagnostics);
 
         var run = Assert.Single(ledger.Runs);
-        Assert.Equal((20, 4, 17, 0.875), (run.FilesIncluded, run.FilesExcluded, run.UnitsTotal, run.ResolutionRate));
+        Assert.Equal((14, 10, 11, 0.875), (run.FilesIncluded, run.FilesExcluded, run.UnitsTotal, run.ResolutionRate));
         Assert.Equal(new[] { "GetService", "fetch" }, run.TopUnresolvedNames);
 
-        var included = ledger.Files.Values.Where(f => f.ExcludedReason is null).Select(f => f.Path).ToList();
+        var included = ledger.Files.Values.Where(f => f.ExcludedReason is null
+            || f.Path is "MixedRepo.sln" or "src/MixedRepo.Api/MixedRepo.Api.csproj" or "web/tsconfig.json").Select(f => f.Path).ToList();
         Assert.All(new[] { csharp, typescript }, mapper =>
         {
             var call = Assert.Single(mapper.Calls);
@@ -89,7 +90,7 @@ public class SliceScanTests
         var result = await ScanAsync(config);
 
         Assert.All(ledger.Units, u => Assert.Equal(UnitStatus.Done, u.Status));
-        Assert.Equal((0, 0, 17), (result.UnitsCreated, result.UnitsStale, result.UnitsTotal));
+        Assert.Equal((0, 0, 11), (result.UnitsCreated, result.UnitsStale, result.UnitsTotal));
     }
 
     [Fact]
@@ -118,7 +119,7 @@ public class SliceScanTests
 
         Assert.Equal(new[] { ControllerGetQuote, ControllerListQuotes, ExecuteAsync }.Select(UnitIds.Slice).Order(StringComparer.Ordinal), IdsWith(UnitStatus.Stale));
         Assert.Equal((3, 0), (result.UnitsStale, result.UnitsCreated));
-        Assert.Equal(14, IdsWith(UnitStatus.Done).Count());
+        Assert.Equal(8, IdsWith(UnitStatus.Done).Count());
     }
 
     [Fact]
@@ -159,7 +160,7 @@ public class SliceScanTests
 
         var slice = Assert.IsType<SliceModeResult>(result.SliceMode);
         Assert.Equal(new[] { "csharp mapper failed: MSBuild could not load MixedRepo.sln" }, slice.Diagnostics);
-        Assert.Equal((2, 0, 15, 1.0), (slice.Slices, slice.Orphans, slice.Files, slice.ResolutionRate));
+        Assert.Equal((2, 0, 9, 1.0), (slice.Slices, slice.Orphans, slice.Files, slice.ResolutionRate));
         var low = ledger.Units.Where(u => u.Fidelity == Fidelity.Low).ToList();
         Assert.Equal(8, low.Count);
         Assert.All(low, u => Assert.Equal((UnitKind.File, Languages.CSharp), (u.Kind, Languages.FromPath(u.Key))));
@@ -173,7 +174,7 @@ public class SliceScanTests
         Assert.Empty(csharp.Calls);
         Assert.Empty(typescript.Calls);
         Assert.Null(result.SliceMode);
-        Assert.Equal((20, 4, 20, 20), (result.FilesIncluded, result.FilesExcluded, result.UnitsCreated, result.UnitsTotal));
+        Assert.Equal((14, 10, 14, 14), (result.FilesIncluded, result.FilesExcluded, result.UnitsCreated, result.UnitsTotal));
         Assert.All(ledger.Units, u => Assert.Equal((UnitKind.File, Fidelity.Full), (u.Kind, u.Fidelity)));
         var run = Assert.Single(ledger.Runs);
         Assert.Null(run.ResolutionRate);
@@ -194,8 +195,8 @@ public class SliceScanTests
         Assert.Equal(new[] { UnitIds.File(ProgramPath) }, IdsWith(UnitStatus.Done));
         Assert.Equal(UnitStatus.Pending, UnitById(UnitIds.Orphan(ServicePath)).Status);
         Assert.Single(ledger.Members, m => m.UnitId == UnitIds.File(ServicePath));
-        Assert.Equal((7, 17), (result.UnitsCreated, result.UnitsTotal));
-        Assert.Equal(17, ledger.Runs[^1].UnitsTotal);
+        Assert.Equal((7, 11), (result.UnitsCreated, result.UnitsTotal));
+        Assert.Equal(11, ledger.Runs[^1].UnitsTotal);
     }
 
     [Fact]
@@ -213,7 +214,7 @@ public class SliceScanTests
         Assert.All(sliced, u => Assert.Equal(UnitStatus.Retired, u.Status));
         Assert.Equal(new[] { UnitIds.File(ProgramPath) }, IdsWith(UnitStatus.Done));
         Assert.Equal(UnitStatus.Pending, UnitById(UnitIds.File(ServicePath)).Status);
-        Assert.Equal((10, 20), (result.UnitsCreated, result.UnitsTotal));
+        Assert.Equal((10, 14), (result.UnitsCreated, result.UnitsTotal));
         Assert.Null(result.SliceMode);
         Assert.Null(ledger.Runs[^1].ResolutionRate);
     }

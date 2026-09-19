@@ -20,7 +20,7 @@ public class SqliteLedgerEvidenceTests
 
         using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
 
-        Assert.Equal(6L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
+        Assert.Equal(7L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
         Assert.Contains("evidence_json", await RawSqlite.StringsAsync(temp.DatabasePath, "SELECT name FROM pragma_table_info('analyses')"));
         Assert.Equal(1L, await RawSqlite.ScalarAsync<long>(temp.DatabasePath, "SELECT COUNT(*) FROM analyses"));
         Assert.Equal(new AgentIdentity("codex", "model", "high"), (await ledger.GetProvenanceAsync(CancellationToken.None))["file:src/A.cs"]);

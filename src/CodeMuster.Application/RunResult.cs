@@ -4,4 +4,8 @@ namespace CodeMuster.Application;
 /// <param name="Completed">Units recorded this run.</param>
 /// <param name="GaveUp">Units that used every attempt without being recorded, in the order the run gave up on them.</param>
 /// <param name="Cancelled">True when the run stopped because its token was cancelled; in-flight units were left as they were.</param>
-public sealed record RunResult(int Completed, IReadOnlyList<string> GaveUp, bool Cancelled);
+public sealed record RunResult(int Completed, IReadOnlyList<string> GaveUp, bool Cancelled)
+{
+    /// <summary>Units skipped for exceeding the pack budget, without spending agent attempts.</summary>
+    public IReadOnlyList<string> Skipped { get; init; } = [];
+}

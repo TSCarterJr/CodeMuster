@@ -126,7 +126,7 @@ public static class Program
             return await InitAsync(command, repoRoot, fileSystem, tree, cancellationToken);
         }
 
-        using var coordinator = command.Verb is "scan" or "run" or "verify" or "fix" or "done" or "validate"
+        using var coordinator = command.Verb is "scan" or "run" or "verify" or "fix" or "next" or "done" or "validate"
             ? await CoordinatorLock.AcquireAsync(repoRoot, cancellationToken) : null;
         var config = await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken);
         using var ledger = await SqliteLedger.OpenAsync(Path.Combine(repoRoot, ".codemuster", "ledger.db"), cancellationToken);
@@ -308,7 +308,7 @@ public static class Program
     private static async Task<int> NextAsync(Command command, SqliteLedger ledger, GitSourceTree tree, Config config, CancellationToken cancellationToken)
     {
         var requestedKind = command.Options.GetValueOrDefault("kind");
-        var packs = await new Next(ledger, tree, config, kind: requestedKind is null ? null : Enum.Parse<UnitKind>(requestedKind, true), path: command.Options.GetValueOrDefault("path")).RunAsync(int.Parse(command.Options.GetValueOrDefault("batch", "1")), cancellationToken);
+        var packs = await new Next(ledger, tree, config, kind: requestedKind is null ? null : Enum.Parse<UnitKind>(requestedKind, true), path: command.Options.GetValueOrDefault("path"), notes: new ProgressWriter(Console.Error)).RunAsync(int.Parse(command.Options.GetValueOrDefault("batch", "1")), cancellationToken);
         if (packs.Count == 0)
         {
             Console.Error.WriteLine("nothing pending; run status");
@@ -352,7 +352,8 @@ public static class Program
             Console.Error.WriteLine($"gave up on {unitId} after {options.MaxAttempts} attempts");
         }
 
-        Console.WriteLine(result.Cancelled ? $"cancelled after {result.Completed} unit(s)" : $"completed {result.Completed} unit(s), {result.GaveUp.Count} gave up");
+        var skipped = result.Skipped.Count == 0 ? "" : $", {result.Skipped.Count} skipped";
+        Console.WriteLine((result.Cancelled ? $"cancelled after {result.Completed} unit(s)" : $"completed {result.Completed} unit(s), {result.GaveUp.Count} gave up") + skipped);
         return result.Cancelled || result.GaveUp.Count > 0 ? 1 : 0;
     }
 

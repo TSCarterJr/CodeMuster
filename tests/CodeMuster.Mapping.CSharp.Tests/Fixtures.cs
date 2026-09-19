@@ -37,7 +37,8 @@ internal static class Fixtures
     }
 
     public static IReadOnlyList<string> IncludedPaths(string root) =>
-        Files(root).Where(path => Exclusions.Reason(path, linguistGenerated: false) is null).ToList();
+        Files(root).Where(path => Exclusions.Reason(path, linguistGenerated: false) is null
+            || Path.GetExtension(path) is ".sln" or ".slnx" or ".csproj").ToList();
 
     public static void CopyTree(string source, string target)
     {

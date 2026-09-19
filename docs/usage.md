@@ -227,8 +227,22 @@ Edit the existing `.codemuster/config.json`; keep lenses that are already useful
 | `test_command` | `[]` | Program and arguments to run after each fix attempt; empty means no configured validation. |
 
 A glob without a slash matches file names anywhere. Use `vendor/**` to exclude a directory.
-Built-in exclusions cover generated files, migrations, lockfiles, and binaries; inspect the
-reported excluded-file count when interpreting coverage.
+Built-in exclusions cover generated files, migrations, lockfiles, binaries, and non-code files.
+Matching is case-insensitive for extensions, at any directory depth:
+
+| Category | Examples excluded from AI review |
+|---|---|
+| Documents | `.md`, `.markdown`, `.txt`, `.rst`, `.adoc`, `.doc`, `.docx`, `.rtf`, `.pdf`, office presentations and spreadsheets; extensionless `README`, `LICENSE`, `NOTICE`, and `CHANGELOG` |
+| Data and configuration | `.json`, `.jsonc`, `.json5`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.yaml`, `.yml`, `.toml`, `.ini`, `.config`, `.log`, project/solution files, `.gitignore`, `.editorconfig`, `.env` and `.env.*` |
+| Databases | `.db`, `.db3`, `.sqlite`, `.sqlite3`, `.mdb`, `.accdb`, `.dbf`, and SQLite journal/WAL/shared-memory companions |
+
+Source files, scripts, SQL scripts, HTML, stylesheets and executable templates remain eligible.
+Solution/project files and `tsconfig.json` remain available as mapper inputs without becoming
+AI review units. Dependency manifests and lockfiles remain available to ecosystem vulnerability
+audits; repository `exclude` globs still apply to those checks.
+
+Run `scan` after upgrading to retire previously queued non-code units. Their history is retained.
+Inspect the reported excluded-file count when interpreting coverage.
 
 ### Validate fixes
 
@@ -442,7 +456,7 @@ before a version change. Opening a newer ledger with an older binary is not guar
 compatible backup when rolling back. The published 0.2.0 ledger was successfully reopened by
 the 0.2.7 candidate with completed coverage preserved; this is not a guarantee for future schemas.
 
-`scan`, `run`, `verify`, `fix`, `done`, and `validate` hold one exclusive coordinator lock in
+`scan`, `next`, `run`, `verify`, `fix`, `done`, and `validate` hold one exclusive coordinator lock in
 the common Git directory. A competing command, including in a linked worktree, fails clearly.
 The lock is released when the process exits; a leftover lock file need not be deleted. Reading
 packs is not a work lease, so manual reviewers still need one owner per assigned unit.
@@ -453,10 +467,22 @@ ledger write fails, keep the commit, inspect the diagnostic, and run forced veri
 reconcile the finding. Avoid concurrent edits to the checkout during integration.
 
 Fix packs are rendered only when a worker slot is available. Whole-file packs exceeding
-`slice_token_budget * 4` characters fail with a path-specific diagnostic before recording
-coverage. Increase the budget deliberately or split the file; no silent truncation counts as
-analysis. This bounds individual prompt construction, not total repository memory. No
-representative maximum-scale benchmark has been completed.
+`slice_token_budget * 4` characters are too large. During `run`, `verify`, and interactive
+`next`, these units are marked `skipped` once with a path-specific reason, without an agent
+call or retry. Other units continue; size skips alone do not make the run exit nonzero.
+`next` moves forward to the next eligible pack and reports skips on stderr.
+
+Skipped units remain visible in `status` and `report`, do not count as analyzed, and stay out
+of subsequent queues. After increasing the budget or splitting the file, run `scan` to requeue
+them. `run --force` also requeues skipped units within its scope, alongside re-auditing done
+units. Other failures still follow `--attempts` and cause a nonzero exit when exhausted.
+Repair pack failures remain failures and cannot claim a successful fix.
+
+The ledger uses schema version 7 to identify support for persisted skipped states. Upgrading
+preserves existing rows; older CLI versions ask for an update rather than opening this ledger.
+No source is silently truncated or counted as reviewed. This bounds individual prompt
+construction, not total repository memory. No representative maximum-scale benchmark has
+been completed.
 
 Yarn Classic uses `yarn audit --json`; Yarn 2+ uses `yarn npm audit --all --recursive --json`.
 Yarn 4.9.0's real JSON output and command behavior have been exercised. Dependency repairs

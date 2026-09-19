@@ -36,6 +36,21 @@ public class ReportTests
     private static Finding Finding(string path, int lineStart, int lineEnd, Severity severity, string claim, string evidence, double confidence) =>
         new(path, lineStart, lineEnd, severity, "security", claim, evidence, confidence, Lens);
 
+    [Theory]
+    [InlineData(UnitKind.File)]
+    [InlineData(UnitKind.Verify)]
+    public async Task SkippedUnits_ShowTheirReasonWithoutClaimingAnalysis(UnitKind kind)
+    {
+        ledger.Units.Add(new Unit("skipped-unit", kind, "src/large.cs", "fp", UnitStatus.Skipped,
+            Fidelity.Full, null, "exceeds the whole-file pack limit", "fp"));
+
+        var report = await RunAsync();
+
+        Assert.Contains("analyzed 0/1 units", report);
+        Assert.Contains("skipped 1 unit(s); these are not analyzed", report);
+        Assert.Contains("| src/large.cs | skipped | exceeds the whole-file pack limit |", report);
+    }
+
     [Fact]
     public async Task FailureHistory_ShowsReasonsAfterRecovery_AndOmitsRetiredUnits()
     {

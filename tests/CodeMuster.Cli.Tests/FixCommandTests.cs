@@ -4,12 +4,14 @@ namespace CodeMuster.Cli.Tests;
 
 public class FixCommandTests
 {
-    [Fact]
-    public async Task AnotherCoordinatorIsRefusedWithoutTouchingTheLedger()
+    [Theory]
+    [InlineData("scan")]
+    [InlineData("next")]
+    public async Task AnotherCoordinatorIsRefusedWithoutTouchingTheLedger(string verb)
     {
         using var repo = await AuditedAsync();
         using var held = new FileStream(Path.Combine(repo.Root, ".git", "codemuster-coordinator.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-        var result = await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file");
+        var result = await CliProcess.RunAsync(repo.Root, verb);
         Assert.Equal(1, result.ExitCode);
         Assert.Contains("another CodeMuster command", result.Stderr);
     }

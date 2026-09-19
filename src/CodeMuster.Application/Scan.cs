@@ -37,7 +37,8 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         var excluded = current.Count - included.Count;
         progress?.Report($"listed {current.Count} files, {excluded} excluded");
         IReadOnlyList<ICodeMapper> active = mappers ?? [];
-        var mapped = await CompositeMapper.MapAsync(active, repoRoot, included, progress, cancellationToken);
+        var mappingInputs = current.Where(f => config.IsMappingInput(f.Path, f.ExcludedReason)).ToList();
+        var mapped = await CompositeMapper.MapAsync(active, repoRoot, mappingInputs, progress, cancellationToken);
         progress?.Report("planning units");
         var planned = SliceBuilder.Build(mapped, included);
         planned = [.. planned, .. UxReview.Plan(included, config.UserExperience)];
@@ -58,12 +59,14 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             planned = [.. planned, .. await PlanVerifyUnitsAsync(planned, cancellationToken)];
         }
 
+        var auditPaths = AuditPaths(current).ToHashSet(StringComparer.Ordinal);
+        var auditFiles = current.Where(f => auditPaths.Contains(f.Path)).ToList();
         var audit = config.Vulnerabilities && auditor is not null
             ? await auditor.AuditAsync(repoRoot, AuditPaths(current), progress, cancellationToken)
             : null;
         if (audit is not null)
         {
-            planned = [.. planned, .. PlanDependencyUnitsAsync(audit, included)];
+            planned = [.. planned, .. PlanDependencyUnitsAsync(audit, auditFiles)];
         }
 
         var existingUnits = (await ledger.GetUnitsAsync(cancellationToken)).ToDictionary(u => u.Id, StringComparer.Ordinal);
@@ -80,12 +83,12 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             }
 
             var status = StatusFor(previous, fingerprint, lensHash);
-            units.Add(new Unit(plan.Id, plan.Kind, plan.Key, fingerprint, status, plan.Fidelity, previous?.LensHash, previous?.Summary, previous?.SummaryHash));
+            units.Add(new Unit(plan.Id, plan.Kind, plan.Key, fingerprint, status, plan.Fidelity, previous?.LensHash, previous?.Status == UnitStatus.Skipped ? null : previous?.Summary, previous?.Status == UnitStatus.Skipped ? null : previous?.SummaryHash));
         }
 
         var members = planned.SelectMany(p => p.Members).ToList();
         var produced = units.Select(u => u.Id).ToHashSet(StringComparer.Ordinal);
-        var live = included.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+        var live = auditPaths;
         var retired = existingUnits.Values
             .Where(u => u.Status != UnitStatus.Retired && !produced.Contains(u.Id))
             .Where(u => u.Kind != UnitKind.Dependency || !live.Contains(u.Key))
@@ -127,11 +130,11 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             .Select(f => PlannedUnit.Verify(f, sources[f.UnitId].Members, sources[f.UnitId].Fidelity));
     }
 
-    /// <summary>Files the audit may look at: everything not excluded, plus the lockfiles, which are excluded as code but are exactly what the audit tools read (D38).</summary>
+    /// <summary>Files the audit may look at: everything not excluded, plus data manifests and lockfiles, which are excluded as code but are exactly what the audit tools read (D38).</summary>
     private IReadOnlyList<string> AuditPaths(IReadOnlyList<FileRecord> current) =>
         current
             .Where(f => f.DeletedAt is null)
-            .Where(f => f.ExcludedReason is null || (f.ExcludedReason == "lockfile" && !config.ExcludedHere(f.Path)))
+            .Where(f => f.ExcludedReason is null || (f.ExcludedReason is "lockfile" or "data" && !config.ExcludedHere(f.Path)))
             .Select(f => f.Path)
             .ToList();
 
@@ -218,7 +221,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
 
     private static UnitStatus StatusFor(Unit? previous, string fingerprint, string lensHash)
     {
-        if (previous is null || previous.Status == UnitStatus.Retired)
+        if (previous is null || previous.Status is UnitStatus.Retired or UnitStatus.Skipped)
         {
             return UnitStatus.Pending;
         }
