@@ -2,6 +2,20 @@
 
 ## Current task status
 
+- 2026-09-19, codex: REL030 published npm/plugin 0.3.0 from protected-main
+  merge d43cb8f (PR #7), immutable tag v0.3.0. Release run 35473378759 passed
+  three-OS validation, six builds, three package smokes and publication. All seven
+  public npm versions/latest tags and SHA512 integrities, and all nine GitHub
+  asset sizes/SHA256 digests match the original archives. Fresh macOS arm64
+  registry installation passes the complete CLI workflow and intelligent-config
+  apply/backup/no-op/rejected-setting checks; the new updater downloads 0.3.0 and
+  displays its release notes. Normal --version reports up-to-date on stderr.
+  Final local validation: 1,223 .NET and 61 npm tests, zero skips; format/plugin
+  parity/diff checks pass. Evidence is retained under TestResults/release-0.3.0/.
+  Upgrade older npm launchers with npm install -g codemuster@0.3.0 once, because
+  their binary-only update cannot replace the launcher JavaScript. No live AI
+  recommendation-quality acceptance was performed.
+
 - 2026-09-19, codex: UPDATE1, START1 and CONFIG1 are implemented locally under
   D51-D53 at Tim's request. A packaged CHANGELOG supplies intervening release
   notes after updates; normal launcher commands report npm availability with a

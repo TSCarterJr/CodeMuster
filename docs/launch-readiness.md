@@ -1,5 +1,28 @@
 # Launch readiness review and remediation
 
+## 0.3.0 publication receipt (2026-09-19)
+
+Version 0.3.0 is published from protected-main merge `d43cb8f`, immutable tag
+`v0.3.0` ([release run](https://github.com/TSCarterJr/CodeMuster/actions/runs/35473378759)).
+All three OS validation jobs, six platform builds, three installed-package smokes,
+npm publication and GitHub release creation passed. Final local validation passed
+1,223 .NET and 61 npm tests with zero skips, plus formatting and plugin parity.
+
+All seven npm versions and latest tags match 0.3.0, with SHA512 integrities matching
+the original archives; all nine GitHub asset sizes and SHA256 digests match. Every
+npm package includes the dated changelog. Fresh macOS arm64 registry installation
+passed the complete audit/verify/fix/validate smoke and intelligent-config checks
+for application, exact backup, no-op and rejected settings without a ledger. The
+new updater fetched the published platform package and printed the intervening
+0.3.0 release notes; a normal command reported current-version status on stderr.
+Receipts and original artifacts are retained in `TestResults/release-0.3.0/`.
+
+Users on older launchers need `npm install -g codemuster@0.3.0` once to receive
+JavaScript update notices and release-note display. Older `codemuster update`
+commands replace only the native binary. Real AI recommendation quality and the
+remaining live plugin acceptance below remain separate from package validation.
+
+
 ## Current assessment — 2026-09-19
 
 Version **0.2.9** is published on npm with all seven `latest` tags at 0.2.9.
