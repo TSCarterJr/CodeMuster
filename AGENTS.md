@@ -2,12 +2,18 @@
 
 ## Current task status
 
-- 2026-09-19, codex: REL029 prepares npm/plugin version 0.2.9 at Tim's explicit
-  commit/push/release request. RUN2 source is committed as 64044e8; the plugin
-  source and generated manifests now target 0.2.9. Local source validation passed
-  all 1,192 .NET and 40 npm tests. Main requires the three hosted OS checks;
-  publication must use the tag workflow, preserve original archives, and verify
-  all seven npm packages plus a fresh install before reporting completion.
+- 2026-09-19, codex: REL029 published npm/plugin version 0.2.9 at Tim's explicit
+  request. Protected-main PR #5 merged as 1888754; immutable tag v0.2.9 points
+  to that commit. Release run 35469006600 passed all three OS test jobs, six
+  platform builds, three installed-package smokes, npm publication and GitHub
+  release creation. All 1,192 .NET and 40 npm tests pass. All seven npm versions
+  and latest tags are 0.2.9; SHA512 integrities match the original archives.
+  All nine GitHub assets match by size and SHA256. A fresh macOS arm64 npm
+  install passes the packaged CLI workflow and a 0.2.8 ledger upgrade fixture:
+  preserved history, excluded documents/data, persistent oversized skip,
+  continued queue processing and successful retry after raising the budget.
+  Retained receipts and original archives are under TestResults/release-0.2.9/;
+  see docs/launch-readiness.md. Rescan existing projects after upgrading.
 
 - 2026-09-19, codex: RUN2 (D50) extends RUN1 to document/data/configuration/database
   exclusions and persistent oversized skips. `run`, `verify`, and `next` skip
@@ -27,7 +33,7 @@
   Rescanning retires legacy Markdown units while preserving history. Regressions
   failed first; all 1,131 .NET and 40 npm tests pass, zero skips. Formatting and
   diff checks pass. Clean main was fast-forwarded to 213eb14 before this change.
-  These source changes are uncommitted and unreleased; installed 0.2.8 is unchanged.
+  RUN2 superseded this behavior and shipped with npm 0.2.9 under REL029.
 
 - 2026-09-15, codex: REL028 publishes version 0.2.8 for Tim's functionality testing.
   Release commit bfe1290 is on main and annotated tag v0.2.8 points to it. Fixed a

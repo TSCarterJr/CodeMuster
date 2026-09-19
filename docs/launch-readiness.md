@@ -1,6 +1,47 @@
 # Launch readiness review and remediation
 
-## Current assessment — 2026-09-15
+## Current assessment — 2026-09-19
+
+Version **0.2.9** is published on npm with all seven `latest` tags at 0.2.9.
+Protected-main [PR #5](https://github.com/TSCarterJr/CodeMuster/pull/5) merged as
+`1888754d10e32ab5835e627aa1393f9953a59772`; the immutable `v0.2.9` tag points
+to that commit. The [release run](https://github.com/TSCarterJr/CodeMuster/actions/runs/35469006600)
+passed all three OS validation jobs (**1,192 .NET and 40 npm tests, zero skips**),
+six platform builds, installed-package smokes on Windows x64, Linux x64 and
+macOS arm64, npm publication, and GitHub release creation.
+
+This release excludes documents, data, configuration and database files from AI
+review while preserving mapper metadata and ecosystem dependency audits. Oversized
+packs are persisted as skipped, retain a reason, consume no agent attempt or retry,
+and do not stop other units. Skipped work never counts as analyzed. Run
+`codemuster scan` after updating existing projects to refresh exclusions.
+
+All seven npm package identities, versions, `latest` tags and SHA512 integrities
+match the original archives. All nine GitHub release asset names, sizes and SHA256
+digests match those archives. Platform OS/CPU metadata, exact launcher dependencies,
+licenses, all three plugin manifest versions, and bundled skill bytes were checked.
+The public registry took several minutes to expose the packages after successful
+publication; verification finished only after all seven were available.
+
+A fresh macOS arm64 installation from npm using an isolated prefix and cache reports
+0.2.9 and passes init, C#/TypeScript mapping, ledger reopening, audit, verification,
+isolated repair and the configured fixture build. A separate upgrade fixture starts
+with the actual 0.2.8 CLI and verifies that 0.2.9 preserves the original analysis,
+retires document/data units, skips an oversized source file once, completes the
+remaining source work, reports the skip, and does no duplicate work on rerun.
+Raising the budget and rescanning successfully completes the skipped unit.
+Schema 7 preserves existing history; older CLIs are rejected when opening it.
+
+Original archives and receipts are retained under ignored
+`TestResults/release-0.2.9/`: `artifacts/`, `artifact-integrities.json`,
+`registry-publication-verified.json`, `github-release-verified.json`, `release.log`,
+`published-install.log`, `published-smoke.log`, `published-upgrade-acceptance.log`
+and `acceptance-evidence.json`. Keep the immutable tag and original archive bytes.
+This closes CLI publication and the tested ledger upgrade case. The plugin-session
+and representative application acceptance gates below remain open; the three
+runtime smokes do not establish runtime coverage of every built architecture.
+
+## Previous assessment — 2026-09-15
 
 Version **0.2.8** is released. Release commit
 `bfe1290843a07c0a9fe8fcb853112044962f2361` is on `main`, and the immutable
