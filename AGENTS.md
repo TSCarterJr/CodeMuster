@@ -2,6 +2,27 @@
 
 ## Current task status
 
+- 2026-09-19, codex: UPDATE1, START1 and CONFIG1 are implemented locally under
+  D51-D53 at Tim's request. A packaged CHANGELOG supplies intervening release
+  notes after updates; normal launcher commands report npm availability with a
+  two-second timeout while preserving daily background installs and opt-outs.
+  Agent commands show provider/model/effort and worker limit, with a ten-second
+  terminal countdown (Enter starts; Esc/Ctrl+C cancels; CI/redirection skips).
+  intelligent-config defaults to Codex, uses one read-only call over bounded repo
+  context, and applies validated additive exclusions/lenses and detected test setup.
+  Existing settings survive; exact backups, atomic config replacement, no-op and
+  concurrent-edit guards are covered. The command does not open the ledger.
+  New CLI/launcher regressions failed before implementation. All 1,223 .NET and
+  61 npm tests pass; the full run's xUnit style error was corrected and the full
+  Application suite rerun. Formatting, syntax and diff checks pass. Real terminal
+  fixtures verified countdown/start/cancel, unchanged ledger/config on cancellation,
+  and CI bypass. All seven staged npm packages include CHANGELOG.md. Receipts are
+  under ignored TestResults/start1/ and TestResults/config1/, with test logs under
+  /tmp/codemuster-config1-*. Tim authorized 0.3.0 delivery under REL030. Release
+  preparation includes the dated changelog and plugin version; hosted validation
+  and publication remain pending. No live AI recommendation call was made. Older
+  launchers require npm installation to gain the new JavaScript update features.
+
 - 2026-09-19, codex: REL029 published npm/plugin version 0.2.9 at Tim's explicit
   request. Protected-main PR #5 merged as 1888754; immutable tag v0.2.9 points
   to that commit. Release run 35469006600 passed all three OS test jobs, six

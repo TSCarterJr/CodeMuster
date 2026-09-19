@@ -10,10 +10,12 @@ public sealed class FakeAgentAdapter : IAgentAdapter
     public static string DefaultTemplate { get; } = AnalysisResponseJson.Serialize(new AnalysisResponse("fake analysis", []));
 
     private readonly AnalysisResponse _template;
+    private readonly string? _rawResponse;
 
-    public FakeAgentAdapter(string templateJson, string? model = null, string? effort = null)
+    public FakeAgentAdapter(string templateJson, string? model = null, string? effort = null, bool rawResponse = false)
     {
-        _template = AnalysisResponseJson.Parse(templateJson);
+        _rawResponse = rawResponse ? templateJson : null;
+        _template = AnalysisResponseJson.Parse(rawResponse ? DefaultTemplate : templateJson);
         Identity = new AgentIdentity("fake", model, effort);
     }
 
@@ -21,6 +23,8 @@ public sealed class FakeAgentAdapter : IAgentAdapter
 
     public Task<string> RunAsync(string pack, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_rawResponse is not null) return Task.FromResult(_rawResponse);
         if (FixTargets(pack) is { Count: > 0 } targets)
         {
             return Task.FromResult(FixResponseJson.Serialize(new FixResponse("fake fix", targets, [])));

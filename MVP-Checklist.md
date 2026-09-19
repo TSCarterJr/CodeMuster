@@ -277,3 +277,17 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
 | REL029 | Commit/push the non-code exclusions and persistent skip handling to protected main, publish npm 0.2.9, and verify registry artifacts plus a fresh install. | `[x]` | codex 2026-09-19 | PR #5 merged as 1888754; immutable v0.2.9 release run 35469006600 passed three-OS validation, six builds, three installed-package smokes and publication. All seven npm versions/latest tags and SHA512 integrities match; all nine GitHub asset sizes/SHA256 digests match. Fresh macOS arm64 registry installation passed the CLI workflow and 0.2.8 upgrade/skip/history acceptance. Receipts retained under TestResults/release-0.2.9/. |
+
+## Update visibility (user-directed priority)
+
+| ID | Task | Status | Owner / Date | Notes |
+|---|---|---|---|---|
+| UPDATE1 | Ship a versioned changelog, display intervening release notes after updates, and report update availability on every normal command. Tests first: multi-version notes, missing notes, staging/packing, newer/current/offline/timeout status, unchanged stdout/exit codes, opt-outs and daily background installation. | `[x]` | codex 2026-09-19 | Prioritized at Tim's explicit request; D51. Regressions failed first; 61 npm tests pass. All seven staged packages include CHANGELOG.md; stable staging requires an entry. Binary-only self-update behavior is preserved and the launcher upgrade requirement documented. Source only; no new release. |
+| START1 | Preview provider/model/thinking and worker limit before agent commands; add a ten-second interactive countdown with immediate start and cancellation. Tests first: explicit/default settings, timeout, Enter/Escape/Ctrl+C, CI/redirection and real terminal cancellation before agent work. | `[x]` | codex 2026-09-19 | D52. CLI regressions failed first. Real terminal fixtures verify the full countdown, Enter skip, Esc/Ctrl+C cancellation before ledger changes, and CI bypass. Model defaults are labeled honestly. CONFIG1 shares the preview; non-agent commands do not wait. Included in 1,223 passing .NET tests. |
+| CONFIG1 | Add intelligent-config to inspect repo context through an agent and apply validated configuration additions with a backup. Tests first: context and bounded samples, scoped exclusions/lenses, detected test commands, existing/unknown setting preservation, no-op, malformed/unsafe responses, cancellation/concurrent edits, atomic replacement and CLI integration. | `[x]` | codex 2026-09-19 | D53. CLI regressions failed first; application, infrastructure and fake-agent CLI tests pass. Real terminal cancellation preserves config and creates no ledger/backup. All 1,223 .NET cases pass after the full Application rerun for a corrected xUnit style assertion; formatting/diff checks pass. No live AI call or new release. |
+
+## Version 0.3.0 release (user-directed priority)
+
+| ID | Task | Status | Owner / Date | Notes |
+|---|---|---|---|---|
+| REL030 | Integrate update visibility, agent startup preview and intelligent configuration; publish npm 0.3.0 through protected main and verify the installed release. | `[~]` | codex 2026-09-19 | Tim explicitly requested release ahead of backlog. Consolidates validated UPDATE1/START1/CONFIG1 with shared CLI and documentation hunks, following INT1. Includes the dated changelog and matching plugin metadata. Earlier launchers need a one-time npm upgrade to receive launcher features. Three-OS CI, publication and registry verification pending. |

@@ -11,6 +11,7 @@ public static class HelpText
 
         Get started
           init       Create the repository configuration and ignore the local ledger
+          intelligent-config  Use AI to tailor exclusions, lenses and test setup
           doctor     Check Git and the repository's code mappers
           skill      Install instructions for your coding agent
 
@@ -53,10 +54,32 @@ public static class HelpText
           --path <path>   Select work under a repo-relative file or folder
           --model <id>    Pass a model to the agent; otherwise use its own default
           --effort <level> Pass an effort level to the agent (unsupported by gemini)
+
+        Before agent work, a preview shows the worker limit, provider, model and thinking level.
+        Interactive terminals wait 10 seconds: Enter starts now; Esc or Ctrl+C cancels.
+        CI and redirected commands start immediately. Omitted settings use the provider default.
         """;
 
     public static string? For(string command) => command switch
     {
+        "intelligent-config" => """
+            usage: codemuster intelligent-config [--agent <name>] [--model <id>] [--effort <level>]
+
+            Inspect tracked repository structure and bounded manifest/source samples using one
+            read-only agent call, then apply validated additions to .codemuster/config.json.
+            Run codemuster init first. The default agent is codex; claude, gemini and opencode
+            are also supported. Model and effort are passed through to the selected agent.
+
+            Adds scoped exclusions and lenses. Selects a detected .NET solution or npm test
+            command when test_command is empty. Existing custom settings and nonempty test
+            commands are preserved. No tests, audits, repairs or dependency installs are run.
+            A unique config.backup-*.json retains the original before atomic replacement.
+            Invalid recommendations or a config edited during analysis are not applied.
+
+            The settings preview waits 10 seconds in a terminal: Enter starts now;
+            Esc/Ctrl+C cancels. CI and redirected commands do not wait.
+            Run codemuster scan afterward to apply the updated audit scope.
+            """,
         "init" => """
             usage: codemuster init [--for claude,codex,gemini] [--yes] [--no-gitignore] [--no-hooks] [--no-skills]
 

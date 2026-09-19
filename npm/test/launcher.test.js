@@ -56,6 +56,9 @@ test('release staging includes the license in the launcher and every platform pa
     const dir = path.join(output, name);
     assert.equal(fs.readFileSync(path.join(dir, 'LICENSE'), 'utf8'), license);
     assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).license, 'SEE LICENSE IN LICENSE');
+    assert.equal(fs.readFileSync(path.join(dir, 'CHANGELOG.md'), 'utf8'),
+      fs.readFileSync(path.join(__dirname, '../../CHANGELOG.md'), 'utf8'));
+    assert.ok(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).files.includes('CHANGELOG.md'));
   }
 });
 
@@ -68,10 +71,11 @@ function fakeBuild(dir, platform) {
   fs.writeFileSync(path.join(dir, 'bin', launcher.binaryName(platform)), 'build');
 }
 
-function packTarball(version, platform) {
+function packTarball(version, platform, changelog) {
   const root = tempDir();
   fakeBuild(path.join(root, 'package'), platform);
   fs.writeFileSync(path.join(root, 'package', 'package.json'), JSON.stringify({ version }));
+  if (changelog) fs.writeFileSync(path.join(root, 'package', 'CHANGELOG.md'), changelog);
   const tarball = path.join(root, 'build.tgz');
   launcher.tar(['-czf', tarball, '-C', root, 'package']);
   return fs.readFileSync(tarball);
@@ -311,3 +315,148 @@ for (const args of [['update', '--help'], ['update', '-h'], ['help', 'update']])
     assert.match(said.join(''), /--check/);
   });
 }
+
+const releaseHistory = `# Changelog
+
+## Unreleased
+- Not shipped yet.
+
+## 0.4.0 - 2026-09-20
+- Future change.
+
+## 0.3.0 - 2026-09-19
+- Skip oversized files.
+
+## 0.2.0 - 2026-09-15
+- Preserve audit history.
+
+## 0.1.0 - 2026-09-11
+- Old change.
+`;
+
+test('update displays all intervening release notes from the verified package', async (t) => {
+  const tarball = packTarball('0.3.0', process.platform, releaseHistory);
+  const registry = await fakeRegistry({ latest: '0.3.0', version: '0.3.0', tarball, integrity: integrityOf(tarball) });
+  t.after(() => registry.close());
+  const said = [];
+  const code = await launcher.updateNow({ args: [], stateDir: tempDir(), platform: process.platform,
+    arch: process.arch, currentVersion: '0.1.0', registry: registry.url, out: { write: (s) => said.push(s) } });
+  assert.equal(code, 0);
+  assert.match(said.join(''), /What's changed since 0\.1\.0/);
+  assert.match(said.join(''), /0\.3\.0[\s\S]*Skip oversized files/);
+  assert.match(said.join(''), /0\.2\.0[\s\S]*Preserve audit history/);
+  assert.doesNotMatch(said.join(''), /Old change|Future change|Not shipped yet/);
+});
+
+test('packages without a changelog still update and explain that notes are unavailable', async (t) => {
+  const tarball = packTarball('0.2.0', process.platform);
+  const registry = await fakeRegistry({ latest: '0.2.0', version: '0.2.0', tarball, integrity: integrityOf(tarball) });
+  t.after(() => registry.close());
+  const said = [];
+  assert.equal(await launcher.updateNow({ args: [], stateDir: tempDir(), platform: process.platform,
+    arch: process.arch, currentVersion: '0.1.0', registry: registry.url, out: { write: (s) => said.push(s) } }), 0);
+  assert.match(said.join(''), /release notes were not included/i);
+});
+
+function commandHarness(t, latest) {
+  const home = tempDir();
+  fakeBuild(path.join(launcher.versionsDirectory(path.join(home, '.codemuster'), process.platform, process.arch), '0.2.9'), process.platform);
+  t.mock.method(os, 'homedir', () => home);
+  const stdout = [], stderr = [], calls = [], children = [];
+  const write = process.stdout.write.bind(process.stdout);
+  t.mock.method(process.stdout, 'write', (line, ...args) => {
+    if (typeof line === 'string' && (line.startsWith('codemuster') || line.startsWith('{"command":'))) {
+      stdout.push(line);
+      return true;
+    }
+    return write(line, ...args);
+  });
+  t.mock.method(process.stderr, 'write', (line) => { stderr.push(line); return true; });
+  t.mock.method(global, 'fetch', async (url) => {
+    calls.push(url);
+    if (latest instanceof Error) throw latest;
+    return { ok: true, json: async () => ({ 'dist-tags': { latest } }) };
+  });
+  t.mock.method(require('node:child_process'), 'spawn', (binary, args, options) => {
+    children.push({ binary, args, options });
+    const child = new (require('node:events').EventEmitter)();
+    child.unref = () => {};
+    child.kill = () => {};
+    if (!options.detached) setImmediate(() => {
+      process.stdout.write('{"command":"result"}\n');
+      child.emit('exit', 3);
+    });
+    return child;
+  });
+  return { stdout, stderr, calls, children, stateDir: path.join(home, '.codemuster') };
+}
+
+for (const verb of ['init', 'scan', 'run', 'verify', 'fix', 'next', 'report', '--version']) {
+  test(`${verb} checks availability and preserves command stdout, arguments and exit code`, async (t) => {
+    const h = commandHarness(t, '0.2.10');
+    fs.writeFileSync(path.join(h.stateDir, 'last-update-check'), String(Date.now()));
+    assert.equal(await launcher.main([verb, '--example'], {}), 3);
+    assert.deepEqual(h.calls, [launcher.REGISTRY + '/codemuster']);
+    assert.match(h.stderr.join(''), /0\.2\.10 is available.*0\.2\.9.*codemuster update/);
+    assert.deepEqual(h.stdout, ['{"command":"result"}\n']);
+    assert.equal(h.children.length, 1);
+    assert.deepEqual(h.children[0].args, [verb, '--example']);
+  });
+}
+
+for (const [latest, expected] of [
+  ['0.2.9', /0\.2\.9 is up to date/],
+  ['0.2.8', /0\.2\.9 is newer than.*0\.2\.8/],
+  [new Error('offline'), /update check unavailable.*continuing with 0\.2\.9/],
+  ['bad-version', /update check unavailable/],
+  [null, /update check unavailable/],
+]) {
+  test(`normal commands report version status honestly for ${latest}`, async (t) => {
+    const h = commandHarness(t, latest);
+    assert.equal(await launcher.main(['scan'], {}), 3);
+    assert.match(h.stderr.join(''), expected);
+    assert.equal(h.children.length, 1);
+  });
+}
+
+for (const env of [{ CI: '1' }, { CODEMUSTER_NO_UPDATE: '1' }, { CODEMUSTER_VERSION: '0.2.9' }]) {
+  test(`normal command respects ${Object.keys(env)[0]}`, async (t) => {
+    const h = commandHarness(t, '0.2.10');
+    assert.equal(await launcher.main(['scan'], env), 3);
+    assert.deepEqual(h.calls, []);
+    assert.deepEqual(h.stderr, []);
+    assert.equal(h.children.length, 1);
+  });
+}
+
+test('available updates still install in the background when the daily interval is due', async (t) => {
+  const h = commandHarness(t, '0.2.10');
+  assert.equal(await launcher.main(['scan'], {}), 3);
+  assert.match(h.stderr.join(''), /0\.2\.10 is available/);
+  assert.equal(h.children.filter((c) => c.options.detached).length, 1);
+  assert.equal(h.children.filter((c) => !c.options.detached).length, 1);
+});
+
+test('a slow availability check times out without claiming the installed version is current', async (t) => {
+  const server = http.createServer(() => {});
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const said = [];
+  const result = await launcher.checkForUpdate({ currentVersion: '0.2.9',
+    registry: `http://127.0.0.1:${server.address().port}`, timeoutMs: 30, out: { write: (s) => said.push(s) } });
+  assert.equal(result, null);
+  assert.match(said.join(''), /update check unavailable.*continuing with 0\.2\.9/);
+  assert.doesNotMatch(said.join(''), /up to date/);
+});
+
+test('stable package staging refuses a version with no changelog entry before touching output', () => {
+  const root = tempDir();
+  const output = path.join(root, 'output');
+  fs.mkdirSync(output);
+  fs.writeFileSync(path.join(output, 'keep.txt'), 'retained');
+  const result = require('node:child_process').spawnSync(process.execPath,
+    [path.join(__dirname, '../scripts/stage.js'), '999.0.0', path.join(root, 'builds'), output], { encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /changelog.*999\.0\.0/i);
+  assert.equal(fs.readFileSync(path.join(output, 'keep.txt'), 'utf8'), 'retained');
+});

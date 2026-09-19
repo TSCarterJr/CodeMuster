@@ -14,4 +14,7 @@ public interface IFileSystem
 
     /// <summary>Writes a whole file as UTF-8 text without a byte-order mark, creating missing parent directories.</summary>
     Task WriteAllTextAsync(string path, string content, CancellationToken cancellationToken);
+
+    /// <summary>Writes UTF-8 to a sibling temporary file and replaces the destination only after the write completes.</summary>
+    Task WriteAllTextAtomicallyAsync(string path, string content, CancellationToken cancellationToken);
 }

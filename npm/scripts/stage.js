@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { releases } = require('../lib/changelog');
 
 const PLATFORMS = {
   'win-x64': ['win32', 'x64'],
@@ -20,6 +21,10 @@ if (!version || !buildsDir || !outDir) {
 
 const launcherDir = path.join(__dirname, '..');
 const launcher = JSON.parse(fs.readFileSync(path.join(launcherDir, 'package.json'), 'utf8'));
+const changelog = fs.readFileSync(path.join(launcherDir, '../CHANGELOG.md'), 'utf8');
+if (/^\d+\.\d+\.\d+$/.test(version) && !releases(changelog).some((entry) => entry.version === version)) {
+  throw new Error(`CHANGELOG.md needs a release entry for ${version} before staging`);
+}
 fs.rmSync(outDir, { recursive: true, force: true });
 
 const staged = [];
@@ -33,6 +38,7 @@ for (const [rid, [os, cpu]] of Object.entries(PLATFORMS)) {
   const dir = path.join(outDir, `${os}-${cpu}`);
   fs.cpSync(build, path.join(dir, 'bin'), { recursive: true });
   fs.copyFileSync(path.join(launcherDir, '../LICENSE'), path.join(dir, 'LICENSE'));
+  fs.writeFileSync(path.join(dir, 'CHANGELOG.md'), changelog);
   if (os !== 'win32') {
     fs.chmodSync(path.join(dir, 'bin', 'codemuster'), 0o755);
   }
@@ -45,7 +51,7 @@ for (const [rid, [os, cpu]] of Object.entries(PLATFORMS)) {
     repository: launcher.repository,
     os: [os],
     cpu: [cpu],
-    files: ['bin'],
+    files: ['bin', 'CHANGELOG.md'],
   }, null, 2) + '\n');
   staged.push(name);
 }
@@ -62,5 +68,6 @@ for (const entry of ['bin', 'lib', 'README.md']) {
 
 const optionalDependencies = Object.fromEntries(Object.keys(launcher.optionalDependencies).map((name) => [name, version]));
 fs.copyFileSync(path.join(launcherDir, '../LICENSE'), path.join(dir, 'LICENSE'));
+fs.writeFileSync(path.join(dir, 'CHANGELOG.md'), changelog);
 fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ ...launcher, version, optionalDependencies }, null, 2) + '\n');
 process.stdout.write([...staged, 'codemuster'].map((name) => `staged ${name}@${version}`).join('\n') + '\n');

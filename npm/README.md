@@ -78,6 +78,23 @@ With the CLI installed, run `codemuster skill install --for codex`. The installe
 `claude`, `codex`, `gemini`, and `opencode`; add `--global` for all repositories. Use either
 the plugin or a standalone skill copy in a given agent scope to avoid duplicate entries.
 
+## Tailor the configuration with AI
+
+After `init`, run:
+
+```sh
+codemuster intelligent-config
+# Or choose the agent and model:
+codemuster intelligent-config --agent codex --model <model-id> --effort high
+```
+
+The command uses one read-only AI call to inspect tracked paths, manifest samples and source
+samples. It applies validated exclusions and focused lenses for particular file types, and
+selects a detected .NET solution or npm test command when none is configured. Existing custom
+settings and test commands are preserved. It reports each applied change and keeps the exact
+previous config in `.codemuster/config.backup-*.json`. Run `codemuster scan` afterward.
+It does not run the configured tests, install dependencies, or start an audit or repair.
+
 ## Drive an audit yourself
 
 ```sh
@@ -87,6 +104,12 @@ codemuster run --agent codex -j 4
 codemuster status
 codemuster report --out audit.md
 ```
+
+Before `run`, `verify`, `fix`, or `intelligent-config` starts agents, a preview shows the worker limit, provider,
+model and thinking level. Interactive terminals wait ten seconds: press Enter to start now,
+or Escape/Ctrl+C to cancel and change your options. CI and redirected commands do not wait.
+Unset model/effort values are labeled provider defaults; pass `--model` and `--effort` to
+choose them explicitly.
 
 `scan` maps entry-point call paths and unreached code by default. Use `scan --mode file` for one
 unit per included file. `estimate` approximates pending input tokens. `run` analyzes pending
@@ -149,10 +172,15 @@ codemuster --version
 - [Decisions](https://github.com/TSCarterJr/CodeMuster/blob/main/DECISIONS.md) and [implementation checklist](https://github.com/TSCarterJr/CodeMuster/blob/main/MVP-Checklist.md).
 
 These documents describe the repository source; an older installed release may have fewer
-options. The npm launcher checks for updates at most once a day and uses a downloaded update on
-a later invocation. Set `CI` or `CODEMUSTER_NO_UPDATE` to disable automatic checks.
+options. The npm launcher checks availability on every normal command and prints the result to
+stderr, with a two-second timeout. Registry failures do not stop your command. Available updates
+still install in the background at most daily and take effect on a later invocation. Set `CI`,
+`CODEMUSTER_NO_UPDATE`, or an exact version pin to disable automatic checks and installation.
 `codemuster update --check` checks availability without installing; `codemuster update` installs
-an available update. The 0.2.7 launcher supports `CODEMUSTER_VERSION=0.2.0` to select that exact binary, including when a newer build is cached. Unset the variable to resume normal selection; explicit updates are refused while pinned. Install the current launcher first to obtain pin support. Run `skill install` again to refresh an installed skill copy. See the user guide for rollback and ledger precautions.
+an available update and displays all intervening entries from the packaged changelog. Version
+history is maintained in [CHANGELOG.md](https://github.com/TSCarterJr/CodeMuster/blob/main/CHANGELOG.md).
+Use `npm install -g codemuster` to upgrade the launcher itself and obtain these new notices;
+`codemuster update` upgrades the platform binary. The 0.2.7 launcher supports `CODEMUSTER_VERSION=0.2.0` to select that exact binary, including when a newer build is cached. Unset the variable to resume normal selection; explicit updates are refused while pinned. Install the current launcher first to obtain pin support. Run `skill install` again to refresh an installed skill copy. See the user guide for rollback and ledger precautions.
 
 ## License
 

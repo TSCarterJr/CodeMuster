@@ -1,6 +1,6 @@
 {
   "name": "codemuster",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "description": "Use CodeMuster during coding according to repository automation settings, or audit an entire codebase with tracked coverage and verified fixes.",
   "author": {
     "name": "Tim Carter",
