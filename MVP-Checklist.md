@@ -271,3 +271,9 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 |---|---|---|---|---|
 | RUN1 | Exclude Markdown and continue headless reviews after an individual pack fails. Tests first: root/nested/mixed-case Markdown exclusions; retire legacy Markdown units without losing history; oversized units before/between/after valid units, serial and parallel continuation, incomplete status and successful retry; real CLI exit/coverage. | `[x]` | codex 2026-09-19 | Prioritized at Tim's request; D49. Regressions failed first; all 1,131 .NET and 40 npm tests pass, zero skips. Formatting and diff checks pass. Source changes only; not committed or released. |
 | RUN2 | Exclude non-code document/data/database formats and persist oversized skips without retries. Tests first: format matrix and preserved source files; dependency audit preservation; skip persistence, queue continuation, report/status visibility and explicit retry; interactive next skips forward. | `[x]` | codex 2026-09-19 | Prioritized at Tim's request; D50. New regressions failed first. All 1,192 .NET and 40 npm cases pass after updating exclusion/schema expectations; formatting and diff checks pass. Mapper metadata, dependency audits and stored history are preserved. Tim authorized delivery with 0.2.9; RUN2 includes the superseded RUN1 implementation. |
+
+## Version 0.2.9 release (user-directed priority)
+
+| ID | Task | Status | Owner / Date | Notes |
+|---|---|---|---|---|
+| REL029 | Commit/push the non-code exclusions and persistent skip handling to protected main, publish npm 0.2.9, and verify registry artifacts plus a fresh install. | `[~]` | codex 2026-09-19 | Tim explicitly authorized commit/push and publication. RUN2 source commit is 64044e8. Keep main protections and immutable package artifacts. |

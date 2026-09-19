@@ -2,6 +2,13 @@
 
 ## Current task status
 
+- 2026-09-19, codex: REL029 prepares npm/plugin version 0.2.9 at Tim's explicit
+  commit/push/release request. RUN2 source is committed as 64044e8; the plugin
+  source and generated manifests now target 0.2.9. Local source validation passed
+  all 1,192 .NET and 40 npm tests. Main requires the three hosted OS checks;
+  publication must use the tag workflow, preserve original archives, and verify
+  all seven npm packages plus a fresh install before reporting completion.
+
 - 2026-09-19, codex: RUN2 (D50) extends RUN1 to document/data/configuration/database
   exclusions and persistent oversized skips. `run`, `verify`, and `next` skip
   oversized units once without agent attempts or retries; status/report retain the
