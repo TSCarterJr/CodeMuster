@@ -276,4 +276,4 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
-| REL029 | Commit/push the non-code exclusions and persistent skip handling to protected main, publish npm 0.2.9, and verify registry artifacts plus a fresh install. | `[~]` | codex 2026-09-19 | Tim explicitly authorized commit/push and publication. RUN2 source commit is 64044e8. Keep main protections and immutable package artifacts. |
+| REL029 | Commit/push the non-code exclusions and persistent skip handling to protected main, publish npm 0.2.9, and verify registry artifacts plus a fresh install. | `[x]` | codex 2026-09-19 | PR #5 merged as 1888754; immutable v0.2.9 release run 35469006600 passed three-OS validation, six builds, three installed-package smokes and publication. All seven npm versions/latest tags and SHA512 integrities match; all nine GitHub asset sizes/SHA256 digests match. Fresh macOS arm64 registry installation passed the CLI workflow and 0.2.8 upgrade/skip/history acceptance. Receipts retained under TestResults/release-0.2.9/. |
