@@ -6,7 +6,7 @@ namespace CodeMuster.Infrastructure;
 
 public sealed class SqliteLedger : ILedger, IDisposable
 {
-    internal const int SchemaVersion = 6;
+    internal const int SchemaVersion = 7;
 
     internal const string Schema = """
         CREATE TABLE files (
@@ -298,6 +298,16 @@ public sealed class SqliteLedger : ILedger, IDisposable
         command.Parameters.AddWithValue("$failed", Name(UnitStatus.Failed));
         command.Parameters.AddWithValue("$batch", batch);
         return await ReadAllAsync(command, ReadUnit, cancellationToken);
+    }
+
+    public async Task SkipUnitAsync(string unitId, string fingerprint, string reason, CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand("UPDATE units SET status = 'skipped', summary = $reason, summary_hash = $fingerprint WHERE id = $id AND fingerprint = $fingerprint");
+        command.Parameters.AddWithValue("$id", unitId);
+        command.Parameters.AddWithValue("$fingerprint", fingerprint);
+        command.Parameters.AddWithValue("$reason", reason);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            throw new InvalidOperationException("unit changed before it could be skipped: " + unitId);
     }
 
     public async Task RecordAnalysisAsync(Analysis analysis, IReadOnlyList<Finding> findings, CancellationToken cancellationToken, VerifyResponse? verifiedAs = null)

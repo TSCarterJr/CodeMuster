@@ -28,6 +28,22 @@ public class DependencyScanTests
         auditor.Manifests = [new ManifestVulnerabilities("web/package.json", "npm audit", packages)];
 
     [Fact]
+    public async Task DataManifests_AreExcludedFromSourceReview_ButStillAudited()
+    {
+        Vulnerable(FakeDependencyAuditor.Package("next", Severity.High));
+        await ScanAsync();
+        Assert.Equal("data", ledger.Files["web/package.json"].ExcludedReason);
+        Assert.Contains("web/package.json", auditor.Paths);
+        Assert.DoesNotContain(ledger.Units, u => u.Kind == UnitKind.File && u.Key == "web/package.json");
+        Assert.Single(ledger.Units, u => u.Kind == UnitKind.Dependency);
+        Assert.Single(FindingsAsync());
+        auditor.Manifests = [];
+        await ScanAsync();
+        Assert.Equal(UnitStatus.Done, ledger.Units.Single(u => u.Kind == UnitKind.Dependency).Status);
+        Assert.Single(FindingsAsync());
+    }
+
+    [Fact]
     public async Task EachAdvisory_BecomesAConfirmedFindingOnItsManifest()
     {
         Vulnerable(

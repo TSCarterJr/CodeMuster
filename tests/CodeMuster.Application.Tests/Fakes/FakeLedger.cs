@@ -58,6 +58,14 @@ public sealed class FakeLedger : ILedger
         return Task.CompletedTask;
     }
 
+    public Task SkipUnitAsync(string unitId, string fingerprint, string reason, CancellationToken cancellationToken)
+    {
+        var index = Units.FindIndex(u => u.Id == unitId && u.Fingerprint == fingerprint);
+        if (index < 0) throw new InvalidOperationException("unit changed before it could be skipped: " + unitId);
+        Units[index] = Units[index] with { Status = UnitStatus.Skipped, Summary = reason, SummaryHash = fingerprint };
+        return Task.CompletedTask;
+    }
+
     public Task<IReadOnlyList<Unit>> NextAsync(int batch, UnitKind? kind, string? path, CancellationToken cancellationToken)
     {
         var folder = path is null ? null : RepoPath.Normalize(path).TrimEnd('/');

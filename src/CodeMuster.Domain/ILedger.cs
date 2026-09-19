@@ -24,6 +24,9 @@ public interface ILedger
     /// <summary>Up to <paramref name="batch"/> units that need work (pending, stale, or failed), only of <paramref name="kind"/> when it is given, oldest first by insertion order. Dependencies are excluded; fixes require explicit kind selection.</summary>
     Task<IReadOnlyList<Unit>> NextAsync(int batch, UnitKind? kind, string? path, CancellationToken cancellationToken);
 
+    /// <summary>Marks the matching current unit skipped with its reason, preserving analyses, findings and members.</summary>
+    Task SkipUnitAsync(string unitId, string fingerprint, string reason, CancellationToken cancellationToken);
+
     /// <summary>Stores an analysis and its findings atomically and moves the unit to Done (with summary, summary hash, and lens hash) or Failed.</summary>
     Task RecordAnalysisAsync(Analysis analysis, IReadOnlyList<Finding> findings, CancellationToken cancellationToken, VerifyResponse? verifiedAs = null);
 

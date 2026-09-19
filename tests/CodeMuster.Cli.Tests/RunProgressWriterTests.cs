@@ -6,6 +6,15 @@ namespace CodeMuster.Cli.Tests;
 public class RunProgressWriterTests
 {
     [Fact]
+    public void SkippedUnit_DoesNotClaimAnAgentAttempt()
+    {
+        var writer = new StringWriter { NewLine = "\n" };
+        new RunProgressWriter(writer).Report(new RunProgress("file:large.cs", UnitKind.File,
+            "large.cs", 0, DoneOutcome.Skipped, "skipped: too large", 1, 2));
+        Assert.Equal("1/2 file large.cs: skipped: too large\n", writer.ToString());
+    }
+
+    [Fact]
     public void Report_WritesTheLineBeforeReturning()
     {
         var writer = new StringWriter { NewLine = "\n" };

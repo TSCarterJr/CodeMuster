@@ -34,6 +34,7 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
                 ? string.Create(CultureInfo.InvariantCulture, $"## Findings ({findings.Count})")
                 : string.Create(CultureInfo.InvariantCulture, $"## Findings ({findings.Count}, {refuted} refuted not shown)"),
         };
+        if (status.Skipped > 0) lines.InsertRange(4, [string.Create(CultureInfo.InvariantCulture, $"skipped {status.Skipped} unit(s); these are not analyzed"), ""]);
         if (findings.Count == 0)
         {
             lines.Add("");
@@ -154,7 +155,7 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
         lines.Add("");
         lines.Add("| unit | status | summary |");
         lines.Add("|---|---|---|");
-        foreach (var unit in units.Where(u => u.Kind != UnitKind.Verify))
+        foreach (var unit in units.Where(u => u.Kind != UnitKind.Verify || u.Status == UnitStatus.Skipped))
         {
             lines.Add($"| {Cell(unit.Key)} | {Name(unit.Status)} | {Cell(unit.Summary)} |");
         }

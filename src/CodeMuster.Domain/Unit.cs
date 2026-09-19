@@ -8,7 +8,7 @@ namespace CodeMuster.Domain;
 /// <param name="Status">Where the unit stands in the loop.</param>
 /// <param name="Fidelity">Trust in the map that built it.</param>
 /// <param name="LensHash">Hash of the lenses the last successful analysis used, or null.</param>
-/// <param name="Summary">One-line summary from the last successful analysis.</param>
+/// <param name="Summary">One-line summary from the last successful analysis, or the current skip reason.</param>
 /// <param name="SummaryHash">Fingerprint the summary was generated from.</param>
 public sealed record Unit(
     string Id,

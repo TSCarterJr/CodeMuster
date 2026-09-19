@@ -35,6 +35,9 @@ public sealed record StatusReport(
     IReadOnlyList<string>? TopUnresolvedNames,
     IReadOnlyDictionary<Severity, int>? VulnerablePackages = null)
 {
+    /// <summary>Units skipped without being analyzed because their pack exceeded the budget.</summary>
+    public int Skipped { get; init; }
+
     /// <summary>Browser review applicability and recorded evidence, separate from code coverage.</summary>
     public string? UxStatus { get; init; }
 
@@ -62,6 +65,7 @@ public sealed record StatusReport(
             lines.Add("vulnerable packages " + string.Join(", ", byWorst));
         }
 
+        if (Skipped > 0) lines.Add(string.Create(CultureInfo.InvariantCulture, $"skipped {Skipped}"));
         lines.Add(string.Create(CultureInfo.InvariantCulture, $"stale {Stale}"));
         lines.Add(string.Create(CultureInfo.InvariantCulture, $"excluded {Excluded}"));
         lines.Add(string.Create(CultureInfo.InvariantCulture, $"low-fidelity {LowFidelity}"));

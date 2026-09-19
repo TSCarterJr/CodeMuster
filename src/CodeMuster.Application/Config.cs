@@ -4,7 +4,7 @@ namespace CodeMuster.Application;
 
 /// <summary>The committed per-repo configuration (D04).</summary>
 /// <param name="Lenses">Named lenses; at least one is expected.</param>
-/// <param name="SliceTokenBudget">Approximate tokens of code a slice pack may show in full before farther members shrink to signatures (D07).</param>
+/// <param name="SliceTokenBudget">Approximate tokens of code shown in full: oversized whole-file packs are skipped, and farther slice members shrink to signatures (D07).</param>
 /// <param name="ResolutionThreshold">Share of call sites, 0 to 1, the mappers must resolve before status calls slice coverage complete (D09).</param>
 /// <param name="Verify">Whether every recorded finding gets a verify unit, costing about one more agent call per finding (D27, D28).</param>
 /// <param name="Vulnerabilities">Whether <c>scan</c> runs each ecosystem's audit tool over the repository's manifests (D38); costs no agent calls.</param>
@@ -32,6 +32,11 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     public string? ExcludedReason(string path, bool linguistGenerated) =>
         Exclusions.Reason(path, linguistGenerated)
         ?? Exclude.Where(glob => Glob.IsMatch(glob, path)).Select(glob => "exclude:" + glob).FirstOrDefault();
+
+    internal bool IsMappingInput(string path, string? excludedReason) =>
+        excludedReason is null || excludedReason == "data" && !ExcludedHere(path)
+        && (Path.GetExtension(path).ToLowerInvariant() is ".sln" or ".slnx" or ".csproj"
+            || Path.GetFileName(path) == "tsconfig.json");
 
     /// <summary>Instructions of the lens every repo starts with.</summary>
     public const string DefaultInstructions =

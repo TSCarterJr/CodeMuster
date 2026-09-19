@@ -2,6 +2,26 @@
 
 ## Current task status
 
+- 2026-09-19, codex: RUN2 (D50) extends RUN1 to document/data/configuration/database
+  exclusions and persistent oversized skips. `run`, `verify`, and `next` skip
+  oversized units once without agent attempts or retries; status/report retain the
+  reason and never count skipped work as analyzed. Scan or force requeues skips.
+  Mapper metadata and ecosystem dependency audits still receive their inputs.
+  Schema 7 gates the new status without changing existing rows; next now takes
+  the coordinator lock because it can persist skips. All 1,192 .NET and 40 npm
+  tests pass after updating exclusion/schema expectations, including a targeted
+  infrastructure rerun for the final schema assertion. Formatting and diff checks
+  pass. Tim authorized commit/push and npm 0.2.9 publication on 2026-09-19.
+  RUN2 includes the superseded RUN1 changes; release work is tracked as REL029.
+
+- 2026-09-19, codex: RUN1 (D49) excludes `.md` documentation case-insensitively
+  and isolates headless pack-construction failures to their unit. Other units
+  continue; failed packs remain incomplete and retryable with a nonzero exit.
+  Rescanning retires legacy Markdown units while preserving history. Regressions
+  failed first; all 1,131 .NET and 40 npm tests pass, zero skips. Formatting and
+  diff checks pass. Clean main was fast-forwarded to 213eb14 before this change.
+  These source changes are uncommitted and unreleased; installed 0.2.8 is unchanged.
+
 - 2026-09-15, codex: REL028 publishes version 0.2.8 for Tim's functionality testing.
   Release commit bfe1290 is on main and annotated tag v0.2.8 points to it. Fixed a
   macOS dead-code regex timeout with ordinal token checks and linear-time request

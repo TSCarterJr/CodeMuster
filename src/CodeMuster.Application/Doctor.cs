@@ -19,7 +19,8 @@ public sealed class Doctor(ISourceTree tree, IReadOnlyList<ICodeMapper> mappers,
         }
 
         progress?.Report($"git: listed {files.Count} files");
-        var paths = files.Where(f => (config ?? Config.Default).ExcludedReason(f.Path, f.LinguistGenerated) is null).Select(f => f.Path).ToList();
+        var settings = config ?? Config.Default;
+        var paths = files.Where(f => settings.IsMappingInput(f.Path, settings.ExcludedReason(f.Path, f.LinguistGenerated))).Select(f => f.Path).ToList();
         var probes = new List<DoctorProbe> { new("git", ProbeState.Working, null, 0, []) };
         foreach (var mapper in mappers.Where(m => paths.Any(path => Languages.FromPath(path) == m.Language)))
         {

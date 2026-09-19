@@ -11,6 +11,9 @@ public enum DoneOutcome
 
     /// <summary>The response was not valid JSON for the schema; a failed analysis was stored and the unit is Failed (D10).</summary>
     InvalidResponse,
+
+    /// <summary>The unit was skipped without an agent call because its pack exceeded the budget.</summary>
+    Skipped,
 }
 
 /// <summary>The outcome of <see cref="Done"/> and a one-line message for the console.</summary>

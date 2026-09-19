@@ -8,6 +8,46 @@ public class HeadlessTests
     private const string PlantedClaim = "planted by the fake adapter: café → naïve";
 
     [Fact]
+    public async Task OversizedCode_SkipsOnce_AndMarkdownIsExcluded()
+    {
+        using var repo = TempRepo.FromFixture("mixed-repo");
+        await File.WriteAllTextAsync(Path.Combine(repo.Root, "AGENTS.md"), new string('x', 100_000));
+        await File.WriteAllTextAsync(Path.Combine(repo.Root, "oversized.cs"), new string('x', 100_000));
+        repo.Git("add", "AGENTS.md", "oversized.cs");
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "init", "--yes", "--no-skills")).ExitCode);
+        var configPath = Path.Combine(repo.Root, ".codemuster", "config.json");
+        var config = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(configPath))!;
+        config["vulnerabilities"] = false;
+        await File.WriteAllTextAsync(configPath, config.ToJsonString());
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file")).ExitCode);
+
+        var run = await CliProcess.RunAsync(repo.Root, "run", "--agent", "fake", "-j", "3", "--attempts", "1");
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Contains("oversized.cs exceeds the whole-file pack limit", run.Stdout);
+        Assert.Contains("1 skipped", run.Stdout);
+        Assert.DoesNotContain("AGENTS.md", run.Stdout);
+        var status = await CliProcess.RunAsync(repo.Root, "status");
+        var coverage = Regex.Match(status.Stdout, @"^analyzed (\d+)/(\d+) at", RegexOptions.Multiline);
+        Assert.True(coverage.Success, status.Stdout);
+        Assert.Equal(int.Parse(coverage.Groups[2].Value) - 1, int.Parse(coverage.Groups[1].Value));
+        var report = await CliProcess.RunAsync(repo.Root, "report");
+        Assert.Contains("| oversized.cs | skipped |", report.Stdout);
+        Assert.DoesNotContain("| AGENTS.md | pending |", report.Stdout);
+
+        Assert.Contains("skipped 1", status.Stdout);
+        var again = await CliProcess.RunAsync(repo.Root, "run", "--agent", "fake");
+        Assert.Equal(0, again.ExitCode);
+        Assert.Contains("completed 0 unit(s)", again.Stdout);
+        config["slice_token_budget"] = 30_000;
+        await File.WriteAllTextAsync(configPath, config.ToJsonString());
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file")).ExitCode);
+        var retry = await CliProcess.RunAsync(repo.Root, "run", "--agent", "fake");
+        Assert.Equal(0, retry.ExitCode);
+        Assert.Contains("completed 1 unit(s), 0 gave up", retry.Stdout);
+    }
+
+    [Fact]
     public async Task RunWithFakeAgent_CompletesEveryUnit_AndReportShowsPlantedFindings()
     {
         using var repo = TempRepo.FromFixture("mixed-repo");

@@ -41,6 +41,70 @@ public class ScanTests
     }
 
     [Fact]
+    public async Task MappingMetadata_RemainsAvailable_ButGetsNoAuditUnit()
+    {
+        tree.Add("Repo.sln", "solution");
+        tree.Add("src/Api.csproj", "project");
+        tree.Add("src/A.cs", "class A {}");
+        tree.Add("web/tsconfig.json", "{}");
+        tree.Add("web/a.ts", "export const a = 1;");
+        tree.Add("excluded/tsconfig.json", "{}");
+        var mapper = new FakeCodeMapper(Languages.CSharp, new CodeMap([], [], [], new ResolutionStats(0, 0, []), []));
+        var config = Config.Default with { Exclude = ["excluded/**"] };
+
+        await new Scan(ledger, tree, new FakeContentHasher(), clock, config, [mapper]).RunAsync(CancellationToken.None);
+
+        var call = Assert.Single(mapper.Calls);
+        Assert.Contains("Repo.sln", call.Paths);
+        Assert.Contains("src/Api.csproj", call.Paths);
+        Assert.Contains("web/tsconfig.json", call.Paths);
+        Assert.DoesNotContain("excluded/tsconfig.json", call.Paths);
+        Assert.Equal(["src/A.cs", "web/a.ts"], ledger.Units.Select(u => u.Key).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task Rescan_RequeuesSkippedUnits_WithoutClaimingCoverage()
+    {
+        tree.Add("large.cs", new string('x', Config.Default.SliceTokenBudget * 4 + 1));
+        await ScanAsync();
+        Assert.Empty(await new Next(ledger, tree, Config.Default).RunAsync(1, CancellationToken.None));
+        Assert.Equal("Skipped", Unit("large.cs").Status.ToString());
+
+        var rescanned = await ScanAsync();
+
+        Assert.Equal(0, rescanned.UnitsCreated);
+        Assert.Equal(UnitStatus.Pending, Unit("large.cs").Status);
+        Assert.Null(Unit("large.cs").Summary);
+        Assert.Empty(ledger.Analyses);
+    }
+
+    [Fact]
+    public async Task Markdown_IsExcludedAndLegacyUnitsRetireWithoutLosingHistory()
+    {
+        tree.Add("AGENTS.md", "instructions");
+        tree.Add("docs/guide.MD", "documentation");
+        tree.Add("src/A.cs", "class A {}");
+        var id = UnitIds.File("AGENTS.md");
+        var member = new UnitMember(id, "AGENTS.md", null, "old-hash", 0);
+        ledger.Units.Add(new Unit(id, UnitKind.File, "AGENTS.md", Fingerprints.Compute([member]),
+            UnitStatus.Pending, Fidelity.Full, null, null, null));
+        ledger.Members.Add(member);
+        var verify = await RecordFindingAsync("AGENTS.md");
+        var history = ledger.Analyses.ToArray();
+
+        var result = await ScanAsync();
+
+        Assert.Equal(1, result.UnitsTotal);
+        Assert.Equal("documentation", ledger.Files["AGENTS.md"].ExcludedReason);
+        Assert.Equal("documentation", ledger.Files["docs/guide.MD"].ExcludedReason);
+        Assert.Equal(UnitStatus.Retired, Unit("AGENTS.md").Status);
+        Assert.Equal(UnitStatus.Retired, ledger.Units.Single(u => u.Id == verify.Id).Status);
+        Assert.Equal(history, ledger.Analyses);
+        Assert.Contains(member, ledger.Members);
+        Assert.Equal("src/A.cs", Assert.Single(await ledger.NextAsync(100, null, null, CancellationToken.None)).Key);
+    }
+
+    [Fact]
     public async Task FirstScan_CreatesOneFileUnitPerFile_AndRecordsTheRun()
     {
         AddThree();

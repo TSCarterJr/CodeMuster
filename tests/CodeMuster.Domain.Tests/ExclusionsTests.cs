@@ -5,12 +5,83 @@ namespace CodeMuster.Domain.Tests;
 public class ExclusionsTests
 {
     [Theory]
+    [InlineData(".gitignore")]
+    [InlineData(".editorconfig")]
+    [InlineData(".npmrc")]
+    [InlineData(".env")]
+    [InlineData(".env.production")]
+    public void ExtensionlessConfiguration_IsExcluded(string path) =>
+        Assert.Equal("data", Exclusions.Reason(path, false));
+
+    [Theory]
+    [InlineData("md", "documentation")]
+    [InlineData("markdown", "documentation")]
+    [InlineData("txt", "documentation")]
+    [InlineData("rst", "documentation")]
+    [InlineData("adoc", "documentation")]
+    [InlineData("doc", "documentation")]
+    [InlineData("docx", "documentation")]
+    [InlineData("rtf", "documentation")]
+    [InlineData("odt", "documentation")]
+    [InlineData("pptx", "documentation")]
+    [InlineData("xlsx", "documentation")]
+    [InlineData("json", "data")]
+    [InlineData("jsonc", "data")]
+    [InlineData("json5", "data")]
+    [InlineData("jsonl", "data")]
+    [InlineData("ndjson", "data")]
+    [InlineData("csv", "data")]
+    [InlineData("tsv", "data")]
+    [InlineData("xml", "data")]
+    [InlineData("yaml", "data")]
+    [InlineData("yml", "data")]
+    [InlineData("toml", "data")]
+    [InlineData("ini", "data")]
+    [InlineData("config", "data")]
+    [InlineData("sln", "data")]
+    [InlineData("csproj", "data")]
+    [InlineData("db", "database")]
+    [InlineData("sqlite", "database")]
+    [InlineData("sqlite3", "database")]
+    [InlineData("db3", "database")]
+    [InlineData("mdb", "database")]
+    [InlineData("accdb", "database")]
+    [InlineData("db-wal", "database")]
+    [InlineData("sqlite-shm", "database")]
+    public void NonCodeFormats_AreExcludedAtAnyDepthAndCase(string extension, string reason)
+    {
+        Assert.Equal(reason, Exclusions.Reason("file." + extension, false));
+        Assert.Equal(reason, Exclusions.Reason(@"nested\FILE." + extension.ToUpperInvariant(), false));
+    }
+
+    [Theory]
+    [InlineData("README")]
+    [InlineData("LICENSE")]
+    [InlineData("docs/CHANGELOG")]
+    [InlineData("NOTICE")]
+    public void ExtensionlessDocuments_AreExcluded(string path) =>
+        Assert.Equal("documentation", Exclusions.Reason(path, false));
+
+    [Theory]
+    [InlineData("src/App.vue")]
+    [InlineData("src/App.svelte")]
+    [InlineData("src/page.mdx")]
+    [InlineData("web/page.html")]
+    [InlineData("db/query.sql")]
+    [InlineData("scripts/build.sh")]
+    [InlineData("scripts/build.ps1")]
+    [InlineData("Dockerfile")]
+    [InlineData("Makefile")]
+    public void SourceAndExecutableTemplates_RemainIncluded(string path) =>
+        Assert.Null(Exclusions.Reason(path, false));
+
+    [Theory]
     [InlineData(@"src\Data\Migrations\20260101_Initial.cs", "migrations")]
     [InlineData("src/Data/Migrations/20260101_Initial.cs", "migrations")]
     [InlineData("Migrations/Initial.cs", "migrations")]
     [InlineData(".codemuster/config.json", "tool-config")]
     [InlineData(".codemuster/ledger.db", "tool-config")]
-    [InlineData("src/.codemuster/notes.md", null)]
+    [InlineData("src/.codemuster/notes.md", "documentation")]
     [InlineData("src/Data/QuoteDto.g.cs", "generated")]
     [InlineData("src/Data/QuoteDto.g.i.cs", "generated")]
     [InlineData("src/Forms/Form1.Designer.cs", "generated")]
@@ -35,9 +106,13 @@ public class ExclusionsTests
     [InlineData("web/app.ts", null)]
     [InlineData("web/app.js", null)]
     [InlineData("web/styles.css", null)]
-    [InlineData("web/package.json", null)]
-    [InlineData("README.md", null)]
-    [InlineData("README", null)]
+    [InlineData("web/package.json", "data")]
+    [InlineData("README.md", "documentation")]
+    [InlineData("AGENTS.md", "documentation")]
+    [InlineData("docs/guide.MD", "documentation")]
+    [InlineData(@"src\docs\guide.Md", "documentation")]
+    [InlineData("web/page.mdx", null)]
+    [InlineData("README", "documentation")]
     [InlineData("src/Snapshots/a.cs", null)]
     public void Reason_returns_first_matching_code_or_null(string path, string? expected)
     {

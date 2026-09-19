@@ -6,13 +6,15 @@ namespace CodeMuster.Application.Tests;
 public class NextTests
 {
     [Fact]
-    public async Task OversizedWholeFileStopsWithoutRecordingCoverage()
+    public async Task OversizedWholeFileIsSkipped_AndNextReturnsFollowingPack()
     {
-        var unit = AddFileUnit("large.txt", new string('x', Config.Default.SliceTokenBudget * 4 + 1));
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync());
-        Assert.Contains("large.txt", error.Message);
-        Assert.Contains("slice_token_budget", error.Message);
-        Assert.Equal(UnitStatus.Pending, ledger.Units.Single(u => u.Id == unit.Id).Status);
+        var unit = AddFileUnit("large.cs", new string('x', Config.Default.SliceTokenBudget * 4 + 1));
+        var good = AddFileUnit("small.cs", "class Small {}");
+        var pack = Assert.Single(await RunAsync());
+        Assert.Equal(good.Id, pack.UnitId);
+        Assert.Equal("Skipped", ledger.Units.Single(u => u.Id == unit.Id).Status.ToString());
+        Assert.Contains("slice_token_budget", ledger.Units.Single(u => u.Id == unit.Id).Summary);
+        Assert.Empty(ledger.Analyses);
     }
 
     private static readonly Lens Tenancy = new("tenancy", "Every query must filter by tenant.", ["web/**"], []);

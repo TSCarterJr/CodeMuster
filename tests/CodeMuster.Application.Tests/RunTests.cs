@@ -76,6 +76,62 @@ public class RunTests
         }
     }
 
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(1, 2)]
+    [InlineData(1, 4)]
+    [InlineData(3, 0)]
+    [InlineData(3, 2)]
+    [InlineData(3, 4)]
+    public async Task OversizedPack_IsSkippedOnce_AndOtherUnitsComplete(int parallelism, int oversizedIndex)
+    {
+        var units = AddFileUnits("a", "b", "c", "d", "e");
+        var bad = units[oversizedIndex];
+        tree.Contents[bad.Key] = new string('x', Config.Default.SliceTokenBudget * 4 + 1);
+        var adapter = Always(EmptyResponse);
+        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        var result = await RunAsync(adapter, new RunOptions(parallelism, 2, false), guard.Token);
+
+        Assert.False(result.Cancelled);
+        Assert.Equal(4, result.Completed);
+        Assert.Empty(result.GaveUp);
+        Assert.Equal("Skipped", Stored(bad.Id).Status.ToString());
+        Assert.Equal(4, ledger.Analyses.Count);
+        Assert.All(ledger.Analyses, a => Assert.True(a.Analysis.Succeeded));
+        Assert.DoesNotContain(adapter.Packs, p => UnitIdOf(p) == bad.Id);
+        Assert.All(units.Where(u => u.Id != bad.Id), u => Assert.Equal(UnitStatus.Done, Stored(u.Id).Status));
+        var failures = reports.Where(r => r.UnitId == bad.Id).ToList();
+        Assert.Equal([0], failures.Select(r => r.Attempt));
+        Assert.All(failures, r =>
+        {
+            Assert.Equal("Skipped", r.Outcome.ToString());
+            Assert.Contains(bad.Key, r.Message);
+            Assert.Contains("slice_token_budget", r.Message);
+            Assert.Equal(5, r.Total);
+        });
+
+        var again = await RunAsync(adapter, new RunOptions(parallelism, 2, false), guard.Token);
+        Assert.Equal(0, again.Completed);
+        Assert.Empty(again.GaveUp);
+        Assert.Equal(4, adapter.Packs.Count);
+        var status = await new Status(ledger, Config.Default).RunAsync(guard.Token);
+        Assert.Contains("skipped 1", status.Render());
+        Assert.DoesNotContain("\ncomplete", status.Render());
+        var report = await new Report(ledger, Config.Default).RunAsync(guard.Token);
+        Assert.Contains($"| {bad.Key} | skipped |", report);
+        Assert.Contains("slice_token_budget", report);
+
+        var retry = await new Run(ledger, tree, clock,
+            Config.Default with { SliceTokenBudget = Config.Default.SliceTokenBudget + 1 },
+            adapter, new RecordingProgress(reports, null)).RunAsync(new RunOptions(parallelism, 2, true, Path: bad.Key), guard.Token);
+
+        Assert.Equal(1, retry.Completed);
+        Assert.Empty(retry.GaveUp);
+        Assert.Equal(5, ledger.Analyses.Count);
+        Assert.All(ledger.Units, u => Assert.Equal(UnitStatus.Done, u.Status));
+    }
+
     [Fact]
     public async Task Parallelism3_FiveUnits_HoldsThreeCallsOpenAtOnce_AndCompletesAll()
     {
