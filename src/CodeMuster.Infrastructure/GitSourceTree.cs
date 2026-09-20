@@ -52,8 +52,8 @@ public sealed class GitSourceTree(string repoRoot) : ISourceTree
 
     public async Task<bool> IsIgnoredAsync(string path, CancellationToken cancellationToken)
     {
-        string[] arguments = ["check-ignore", "-v", "--", path];
-        var (exitCode, output, error) = await GitProcess.RunAllowingFailureAsync(repoRoot, arguments, null, cancellationToken).ConfigureAwait(false);
+        string[] arguments = ["check-ignore", "-v", "-z", "--stdin"];
+        var (exitCode, output, error) = await GitProcess.RunAllowingFailureAsync(repoRoot, arguments, path + "\0", cancellationToken).ConfigureAwait(false);
         if (exitCode == 1)
         {
             return false;
@@ -64,9 +64,9 @@ public sealed class GitSourceTree(string repoRoot) : ISourceTree
             throw GitProcess.Failure(arguments, exitCode, error);
         }
 
-        var fields = output.TrimEnd('\r', '\n').Split(':', 3);
+        var fields = output.Split('\0');
         var source = RepoPath.Normalize(fields[0]);
-        var pattern = fields[2][..fields[2].IndexOf('\t')];
+        var pattern = fields[2];
         return !pattern.StartsWith('!') && !Path.IsPathRooted(source) && !source.StartsWith(".git/", StringComparison.Ordinal);
     }
 
