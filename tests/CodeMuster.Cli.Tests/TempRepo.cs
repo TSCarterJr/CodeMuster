@@ -66,8 +66,10 @@ public sealed class TempRepo : IDisposable
         }
 
         using var process = Process.Start(start) ?? throw new InvalidOperationException("git did not start");
-        var stdout = process.StandardOutput.ReadToEnd();
-        var stderr = process.StandardError.ReadToEnd();
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        var stdout = stdoutTask.GetAwaiter().GetResult();
+        var stderr = stderrTask.GetAwaiter().GetResult();
         process.WaitForExit();
         return process.ExitCode == 0 ? stdout : throw new InvalidOperationException($"{program} {string.Join(' ', args)} failed: {stderr}{stdout}");
     }
