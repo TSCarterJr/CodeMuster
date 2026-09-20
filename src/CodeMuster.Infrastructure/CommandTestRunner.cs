@@ -40,6 +40,7 @@ public sealed class CommandTestRunner(string repoRoot, IReadOnlyList<string> com
                 process.Kill(entireProcessTree: true);
             }
 
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
             throw;
         }
     }
