@@ -47,22 +47,6 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
             lines.Insert(4, "");
         }
 
-        if (dependencies.Count > 0)
-        {
-            lines.Add("");
-            lines.Add(string.Create(CultureInfo.InvariantCulture, $"## Vulnerable dependencies ({dependencies.Count})"));
-            lines.Add("");
-            foreach (var dependency in dependencies
-                .OrderBy(f => f.Finding.Severity)
-                .ThenBy(f => f.Finding.Path, StringComparer.Ordinal)
-                .ThenBy(f => f.Finding.Claim, StringComparer.Ordinal))
-            {
-                var fixedNote = dependency.Fix is { State: FixState.Fixed } ? " (fixed)" : "";
-                lines.Add($"- `{dependency.Finding.Path}` [{Name(dependency.Finding.Severity)}]{fixedNote} {Inline(dependency.Finding.Claim)}");
-                lines.Add("  " + Inline(dependency.Finding.Evidence));
-            }
-        }
-
         foreach (var severity in Enum.GetValues<Severity>())
         {
             var group = findings
@@ -97,6 +81,22 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
                 {
                     lines.Add("  (stale: unit changed since this analysis)");
                 }
+            }
+        }
+
+        if (dependencies.Count > 0)
+        {
+            lines.Add("");
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"## Vulnerable dependencies ({dependencies.Count})"));
+            lines.Add("");
+            foreach (var dependency in dependencies
+                .OrderBy(f => f.Finding.Severity)
+                .ThenBy(f => f.Finding.Path, StringComparer.Ordinal)
+                .ThenBy(f => f.Finding.Claim, StringComparer.Ordinal))
+            {
+                var fixedNote = dependency.Fix is { State: FixState.Fixed } ? " (fixed)" : "";
+                lines.Add($"- `{dependency.Finding.Path}` [{Name(dependency.Finding.Severity)}]{fixedNote} {Inline(dependency.Finding.Claim)}");
+                lines.Add("  " + Inline(dependency.Finding.Evidence));
             }
         }
 
