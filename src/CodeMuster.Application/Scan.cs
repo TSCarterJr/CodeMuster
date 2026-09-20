@@ -88,10 +88,10 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
 
         var members = planned.SelectMany(p => p.Members).ToList();
         var produced = units.Select(u => u.Id).ToHashSet(StringComparer.Ordinal);
-        var live = auditPaths;
+        var live = auditFiles.ToDictionary(f => f.Path, f => Fingerprints.Compute(PlannedUnit.Dependency(f.Path, f.ContentHash).Members), StringComparer.Ordinal);
         var retired = existingUnits.Values
             .Where(u => u.Status != UnitStatus.Retired && !produced.Contains(u.Id))
-            .Where(u => u.Kind != UnitKind.Dependency || !live.Contains(u.Key))
+            .Where(u => u.Kind != UnitKind.Dependency || !live.TryGetValue(u.Key, out var fingerprint) || u.Fingerprint != fingerprint)
             .Select(u => u with { Status = UnitStatus.Retired })
             .ToList();
         if (retired.Count > 0)
