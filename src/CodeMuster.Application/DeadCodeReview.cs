@@ -143,6 +143,7 @@ public static partial class DeadCodeReview
                 {
                     if (tail.StartsWith(')')) method = "GET";
                     else if (FetchMethod().Match(tail) is { Success: true } option) method = option.Groups["method"].Value.ToUpperInvariant();
+                    else if (FetchOptions().Match(tail) is { Success: true } options && !UnknownFetchMethod().IsMatch(options.Value)) method = "GET";
                     else continue;
                 }
                 requests.Add(new Request(path, source.AsSpan(0, match.Index).Count('\n') + 1, method, match.Groups["url"].Value));
@@ -221,4 +222,10 @@ public static partial class DeadCodeReview
 
     [GeneratedRegex("\\bmethod\\s*:\\s*['\"](?<method>GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)['\"]", RegexOptions.NonBacktracking | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex FetchMethod();
+
+    [GeneratedRegex("^,\\s*\\{[^;]*\\}\\s*\\)", RegexOptions.NonBacktracking | RegexOptions.CultureInvariant)]
+    private static partial Regex FetchOptions();
+
+    [GeneratedRegex("\\b(?:method|__proto__)\\b|\\.\\.\\.|\\[|\\\\", RegexOptions.NonBacktracking | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex UnknownFetchMethod();
 }
