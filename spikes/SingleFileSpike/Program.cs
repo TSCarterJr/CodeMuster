@@ -75,7 +75,10 @@ static async Task<bool> RunRoslynAsync(string solutionPath)
             }
 
             Console.WriteLine($"{controller!.Name}.{method.Name} calls {callee.ContainingType.ToDisplayString()}.{callee.Name}");
-            return callee.ContainingType.Name == "IQuoteService";
+            if (callee.ContainingType.Name == "IQuoteService")
+            {
+                return true;
+            }
         }
     }
 
