@@ -40,6 +40,7 @@ function mapRepo(request) {
   const edges = new Map();
   const entryPoints = new Map();
   const unresolvedNames = new Map();
+  const diagnostics = new Set();
   let resolved = 0;
   let unresolved = 0;
 
@@ -47,9 +48,16 @@ function mapRepo(request) {
     report(`loading ${tsconfig}`);
     const configPath = path.join(repoRoot, tsconfig);
     const ts = require(typeScriptPath(repoRoot, tsconfig));
-    const config = ts.readConfigFile(configPath, ts.sys.readFile).config;
-    const parsed = ts.parseJsonConfigFileContent(config, ts.sys, path.dirname(configPath), undefined, configPath);
+    const config = ts.readConfigFile(configPath, ts.sys.readFile);
+    const parsed = ts.parseJsonConfigFileContent(config.config || {}, ts.sys, path.dirname(configPath), undefined, configPath);
     const program = ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options });
+    [config.error, ...parsed.errors, ...program.getOptionsDiagnostics(), ...program.getGlobalDiagnostics(), ...program.getSyntacticDiagnostics()]
+      .filter((diagnostic) => diagnostic !== undefined)
+      .forEach((diagnostic) => {
+        const file = diagnostic.file ? path.relative(repoRoot, diagnostic.file.fileName).split(path.sep).join('/') : tsconfig;
+        const location = diagnostic.file && diagnostic.start !== undefined ? `${file}:${line(diagnostic.file, diagnostic.start)}` : file;
+        diagnostics.add(`${location}: TS${diagnostic.code}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')}`);
+      });
     const mapper = createMapper(ts, program.getTypeChecker(), repoRoot);
     const files = program.getSourceFiles().filter((sourceFile) => {
       const file = mapper.repoPath(sourceFile);
@@ -97,7 +105,7 @@ function mapRepo(request) {
         .slice(0, 20)
         .map(([name]) => name),
     },
-    diagnostics: [],
+    diagnostics: [...diagnostics].sort(ordinal),
   };
 }
 
@@ -205,7 +213,10 @@ function createMapper(ts, checker, repoRoot) {
     }
 
     if ((ts.isMethodDeclaration(node) || ts.isConstructorDeclaration(node)) && ts.isClassDeclaration(parent) && ts.isSourceFile(parent.parent)) {
-      return `${file()}#${className(parent)}.${ts.isConstructorDeclaration(node) ? 'constructor' : node.name.getText()}`;
+      const isStatic = (member) => (ts.getCombinedModifierFlags(member) & ts.ModifierFlags.Static) !== 0;
+      const collision = ts.isMethodDeclaration(node) && isStatic(node) && parent.members.some((member) =>
+        ts.isMethodDeclaration(member) && !isStatic(member) && member.name.getText() === node.name.getText());
+      return `${file()}#${className(parent)}.${collision ? 'static.' : ''}${ts.isConstructorDeclaration(node) ? 'constructor' : node.name.getText()}`;
     }
 
     return undefined;
