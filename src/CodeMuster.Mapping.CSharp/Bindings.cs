@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace CodeMuster.Mapping.CSharp;
 
@@ -37,7 +38,7 @@ internal static class Bindings
 
                 ITypeSymbol?[] types = method.TypeArguments.Length == 2
                     ? [.. method.TypeArguments]
-                    : [.. invocation.ArgumentList.Arguments.Select(argument => argument.Expression).OfType<TypeOfExpressionSyntax>().Select(typeOf => model.GetTypeInfo(typeOf.Type, cancellationToken).Type)];
+                    : [.. invocation.ArgumentList.Arguments.OrderBy(argument => (model.GetOperation(argument, cancellationToken) as IArgumentOperation)?.Parameter?.Ordinal).Select(argument => argument.Expression).OfType<TypeOfExpressionSyntax>().Select(typeOf => model.GetTypeInfo(typeOf.Type, cancellationToken).Type)];
                 if (types is [INamedTypeSymbol { TypeKind: TypeKind.Interface } service, INamedTypeSymbol implementation]
                     && service.OriginalDefinition.GetDocumentationCommentId() is { } serviceId)
                 {
