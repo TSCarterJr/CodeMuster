@@ -160,13 +160,13 @@ public class FixTests
     }
 
     [Fact]
-    public async Task AFixedFile_StaysDoneWhileItsContentIsUnchanged_AndGoesStaleWhenItChanges()
+    public async Task AFileWithADeclinedFinding_StaysDoneWhileItsContentIsUnchanged_AndGoesStaleWhenItChanges()
     {
         var unit = AddUnit("src/a.cs");
-        await RecordAsync(unit, (10, Verdict.Confirmed));
+        var ids = await RecordAsync(unit, (10, Verdict.Confirmed));
         await PlanAsync();
         var fixId = UnitIds.Fix("src/a.cs");
-        ledger.Units[ledger.Units.FindIndex(u => u.Id == fixId)] = Stored(fixId) with { Status = UnitStatus.Done };
+        await DoneAsync(Stored(fixId), FixResponseJson.Serialize(new FixResponse("left alone", [], [new DeclinedFix(ids[0], "the caller must change first")])));
 
         var unchanged = await PlanAsync();
 

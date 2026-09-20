@@ -13,7 +13,7 @@ public class NextTests
         var pack = Assert.Single(await RunAsync());
         Assert.Equal(good.Id, pack.UnitId);
         Assert.Equal("Skipped", ledger.Units.Single(u => u.Id == unit.Id).Status.ToString());
-        Assert.Contains("slice_token_budget", ledger.Units.Single(u => u.Id == unit.Id).Summary);
+        Assert.Contains("split the file, then rescan; no coverage was recorded", ledger.Units.Single(u => u.Id == unit.Id).Summary);
         Assert.Empty(ledger.Analyses);
     }
 

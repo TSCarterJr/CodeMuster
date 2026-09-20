@@ -13,6 +13,6 @@ public enum UnitStatus
     Failed,
     /// <summary>No longer part of the tree; kept for history, never handed out.</summary>
     Retired,
-    /// <summary>Not reviewed because its pack exceeded the budget; requeued by scan or force.</summary>
+    /// <summary>Not reviewed because its pack exceeded the budget; requeued by scan or force, and for fix units by the next run (D56).</summary>
     Skipped,
 }

@@ -6,4 +6,8 @@ namespace CodeMuster.Application;
 /// <param name="Declined">Findings it left alone, with reasons in the ledger.</param>
 /// <param name="GaveUp">Units that used all their attempts.</param>
 /// <param name="TestsRun">True when a test command gated every recorded fix; false when none was configured.</param>
-public sealed record FixResult(int Units, int Fixed, int Declined, IReadOnlyList<string> GaveUp, bool TestsRun = false);
+public sealed record FixResult(int Units, int Fixed, int Declined, IReadOnlyList<string> GaveUp, bool TestsRun = false)
+{
+    /// <summary>Files skipped for exceeding the pack budget, without spending a repair attempt (D50).</summary>
+    public IReadOnlyList<string> Skipped { get; init; } = [];
+}

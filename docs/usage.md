@@ -308,6 +308,14 @@ support did not persist every fix failure, and those missing diagnostics cannot 
 A finding being verified does not guarantee a worker will produce an acceptable patch. An agent
 error, invalid response, out-of-scope edit, or failing test command can reject an attempt.
 
+### A file was skipped as too large
+
+A whole-file repair pack above `slice_token_budget` is skipped with its reason rather than failing
+the run: the remaining files are still fixed and committed, the skip spends no attempt, and the
+exit code stays zero. `status` and `report` show the skip and never count it as repaired. Raise
+`slice_token_budget` in `.codemuster/config.json` or split the file, and the next `fix` re-checks
+the size and picks it up without a flag or a rescan.
+
 ### A finding was declined
 
 `report --include-refuted` shows verification and fix reasons. A decline remains unresolved even
@@ -328,7 +336,9 @@ codemuster fix --agent codex --retry-declined --path src/file.ts --include-relat
 The isolated worker can edit only that group. Tests run against the combined patch, and the
 coherent repair is committed together. Other edits still reject the patch. Every unresolved
 confirmed finding must receive exactly one addressed/declined outcome before completion.
-The AI should not switch to manual repairs merely because a worker declined.
+The AI should not switch to manual repairs merely because a worker declined. A finding the audit
+confirms in an already-repaired file after that repair finished is picked up by the next `fix`
+without a flag; only declines need `--retry-declined`.
 
 ### Verify repairs and finish
 

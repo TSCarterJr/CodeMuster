@@ -216,6 +216,32 @@ public class FixCommandTests
     }
 
     [Fact]
+    public async Task AnOversizedFile_IsSkipped_TheRestAreFixed_AndARaisedBudgetPicksItUp()
+    {
+        using var repo = await AuditedAsync();
+        const string target = "src/MixedRepo.Api/Program.cs";
+        repo.Git("config", "user.name", "CodeMuster Tests");
+        repo.Git("config", "user.email", "tests@codemuster.invalid");
+        repo.Git("config", "commit.gpgsign", "false");
+        await File.AppendAllTextAsync(Path.Combine(repo.Root, target), new string('x', 120_000));
+        repo.Git("commit", "-am", "grow the endpoint file");
+
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "-j", "2");
+
+        Assert.Equal(0, fix.ExitCode);
+        Assert.Contains(target + " exceeds the whole-file pack limit", fix.Stdout);
+        Assert.Matches(@"fixed [1-9]\d* finding\(s\) across [1-9]\d* file\(s\), declined 0, 1 skipped, 0 gave up", fix.Stdout);
+        Assert.Contains("| " + target + " | skipped |", (await CliProcess.RunAsync(repo.Root, "report")).Stdout);
+
+        repo.WithSliceTokenBudget(60_000);
+        var again = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake");
+
+        Assert.Equal(0, again.ExitCode);
+        Assert.DoesNotContain("skipped", again.Stdout);
+        Assert.Matches(@"fixed [1-9]\d* finding\(s\) across 1 file\(s\), declined 0, 0 gave up", again.Stdout);
+    }
+
+    [Fact]
     public async Task Fix_ParallelWorkers_RecordFindings_AndLeaveNoWorktreesBehind()
     {
         using var repo = await AuditedAsync();

@@ -277,9 +277,10 @@ public static class Program
             Console.Error.WriteLine($"gave up on {unitId} after {options.MaxAttempts} attempts");
         }
 
+        var skipped = result.Skipped.Count == 0 ? "" : string.Create(CultureInfo.InvariantCulture, $", {result.Skipped.Count} skipped");
         Console.WriteLine(string.Create(
             CultureInfo.InvariantCulture,
-            $"fixed {result.Fixed} finding(s) across {result.Units} file(s), declined {result.Declined}, {result.GaveUp.Count} gave up"));
+            $"fixed {result.Fixed} finding(s) across {result.Units} file(s), declined {result.Declined}{skipped}, {result.GaveUp.Count} gave up"));
         return result.GaveUp.Count > 0 ? 1 : 0;
     }
 

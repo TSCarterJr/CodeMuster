@@ -80,8 +80,10 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         var targets = eligible
             .GroupBy(f => f.Finding.Path)
             .ToDictionary(group => group.Key, group => group.Select(f => f.Id).ToHashSet(), StringComparer.Ordinal);
-        var pending = new Queue<string>((await ledger.NextAsync(int.MaxValue, UnitKind.Fix, options.Path, cancellationToken))
-            .Where(unit => targets.ContainsKey(unit.Key)).Select(u => u.Id));
+        var selected = (await ledger.NextAsync(int.MaxValue, UnitKind.Fix, options.Path, cancellationToken))
+            .Where(unit => targets.ContainsKey(unit.Key)).ToList();
+        var fingerprints = selected.ToDictionary(u => u.Id, u => u.Fingerprint, StringComparer.Ordinal);
+        var pending = new Queue<string>(selected.Select(u => u.Id));
         if (pending.Count == 0) return new FixResult(0, 0, 0, []);
         await CheckBrowserSourcesAsync(eligible.Where(f => options.Path is null || f.Finding.Path == options.Path || f.Finding.Path.StartsWith(options.Path.TrimEnd('/') + "/", StringComparison.Ordinal)), cancellationToken);
         var editor = fileFixer ?? throw new InvalidOperationException("parallel fix needs isolated file workers");
@@ -90,6 +92,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         var attempts = new Dictionary<string, int>(StringComparer.Ordinal);
         var running = new Dictionary<Task<ParallelAttempt>, UnitPack>();
         var gaveUp = new List<string>();
+        var skipped = new List<string>();
         var units = 0;
         var fixedCount = 0;
         var declined = 0;
@@ -101,12 +104,26 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                 cancellationToken.ThrowIfCancellationRequested();
                 while (pending.Count > 0 && running.Count < options.Parallelism)
                 {
-                    var pack = await next.ForUnitAsync(pending.Dequeue(), cancellationToken);
+                    var unitId = pending.Dequeue();
+                    UnitPack pack;
+                    try
+                    {
+                        pack = await next.ForUnitAsync(unitId, cancellationToken);
+                    }
+                    catch (PackTooLargeException ex)
+                    {
+                        await ledger.SkipUnitAsync(unitId, fingerprints[unitId], ex.Message, cancellationToken);
+                        skipped.Add(unitId);
+                        notes?.Report("skipped: " + ex.Message);
+                        continue;
+                    }
+
                     attempts[pack.UnitId] = attempts.GetValueOrDefault(pack.UnitId) + 1;
                     notes?.Report(string.Create(CultureInfo.InvariantCulture, $"fixing {pack.Key}, {targets[pack.Key].Count} finding(s) (attempt {attempts[pack.UnitId]}/{options.MaxAttempts})"));
                     running.Add(EditAsync(pack), pack);
                 }
 
+                if (running.Count == 0) continue;
                 var completed = await Task.WhenAny(running.Keys).WaitAsync(cancellationToken);
                 var unit = running[completed];
                 running.Remove(completed);
@@ -144,7 +161,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                 }
             }
 
-            return new FixResult(units, fixedCount, declined, gaveUp, tests is not null);
+            return new FixResult(units, fixedCount, declined, gaveUp, tests is not null) { Skipped = skipped };
         }
         finally
         {
@@ -312,13 +329,15 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
             Timestamps.Format(clock!.UtcNow), false, null, error, identity), [], cancellationToken);
     }
 
-    /// <summary>Creates or refreshes a fix unit for every file with a confirmed finding, and retires fix units whose findings are gone. A unit already fixed against the file's current content keeps its Done status.</summary>
+    /// <summary>Creates or refreshes a fix unit for every file with a confirmed finding, and retires fix units whose findings are gone. A unit already fixed against the file's current content keeps its Done status, unless a confirmed finding it never answered has since been recorded for that file.</summary>
     public async Task<FixPlan> PlanAsync(CancellationToken cancellationToken)
     {
         var confirmed = (await EligibleFindingsAsync(cancellationToken))
             .Where(f => f.Verification?.Verdict == Verdict.Confirmed)
             .ToList();
-        var unresolvedPaths = confirmed.Where(f => f.Fix?.State != FixState.Fixed).Select(f => f.Finding.Path).ToHashSet(StringComparer.Ordinal);
+        var unresolved = confirmed.Where(f => f.Fix?.State != FixState.Fixed).ToList();
+        var unresolvedPaths = unresolved.Select(f => f.Finding.Path).ToHashSet(StringComparer.Ordinal);
+        var unansweredPaths = unresolved.Where(f => f.Fix is null).Select(f => f.Finding.Path).ToHashSet(StringComparer.Ordinal);
         var files = (await ledger.GetFilesAsync(cancellationToken))
             .Where(f => f.DeletedAt is null)
             .ToDictionary(f => f.Path, StringComparer.Ordinal);
@@ -337,11 +356,13 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         {
             var fingerprint = Fingerprints.Compute(plan.Members);
             existing.TryGetValue(plan.Id, out var previous);
+            var skipped = previous?.Status == UnitStatus.Skipped;
             var status = !unresolvedPaths.Contains(plan.Key) ? UnitStatus.Done
-                : previous is null || previous.Status == UnitStatus.Retired ? UnitStatus.Pending
-                : previous.Status == UnitStatus.Done && previous.Fingerprint != fingerprint ? UnitStatus.Stale
+                : previous is null || skipped || previous.Status == UnitStatus.Retired ? UnitStatus.Pending
+                : previous.Status == UnitStatus.Done && (previous.Fingerprint != fingerprint || unansweredPaths.Contains(plan.Key)) ? UnitStatus.Stale
                 : previous.Status;
-            return new Unit(plan.Id, plan.Kind, plan.Key, fingerprint, status, plan.Fidelity, previous?.LensHash, previous?.Summary, previous?.SummaryHash);
+            return new Unit(plan.Id, plan.Kind, plan.Key, fingerprint, status, plan.Fidelity, previous?.LensHash,
+                skipped ? null : previous?.Summary, skipped ? null : previous?.SummaryHash);
         }).ToList();
 
         var produced = units.Select(u => u.Id).ToHashSet(StringComparer.Ordinal);

@@ -149,6 +149,10 @@ are rejected and reported with a retained worker path. The untracked Impeccable 
 excluded from the patch and does not block it. Without `test_command`, CodeMuster warns that
 it is accepting fixes without running your tests.
 
+A file whose whole-file pack exceeds `slice_token_budget` is skipped with its reason, counted in the
+run summary, and left unanalyzed without spending an attempt; the other files are still fixed.
+Raise `slice_token_budget` or split the file and the next `fix` picks it up with no flag.
+
 Retry declines through `fix --retry-declined`. For a repair spanning related files, select an
 exact primary `--path` and `--include-related path/to/caller,path/to/catalog -j 1`; all paths
 must be existing tracked files. The worker stays inside that explicit scope.

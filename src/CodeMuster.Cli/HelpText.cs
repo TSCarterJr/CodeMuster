@@ -176,6 +176,8 @@ public static class HelpText
             + "Untracked files stay in place. Recovery stashes are retained after restoration.\n"
             + "Ctrl+C keeps completed commits; interrupted workers report recovery paths.\n"
             + "Extra file edits are rejected with their paths and a retained worker checkout.\n"
+            + "Files whose pack exceeds slice_token_budget are skipped with a reason, without spending an attempt;\n"
+            + "raise slice_token_budget or split the file and the next fix picks them up automatically.\n"
             + "Repeat fix to retry unfinished files. Then verify current findings and run validate.\n\n"
             + "Example: codemuster fix --agent codex -j 4 --attempts 3\n",
         "validate" => """

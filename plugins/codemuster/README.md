@@ -33,6 +33,9 @@ which instruct the active agent to use the CLI; hooks do not run reviews or fixe
 For the CLI's integrated project skills and change notifications, use standalone setup with
 `init --for <agent>` instead of a plugin in that scope.
 
+Oversized files are skipped by `fix` with a reason instead of stopping the run, and a raised
+`slice_token_budget` requeues them without a flag or a rescan.
+
 Declined findings can be retried through `fix --retry-declined`, with an explicit
 `--include-related` file scope when needed. Current-code verification records resolved
 findings, and `codemuster validate` runs the configured final build/tests even with no fixes

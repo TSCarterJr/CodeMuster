@@ -2,6 +2,21 @@
 
 ## Current task status
 
+- 2026-09-20, claude: D56 keeps `fix` running past an oversized file. A fix unit whose
+  whole-file pack exceeds `slice_token_budget` is recorded skipped with its reason,
+  spends no attempt, and the other files are still repaired and committed; the summary
+  reports the skipped count and the exit code stays zero. A skipped fix unit is requeued
+  and re-measured by every later `fix`, so a raised budget or a split file needs no flag
+  and no rescan. The oversized reason is kind-aware: scan-planned units still say to
+  rescan, fix units say to run `fix` again. A completed fix unit now also reopens when a
+  confirmed finding it never answered is recorded for that file, because a fix unit's
+  fingerprint is the scanned content hash and `fix` does not rescan; without that, such a
+  finding was silently never repaired. `fix --force` was implemented and then removed as
+  redundant once those two rules were in place; `--retry-declined` is unchanged. Failing
+  regressions were written first. All 1,262 .NET and 64 npm tests pass; formatting and
+  plugin parity/diff checks pass. CHANGELOG.md and the plugin manifests are prepared for
+  0.3.4. Delivery, tagging and publication are Tim's and remain pending.
+
 - 2026-09-19, codex: SIG1 corrects a release-blocking Windows SIGINT regression
   in an audit-generated launcher fix. Node force-terminates Windows children on
   child.kill(SIGINT), so leave Windows console-group Ctrl+C delivery intact while

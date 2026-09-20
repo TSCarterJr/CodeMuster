@@ -533,4 +533,115 @@ public class FixRunTests
         Assert.True(result.TestsRun);
         Assert.Empty(workspace.Commits);
     }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    public async Task AnOversizedFile_IsSkippedOnce_AndTheOtherFilesAreStillFixed(int parallelism)
+    {
+        var a = await SeedAsync("a.cs", 10);
+        var b = await SeedAsync("b.cs", 20);
+        tree.Contents["a.cs"] = new string('x', (Config.Default.SliceTokenBudget * 4) + 1);
+        var edited = new List<string>();
+        var editor = new FileFixer((path, _) =>
+        {
+            lock (edited) edited.Add(path);
+            return Task.FromResult(new FileFixEdit(FixResponseJson.Serialize(new FixResponse("fixed", path == "a.cs" ? a : b, [])), path));
+        });
+
+        var result = await Fixing(Config.Default, editor)
+            .RunAsync(Fixer(_ => throw new Exception()), new FixOptions(Parallelism: parallelism), new ListProgress(notes), CancellationToken.None);
+
+        Assert.Equal(["b.cs"], edited);
+        Assert.Equal(1, result.Units);
+        Assert.Equal(1, result.Fixed);
+        Assert.Empty(result.GaveUp);
+        Assert.Equal([UnitIds.Fix("a.cs")], result.Skipped);
+        Assert.Equal(UnitStatus.Skipped, ledger.Units.Single(u => u.Id == UnitIds.Fix("a.cs")).Status);
+        Assert.Contains(notes, note => note.Contains("a.cs", StringComparison.Ordinal) && note.Contains("split the file, then run fix again; no repair was attempted", StringComparison.Ordinal));
+        Assert.DoesNotContain(notes, note => note.Contains("rescan", StringComparison.Ordinal));
+        Assert.DoesNotContain(notes, note => note.Contains("fixing a.cs", StringComparison.Ordinal));
+        Assert.DoesNotContain(ledger.Analyses, entry => entry.Analysis.UnitId == UnitIds.Fix("a.cs"));
+        Assert.DoesNotContain(ledger.Fixes, f => f.Key == a[0]);
+    }
+
+    [Fact]
+    public async Task AStillOversizedFile_IsSkippedAgain_WithoutSpendingAnAttempt()
+    {
+        var a = await SeedAsync("a.cs", 10);
+        tree.Contents["a.cs"] = new string('x', (Config.Default.SliceTokenBudget * 4) + 1);
+        var edited = new List<string>();
+        var editor = Editor(a, edited);
+
+        var first = await Fixing(Config.Default, editor).RunAsync(Fixer(_ => throw new Exception()), new FixOptions(), new ListProgress(notes), CancellationToken.None);
+        var again = await Fixing(Config.Default, editor).RunAsync(Fixer(_ => throw new Exception()), new FixOptions(), new ListProgress(notes), CancellationToken.None);
+
+        Assert.Equal([UnitIds.Fix("a.cs")], first.Skipped);
+        Assert.Equal([UnitIds.Fix("a.cs")], again.Skipped);
+        Assert.Empty(again.GaveUp);
+        Assert.Empty(edited);
+        Assert.DoesNotContain(ledger.Analyses, entry => entry.Analysis.UnitId == UnitIds.Fix("a.cs"));
+        Assert.Equal(UnitStatus.Skipped, ledger.Units.Single(u => u.Id == UnitIds.Fix("a.cs")).Status);
+    }
+
+    [Fact]
+    public async Task ARaisedBudget_LetsAPreviouslySkippedFileBeFixed_WithoutAFlag()
+    {
+        var a = await SeedAsync("a.cs", 10);
+        tree.Contents["a.cs"] = new string('x', (Config.Default.SliceTokenBudget * 4) + 1);
+        var edited = new List<string>();
+        var editor = Editor(a, edited);
+
+        var first = await Fixing(Config.Default, editor).RunAsync(Fixer(_ => throw new Exception()), new FixOptions(), new ListProgress(notes), CancellationToken.None);
+        var bigger = Config.Default with { SliceTokenBudget = Config.Default.SliceTokenBudget * 2 };
+        var second = await Fixing(bigger, editor).RunAsync(Fixer(_ => throw new Exception()), new FixOptions(), new ListProgress(notes), CancellationToken.None);
+
+        Assert.Equal([UnitIds.Fix("a.cs")], first.Skipped);
+        Assert.Empty(second.Skipped);
+        Assert.Equal(1, second.Fixed);
+        Assert.Equal(["a.cs"], edited);
+        Assert.Equal(UnitStatus.Done, ledger.Units.Single(u => u.Id == UnitIds.Fix("a.cs")).Status);
+        Assert.DoesNotContain("pack limit", ledger.Units.Single(u => u.Id == UnitIds.Fix("a.cs")).Summary ?? "", StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AConfirmedFindingFoundAfterAFileWasFixed_IsRepairedByTheNextRun()
+    {
+        var first = await SeedAsync("a.cs", 10);
+        await RunAsync(Fixer(_ => new FixResponse("fixed", first, [])));
+        Assert.Equal(UnitStatus.Done, ledger.Units.Single(u => u.Id == UnitIds.Fix("a.cs")).Status);
+
+        var later = await AlsoFoundAsync("a.cs", 20);
+        var again = Fixer(_ => new FixResponse("fixed the rest", later, []));
+        var result = await CreateFix(again).RunAsync(again, new FixOptions(), null, CancellationToken.None);
+
+        Assert.Equal(1, result.Fixed);
+        Assert.Equal("fixed the rest", ledger.Fixes[later[0]].Reason);
+    }
+
+    private async Task<IReadOnlyList<long>> AlsoFoundAsync(string path, int line)
+    {
+        var id = UnitIds.Slice(path + "#later");
+        var member = new UnitMember(id, path, null, "hash-" + path, 0);
+        var unit = new Unit(id, UnitKind.Slice, path + "#later", Fingerprints.Compute([member]), UnitStatus.Done, Fidelity.Full, null, null, null);
+        ledger.Units.Add(unit);
+        ledger.Members.Add(member);
+        var finding = new Finding(path, line, line, Severity.High, "correctness", $"claim {line}", "evidence", 0.9, "default");
+        await ledger.RecordAnalysisAsync(new Analysis(id, unit.Fingerprint, "lens", At, true, "summary", null), [finding], CancellationToken.None);
+        var ids = (await ledger.GetCurrentFindingsAsync(CancellationToken.None)).Where(f => f.UnitId == id).Select(f => f.Id).ToList();
+        foreach (var found in ids)
+        {
+            ledger.Verifications[found] = new VerifyResponse(Verdict.Confirmed, "it holds");
+        }
+
+        return ids;
+    }
+
+    private Fix Fixing(Config config, IFileFixer editor) => new(ledger, tree, clock, config, workspace, tests, editor);
+
+    private static FileFixer Editor(IReadOnlyList<long> findings, List<string> edited) => new((path, _) =>
+    {
+        lock (edited) edited.Add(path);
+        return Task.FromResult(new FileFixEdit(FixResponseJson.Serialize(new FixResponse("fixed", findings, [])), path));
+    });
 }
