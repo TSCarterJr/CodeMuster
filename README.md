@@ -115,8 +115,12 @@ codemuster report --out audit.md
 Before `run`, `verify`, `fix`, or `intelligent-config` starts agents, a preview shows the worker limit, provider,
 model and thinking level. Interactive terminals wait ten seconds: press Enter to start now,
 or Escape/Ctrl+C to cancel and change your options. CI and redirected commands do not wait.
-Unset model/effort values are labeled provider defaults; pass `--model` and `--effort` to
-choose them explicitly.
+For Codex, omitted model/effort values are resolved from the installed CLI's effective
+repository configuration and model catalog. Every worker uses the settings shown.
+Pass `--model` and `--effort` to override them explicitly; supplying both also bypasses
+the settings lookup. If Codex cannot resolve the settings within five seconds, the command
+stops with instructions to supply both flags. Other providers still label omitted settings
+as provider defaults.
 
 `scan` maps entry-point call paths and unreached code by default. Use `scan --mode file` for one
 unit per included file. `estimate` approximates pending input tokens. `run` analyzes pending

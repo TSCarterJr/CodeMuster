@@ -303,3 +303,9 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
 | REL031 | Prepare CLI1 as version 0.3.1 with matching plugin metadata and dated release notes. | `[x]` | codex 2026-09-19 | Tim requested a version increase and npm publication; direct main delivery, no PR. All 1,241 .NET source tests and 61 npm tests pass; plugin parity and diff checks pass. Push-triggered validation on release/** branches enables required checks before direct main pushes without PRs (manual dispatch does not satisfy GitHub protection); tagged release workflow gates publication; retain immutable archives and registry/fresh-install receipts under TestResults/release-0.3.1/. |
+
+## Effective agent settings (user-directed priority)
+
+| ID | Task | Status | Owner / Date | Notes |
+|---|---|---|---|---|
+| MODEL1 | Resolve Codex model and thinking before the preview and use those exact settings for every worker. Tests first: effective config, overrides, model defaults/pagination, lookup failures/cancellation, subprocess cleanup and CLI integration. | `[x]` | codex 2026-09-19 | Tim rejected provider-default placeholders; D55. Isolated from the active local fix run. Tests failed first; all 1,256 .NET tests and 61 npm tests pass, plus formatting and diff checks. Subprocess tests wait for readiness before cancellation and allow startup time under load. Live read-only Codex lookup and an empty-repository fix command display gpt-6-astra/high without agent work. Source only; not published. |

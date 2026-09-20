@@ -224,12 +224,8 @@ public static class Program
 
     private static async Task<int> FixAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, CancellationToken cancellationToken)
     {
-        var adapter = AgentAdapters.Create(
-            command.Options["agent"],
-            null,
-            command.Options.GetValueOrDefault("model"),
-            command.Options.GetValueOrDefault("effort"),
-            write: true);
+        var identity = await ResolveAgentAsync(command, repoRoot, cancellationToken);
+        var adapter = AgentAdapters.Create(identity.Agent, null, identity.Model, identity.Effort, write: true, workingDirectory: repoRoot);
         var workspace = new GitWorkspace(repoRoot);
         var stash = command.Flags.Contains("stash");
         if (!await workspace.IsCleanAsync(cancellationToken))
@@ -273,7 +269,7 @@ public static class Program
 
         var progress = new ProgressWriter(Console.Out, ConsoleStyle());
         using var fileFixer = new GitFileFixer(repoRoot, directory => AgentAdapters.Create(
-            command.Options["agent"], null, command.Options.GetValueOrDefault("model"), command.Options.GetValueOrDefault("effort"), write: true, workingDirectory: directory), progress, options.RelatedFiles);
+            identity.Agent, null, identity.Model, identity.Effort, write: true, workingDirectory: directory), progress, options.RelatedFiles);
         var fix = new Fix(ledger, tree, clock, config, workspace, tests, fileFixer, new GitBlobHasher(repoRoot));
         var result = await fix.RunAsync(adapter, options, progress, cancellationToken);
         foreach (var unitId in result.GaveUp)
@@ -335,11 +331,11 @@ public static class Program
     private static async Task<int> RunAgentAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, CancellationToken cancellationToken)
     {
         var template = Environment.GetEnvironmentVariable("CODEMUSTER_FAKE_RESPONSE");
+        var identity = await ResolveAgentAsync(command, repoRoot, cancellationToken);
         var adapter = AgentAdapters.Create(
-            command.Options["agent"],
+            identity.Agent,
             template is null ? null : await File.ReadAllTextAsync(template, cancellationToken),
-            command.Options.GetValueOrDefault("model"),
-            command.Options.GetValueOrDefault("effort"));
+            identity.Model, identity.Effort, workingDirectory: repoRoot);
         var kind = command.Verb == "verify" ? "verify" : command.Options.GetValueOrDefault("kind");
         var options = new RunOptions(
             int.Parse(command.Options.GetValueOrDefault("jobs", "1")),
@@ -360,6 +356,10 @@ public static class Program
         Console.WriteLine((result.Cancelled ? $"cancelled after {result.Completed} unit(s)" : $"completed {result.Completed} unit(s), {result.GaveUp.Count} gave up") + skipped);
         return result.Cancelled || result.GaveUp.Count > 0 ? 1 : 0;
     }
+
+    private static Task<AgentIdentity> ResolveAgentAsync(Command command, string repoRoot, CancellationToken cancellationToken) =>
+        CodexSettingsResolver.ResolveAsync(new AgentIdentity(command.Options.GetValueOrDefault("agent", "codex"),
+            command.Options.GetValueOrDefault("model"), command.Options.GetValueOrDefault("effort")), repoRoot, cancellationToken);
 
     private static Task PreviewAgentAsync(AgentIdentity identity, int parallelism, IClock clock, CancellationToken cancellationToken)
     {
@@ -386,9 +386,8 @@ public static class Program
 
     private static async Task<int> IntelligentConfigAsync(Command command, string repoRoot, IFileSystem fileSystem, ISourceTree tree, CancellationToken cancellationToken)
     {
-        var name = command.Options.GetValueOrDefault("agent", "codex");
-        var model = command.Options.GetValueOrDefault("model");
-        var effort = command.Options.GetValueOrDefault("effort");
+        var identity = await ResolveAgentAsync(command, repoRoot, cancellationToken);
+        var (name, model, effort) = identity;
         var template = Environment.GetEnvironmentVariable("CODEMUSTER_FAKE_RESPONSE");
         IAgentAdapter adapter = name == "fake"
             ? new FakeAgentAdapter(template is null ? "{\"changes\":{},\"reasons\":{}}" : await fileSystem.ReadAllTextAsync(template, cancellationToken), model, effort, rawResponse: true)

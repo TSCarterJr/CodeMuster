@@ -4,6 +4,13 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
+## Unreleased
+
+- Show the actual Codex model and thinking level before agent work by reading
+  effective repository settings. Explicit flags override those settings, and all
+  workers use the values shown. If lookup fails, request explicit model and effort
+  instead of showing unknown defaults.
+
 ## 0.3.1 - 2026-09-19
 
 - Add a compact terminal banner, highlighted provider/model/thinking settings and
