@@ -2,6 +2,18 @@
 
 ## Current task status
 
+- 2026-09-19, codex: CLI1 (D54) adds a compact ASCII terminal wordmark,
+  emphasized provider/model/thinking/worker rows, countdown bar, colored audit
+  progress and elapsed intelligent-config activity with success/error/cancel states.
+  NO_COLOR preserves layout without colors; CI, redirection and TERM=dumb use
+  plain output without animation. Existing model selection and stdout formats
+  remain intact. Regressions failed first; all 1,241 .NET tests pass, with 27
+  focused cases rerun after the final foreground-color adjustment. Real terminal
+  fixtures verify layout/colors, failure/cancellation cleanup, countdown/Enter,
+  unchanged config/ledger, narrow windows and fallback behavior. Formatting/diff
+  checks pass. Evidence: TestResults/cli1/ and /tmp/codemuster-cli1-*. Existing
+  untracked setup/config files remain untouched. Source only; no release yet.
+
 - 2026-09-19, codex: REL030 published npm/plugin 0.3.0 from protected-main
   merge d43cb8f (PR #7), immutable tag v0.3.0. Release run 35473378759 passed
   three-OS validation, six builds, three package smokes and publication. All seven

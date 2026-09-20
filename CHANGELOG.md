@@ -4,6 +4,14 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
+## Unreleased
+
+- Add a compact terminal banner, highlighted provider/model/thinking settings and
+  countdown bar before agent commands. Add colored audit progress counts and an
+  elapsed activity indicator for intelligent configuration, with explicit results.
+- Respect `NO_COLOR`, keep redirected/CI output plain, and disable animation and
+  the countdown for `TERM=dumb` terminals.
+
 ## 0.3.0 - 2026-09-19
 
 - Show the intervening release notes after `codemuster update`.

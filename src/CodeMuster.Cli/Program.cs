@@ -271,7 +271,7 @@ public static class Program
             Console.Error.WriteLine("warning: no test_command in .codemuster/config.json, so nothing checks that a fix still builds");
         }
 
-        var progress = new ProgressWriter(Console.Out);
+        var progress = new ProgressWriter(Console.Out, ConsoleStyle());
         using var fileFixer = new GitFileFixer(repoRoot, directory => AgentAdapters.Create(
             command.Options["agent"], null, command.Options.GetValueOrDefault("model"), command.Options.GetValueOrDefault("effort"), write: true, workingDirectory: directory), progress, options.RelatedFiles);
         var fix = new Fix(ledger, tree, clock, config, workspace, tests, fileFixer, new GitBlobHasher(repoRoot));
@@ -350,7 +350,7 @@ public static class Program
         await PreviewAgentAsync(adapter.Identity, options.Parallelism, clock, cancellationToken);
         if (kind == "verify") await new RefreshVerification(ledger, tree, config, new GitBlobHasher(repoRoot)).RunAsync(cancellationToken);
         Console.WriteLine($"running {command.Options["agent"]} on up to {options.Parallelism} unit(s) at a time; a line prints as each unit finishes");
-        var result = await new Run(ledger, tree, clock, config, adapter, new RunProgressWriter(Console.Out), new ProgressWriter(Console.Out)).RunAsync(options, cancellationToken);
+        var result = await new Run(ledger, tree, clock, config, adapter, new RunProgressWriter(Console.Out, ConsoleStyle()), new ProgressWriter(Console.Out, ConsoleStyle())).RunAsync(options, cancellationToken);
         foreach (var unitId in result.GaveUp)
         {
             Console.Error.WriteLine($"gave up on {unitId} after {options.MaxAttempts} attempts");
@@ -363,11 +363,25 @@ public static class Program
 
     private static Task PreviewAgentAsync(AgentIdentity identity, int parallelism, IClock clock, CancellationToken cancellationToken)
     {
-        var interactive = !Console.IsInputRedirected && !Console.IsOutputRedirected && !Console.IsErrorRedirected
-            && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI"));
+        var style = ConsoleStyle();
+        var interactive = style.Enabled && !Console.IsInputRedirected;
         return new AgentStartPreview(Console.Error, clock,
             () => Console.KeyAvailable ? Console.ReadKey(intercept: true).Key : null,
-            Task.Delay).RunAsync(identity, parallelism, interactive, cancellationToken);
+            Task.Delay, style).RunAsync(identity, parallelism, interactive, cancellationToken);
+    }
+
+    private static TerminalStyle ConsoleStyle()
+    {
+        var redirected = Console.IsOutputRedirected || Console.IsErrorRedirected;
+        var width = 80;
+        if (!redirected)
+        {
+            try { width = Console.WindowWidth; }
+            catch (IOException) { }
+            catch (PlatformNotSupportedException) { }
+        }
+        return TerminalStyle.Detect(redirected, !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI")),
+            Environment.GetEnvironmentVariable("TERM"), Environment.GetEnvironmentVariable("NO_COLOR"), width > 0 ? width : 80);
     }
 
     private static async Task<int> IntelligentConfigAsync(Command command, string repoRoot, IFileSystem fileSystem, ISourceTree tree, CancellationToken cancellationToken)
@@ -382,7 +396,9 @@ public static class Program
         var clock = new SystemClock();
         await PreviewAgentAsync(adapter.Identity, 1, clock, cancellationToken);
         Console.WriteLine("inspecting repository structure and configuration with the selected agent...");
-        var result = await new IntelligentConfig(tree, fileSystem, adapter, clock).RunAsync(repoRoot, cancellationToken);
+        var result = await new AgentActivity(Console.Error, clock, ConsoleStyle(), Task.Delay).RunAsync(
+            $"Inspecting repository with {name.ToUpperInvariant()}",
+            token => new IntelligentConfig(tree, fileSystem, adapter, clock).RunAsync(repoRoot, token), cancellationToken);
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"inspected {result.TrackedFiles} tracked file paths with bounded manifest/source samples"));
         foreach (var change in result.Changes) Console.WriteLine($"- {change}");
         if (result.Changed)

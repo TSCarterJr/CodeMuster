@@ -20,7 +20,11 @@ public class AgentStartPreviewTests
         await preview.RunAsync(new AgentIdentity("codex", "astra", "xhigh"), 50, true, CancellationToken.None);
 
         Assert.Equal(TimeSpan.FromSeconds(10), clock.UtcNow - start);
-        Assert.Contains("Running up to 50 agents, using codex, Model: astra, Thinking: xhigh", output.ToString());
+        Assert.Contains("CODEMUSTER", output.ToString());
+        Assert.Contains("Provider  CODEX", output.ToString());
+        Assert.Contains("Model     astra", output.ToString());
+        Assert.Contains("Thinking  xhigh", output.ToString());
+        Assert.Contains("Workers   up to 50", output.ToString());
         Assert.Contains("Starting in 10s", output.ToString());
         Assert.Contains("Starting in  1s", output.ToString());
         Assert.Contains("Enter: start now", output.ToString());
@@ -36,7 +40,8 @@ public class AgentStartPreviewTests
 
         await preview.RunAsync(new AgentIdentity("codex"), 1, true, CancellationToken.None);
 
-        Assert.Contains("Model: provider default, Thinking: provider default", output.ToString());
+        Assert.Contains("Model     provider default", output.ToString());
+        Assert.Contains("Thinking  provider default", output.ToString());
     }
 
     [Fact]
@@ -109,6 +114,30 @@ public class AgentStartPreviewTests
         await preview.RunAsync(new AgentIdentity("claude", "sonnet", "high"), 2, true, CancellationToken.None);
 
         Assert.Equal(TimeSpan.FromSeconds(10), clock.UtcNow - start);
+    }
+
+    [Fact]
+    public async Task ColoredPreview_EmphasizesSettingsAndResetsColor()
+    {
+        using var output = new StringWriter();
+        var preview = new AgentStartPreview(output, new ManualClock(), () => ConsoleKey.Enter,
+            (_, _) => Task.CompletedTask, new TerminalStyle(true, true));
+        await preview.RunAsync(new AgentIdentity("codex", "astra", "xhigh"), 50, true, CancellationToken.None);
+        Assert.Contains("\u001b[1;36mCODEX\u001b[0m", output.ToString());
+        Assert.Contains("\u001b[1mastra\u001b[0m", output.ToString());
+        Assert.Contains("\u001b[1;35mxhigh\u001b[0m", output.ToString());
+    }
+
+    [Fact]
+    public async Task NarrowPreview_KeepsControlsOffAnimatedLine()
+    {
+        using var output = new StringWriter();
+        var preview = new AgentStartPreview(output, new ManualClock(), () => ConsoleKey.Enter,
+            (_, _) => Task.CompletedTask, new TerminalStyle(true, false, 32));
+        await preview.RunAsync(new AgentIdentity("codex"), 1, true, CancellationToken.None);
+        Assert.Contains("Enter: start now", output.ToString());
+        Assert.Contains("Esc/Ctrl+C: cancel", output.ToString());
+        Assert.DoesNotContain("| Enter", output.ToString());
     }
 
     private sealed class ManualClock : IClock

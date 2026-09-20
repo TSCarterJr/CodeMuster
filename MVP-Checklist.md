@@ -291,3 +291,9 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
 | REL030 | Integrate update visibility, agent startup preview and intelligent configuration; publish npm 0.3.0 through protected main and verify the installed release. | `[x]` | codex 2026-09-19 | Tim requested release ahead of backlog; consolidates validated UPDATE1/START1/CONFIG1 shared hunks following INT1. PR #7 merged as d43cb8f; immutable v0.3.0 run 35473378759 passed three-OS tests, six builds, three package smokes and publication. All seven npm latest tags/SHA512 integrities and nine GitHub asset SHA256 digests verify. Fresh macOS arm64 install passed the full CLI smoke, intelligent-config backup/no-op/rejection acceptance and real registry release-note output. All 1,223 .NET and 61 npm tests pass. Older launchers need one-time npm installation for JavaScript features. Evidence: TestResults/release-0.3.0/. |
+
+## Terminal presentation (user-directed priority)
+
+| ID | Task | Status | Owner / Date | Notes |
+|---|---|---|---|---|
+| CLI1 | Add a compact terminal banner, prominent agent settings, colored progress and elapsed activity feedback. Tests first: terminal/plain output, NO_COLOR/CI/dumb terminals, countdown controls, progress success/failure/cancellation and cleanup. | `[x]` | codex 2026-09-19 | Prioritized at Tim's request; D54. Preview and outcome regressions failed first; all 1,241 .NET tests pass, plus 27 focused cases after the final foreground-color adjustment. Real terminal fixtures verify colors, NO_COLOR, narrow layout, failure/cancellation cleanup, Enter skip, ten-second timeout, unchanged config/ledger, and CI/dumb fallback. Formatting and diff checks pass. Existing untracked setup/config files preserved. Source only; not released. |

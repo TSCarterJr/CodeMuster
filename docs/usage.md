@@ -497,6 +497,19 @@ cancels so you can rerun with different settings. Verification refresh, force re
 work start after the countdown. CI or redirected input/output skips the wait while retaining
 the settings preview. Commands that do not launch agents have no countdown.
 
+In a terminal, the preview uses a compact `</> CODEMUSTER` banner and separate,
+emphasized rows for provider, model, thinking and worker count. Audit progress
+includes completed/total counts and a bar: green for recorded work, yellow for
+skipped work, red for rejected/invalid responses. The text still identifies the
+outcome when colors are unavailable. General progress lines highlight elapsed time.
+`intelligent-config` shows an animated elapsed-time line while it works, followed
+by an explicit success, failure or cancellation result. It does not guess a
+percentage or claim to see the agent's internal reasoning.
+
+Set `NO_COLOR=1` to disable colors while retaining the readable layout and countdown.
+`TERM=dumb`, CI and redirected output use plain text with no animation; dumb terminals
+also skip the countdown. Reports and machine-readable stdout formats are unchanged.
+
 
 ## Recovery, process ownership, and supported limits
 
