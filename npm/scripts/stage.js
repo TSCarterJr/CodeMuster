@@ -25,6 +25,12 @@ const changelog = fs.readFileSync(path.join(launcherDir, '../CHANGELOG.md'), 'ut
 if (/^\d+\.\d+\.\d+$/.test(version) && !releases(changelog).some((entry) => entry.version === version)) {
   throw new Error(`CHANGELOG.md needs a release entry for ${version} before staging`);
 }
+const relativeBuildsDir = path.relative(path.resolve(outDir), path.resolve(buildsDir));
+if (relativeBuildsDir === '' ||
+    (relativeBuildsDir !== '..' && !relativeBuildsDir.startsWith(`..${path.sep}`) && !path.isAbsolute(relativeBuildsDir))) {
+  process.stderr.write('output folder must not equal or contain the builds folder\n');
+  process.exit(2);
+}
 fs.rmSync(outDir, { recursive: true, force: true });
 
 const staged = [];
