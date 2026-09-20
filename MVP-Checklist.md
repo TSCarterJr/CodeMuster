@@ -309,3 +309,9 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
 | MODEL1 | Resolve Codex model and thinking before the preview and use those exact settings for every worker. Tests first: effective config, overrides, model defaults/pagination, lookup failures/cancellation, subprocess cleanup and CLI integration. | `[x]` | codex 2026-09-19 | Tim rejected provider-default placeholders; D55. Isolated from the active local fix run. Tests failed first; all 1,256 .NET tests and 61 npm tests pass, plus formatting and diff checks. Subprocess tests wait for readiness before cancellation and allow startup time under load. Live read-only Codex lookup and an empty-repository fix command display gpt-6-astra/high without agent work. Source only; not published. |
+
+## Version 0.3.2 preparation (user-directed priority)
+
+| ID | Task | Status | Owner / Date | Notes |
+|---|---|---|---|---|
+| REL032 | Integrate MODEL1 into main, validate the combined release, and publish npm/plugin 0.3.2 with release-note and fresh-install verification. | `[~]` | codex 2026-09-19 | Tim explicitly requests commit/push to main and npm publication. Preserve the ongoing repair run and its completed commits. Keep the release tag and published archives immutable. |

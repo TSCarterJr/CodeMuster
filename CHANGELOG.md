@@ -4,7 +4,7 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
-## Unreleased
+## 0.3.2 - 2026-09-19
 
 - Show the actual Codex model and thinking level before agent work by reading
   effective repository settings. Explicit flags override those settings, and all
