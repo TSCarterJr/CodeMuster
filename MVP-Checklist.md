@@ -315,3 +315,9 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
 | REL032 | Prepare MODEL1 and the completed audit repairs as npm/plugin 0.3.2 with matching release metadata and combined-source validation. | `[x]` | codex 2026-09-19 | Tim explicitly requests direct main delivery and npm publication, after his fix run finishes. Integrated its 30 commits without changing untracked setup/configuration files. All 1,256 .NET tests and 61 npm tests pass; formatting, plugin parity and diff checks pass. Hosted OS checks gate main; the immutable release tag gates builds, installed-package smoke checks and publication. Retain registry, archive-integrity and fresh-install receipts under TestResults/release-0.3.2/. |
+
+## Windows cancellation release correction
+
+| ID | Task | Status | Owner / Date | Notes |
+|---|---|---|---|---|
+| SIG1 | Preserve graceful Windows Ctrl+C cancellation while forwarding launcher-only SIGINT on Unix. Test the signal routing and cleanup first, then prepare 0.3.3. | `[x]` | codex 2026-09-19 | The Windows signal-routing regression failed first; its correction and Unix forwarding/cleanup pass. All 64 npm tests and 1,256 .NET tests pass; plugin parity and diff checks pass. Cancelled 0.3.2 before any build or publication; preserve its tag. 0.3.3 metadata and release notes are prepared for authorized direct-main delivery and the gated npm workflow. Receipts: TestResults/release-0.3.3/. |

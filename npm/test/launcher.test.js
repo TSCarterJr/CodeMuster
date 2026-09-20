@@ -464,3 +464,31 @@ test('stable package staging refuses a version with no changelog entry before to
   assert.match(result.stderr, /changelog.*999\.0\.0/i);
   assert.equal(fs.readFileSync(path.join(output, 'keep.txt'), 'utf8'), 'retained');
 });
+
+for (const platform of ['win32', 'darwin', 'linux']) {
+  test(`launcher cancellation preserves graceful SIGINT handling on ${platform}`, async () => {
+    const { EventEmitter } = require('node:events');
+    const { createRequire } = require('node:module');
+    const { runInNewContext } = require('node:vm');
+    const filename = require.resolve('../lib/launcher');
+    const originalRequire = createRequire(filename);
+    const signals = [];
+    const child = new EventEmitter();
+    child.kill = (signal) => { signals.push(signal); return true; };
+    const parent = new EventEmitter();
+    parent.platform = platform;
+    const module = { exports: {} };
+    runInNewContext(fs.readFileSync(filename, 'utf8'), {
+      module, process: parent,
+      require: (name) => name === 'node:child_process' ? { spawn: () => child } : originalRequire(name),
+    });
+    const completion = module.exports.runBuild('native-build', ['fix']);
+    parent.emit('SIGINT');
+    assert.deepEqual(signals, platform === 'win32' ? [] : ['SIGINT']);
+    parent.emit('SIGTERM');
+    assert.equal(signals.at(-1), 'SIGTERM');
+    child.emit('exit', 1);
+    assert.equal(await completion, 1);
+    for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) assert.equal(parent.listenerCount(signal), 0);
+  });
+}

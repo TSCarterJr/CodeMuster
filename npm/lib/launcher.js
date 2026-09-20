@@ -236,7 +236,10 @@ async function update({ registry, stateDir, platform, arch, currentVersion, now 
 function runBuild(binary, args) {
   return new Promise((resolve, reject) => {
     const child = childProcess.spawn(binary, args, { stdio: 'inherit' });
-    const handlers = ['SIGINT', 'SIGTERM', 'SIGHUP'].map((signal) => [signal, () => child.kill(signal)]);
+    // Windows delivers Ctrl+C to the console group; forwarding it would force-kill the native build.
+    const handlers = ['SIGINT', 'SIGTERM', 'SIGHUP'].map((signal) => [signal, () => {
+      if (signal !== 'SIGINT' || process.platform !== 'win32') child.kill(signal);
+    }]);
     handlers.forEach(([signal, handler]) => process.on(signal, handler));
     const done = () => handlers.forEach(([signal, handler]) => process.off(signal, handler));
     child.on('error', (error) => {

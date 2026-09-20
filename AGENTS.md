@@ -2,6 +2,16 @@
 
 ## Current task status
 
+- 2026-09-19, codex: SIG1 corrects a release-blocking Windows SIGINT regression
+  in an audit-generated launcher fix. Node force-terminates Windows children on
+  child.kill(SIGINT), so leave Windows console-group Ctrl+C delivery intact while
+  retaining Unix forwarding. The Windows regression failed first. Release 0.3.2
+  was cancelled before build/publication; its tag remains immutable. Prepare
+  0.3.3 for Tim's authorized direct-main/npm release. All 1,256 .NET tests and
+  64 npm tests pass, including signal routing on all three platform families;
+  plugin parity and diff checks pass. Hosted checks gate main and publication.
+  Evidence belongs under TestResults/release-0.3.3/.
+
 - 2026-09-19, codex: REL032 prepares 0.3.2 with MODEL1 and the 30 completed
   repair commits from Tim's fix run, which was allowed to finish at his request.
   Codex settings are resolved before preview and pinned for all workers (D55).
