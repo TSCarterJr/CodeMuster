@@ -302,4 +302,4 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
-| REL031 | Prepare CLI1 as version 0.3.1 with matching plugin metadata and dated release notes. | `[x]` | codex 2026-09-19 | Tim requested a version increase and npm publication; direct main delivery, no PR. All 1,241 .NET source tests and 61 npm tests pass; plugin parity and diff checks pass. Release rehearsal and tagged workflow gate delivery/publication; retain immutable archives and registry/fresh-install receipts under TestResults/release-0.3.1/. |
+| REL031 | Prepare CLI1 as version 0.3.1 with matching plugin metadata and dated release notes. | `[x]` | codex 2026-09-19 | Tim requested a version increase and npm publication; direct main delivery, no PR. All 1,241 .NET source tests and 61 npm tests pass; plugin parity and diff checks pass. Manual test-workflow dispatch enables required checks before direct pushes without PRs; tagged release workflow gates publication; retain immutable archives and registry/fresh-install receipts under TestResults/release-0.3.1/. |
