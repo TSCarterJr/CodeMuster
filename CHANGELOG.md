@@ -4,6 +4,18 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
+## 0.3.4 - 2026-09-20
+
+- `codemuster fix` no longer stops the whole run when one file is too large for a
+  whole-file pack. Previously a single oversized file at the head of the queue
+  ended the run with nothing repaired. That file is now recorded as skipped with
+  its reason, every other file is still repaired and committed, the summary
+  reports the skipped count, and the exit code stays zero. Raise
+  `slice_token_budget` in `.codemuster/config.json` or split the file and the next
+  `fix` picks it up, with no extra flag and no rescan.
+- A file whose repair already completed is revisited when the audit later confirms
+  a finding in it that the repair never answered.
+
 ## 0.3.3 - 2026-09-19
 
 - Show the actual Codex model and thinking level before agent work by reading
