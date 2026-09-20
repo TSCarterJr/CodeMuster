@@ -24,6 +24,8 @@ public static class ConfigJson
         if (config.UserExperience.BaseUrl is { } address
             && (!Uri.TryCreate(address, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") || uri.UserInfo.Length > 0))
             throw new JsonException("user_experience.base_url must be an absolute HTTP(S) application URL without credentials");
+        if (config.Lenses.Any(lens => lens is null))
+            throw new JsonException("lenses must not contain null entries");
         if (config.Lenses.Any(lens => string.Equals(lens.Id?.Trim(), DeadCodeReview.Id, StringComparison.OrdinalIgnoreCase) || string.Equals(lens.Id?.Trim(), UxReview.Id, StringComparison.OrdinalIgnoreCase)))
             throw new JsonException("built-in reviews reserve lens ids dead_code and user_experience; rename the conflicting custom lens");
         return config;
