@@ -226,7 +226,14 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
         {
             var member = part.Member;
             var language = Languages.FromPath(member.Path);
-            var fence = part.Text.Contains("```", StringComparison.Ordinal) ? "````" : "```";
+            var fenceLength = 3;
+            var backticks = 0;
+            foreach (var character in part.Text)
+            {
+                backticks = character == '`' ? backticks + 1 : 0;
+                fenceLength = Math.Max(fenceLength, backticks + 1);
+            }
+            var fence = new string('`', fenceLength);
             var symbol = member.Symbol is null ? "" : $" :: {member.Symbol}";
             lines.Add("");
             lines.Add($"### {member.Path}{symbol} ({language})");

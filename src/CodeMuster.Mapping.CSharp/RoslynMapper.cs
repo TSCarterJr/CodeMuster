@@ -21,6 +21,7 @@ public sealed class RoslynMapper : ICodeMapper
         var builder = new CodeMapBuilder(repoRoot, paths);
         var diagnostics = new List<string>();
         var loads = progress is null ? null : new LoadProgress(progress, repoRoot);
+        var loadedProjects = new HashSet<string>(ProjectPathComparer);
         if (IsSolution(files[0]))
         {
             foreach (var file in files)
@@ -30,18 +31,24 @@ public sealed class RoslynMapper : ICodeMapper
                 var solution = await workspace.OpenSolutionAsync(Path.Combine(repoRoot, file), loads, cancellationToken);
                 await builder.AddAsync(solution, progress, cancellationToken);
                 diagnostics.AddRange(Diagnostics(workspace, repoRoot, file));
+                loadedProjects.UnionWith(solution.Projects.Select(project => project.FilePath).OfType<string>().Select(Path.GetFullPath));
             }
         }
-        else
+
+        var projects = paths.Where(path => path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+            .Where(path => !loadedProjects.Contains(Path.GetFullPath(Path.Combine(repoRoot, path))))
+            .Order(StringComparer.Ordinal).ToList();
+        if (projects.Count > 0)
         {
             using var workspace = MSBuildWorkspace.Create();
-            foreach (var file in files)
+            foreach (var file in projects)
             {
                 var fullPath = Path.GetFullPath(Path.Combine(repoRoot, file));
-                if (!workspace.CurrentSolution.Projects.Any(project => string.Equals(project.FilePath, fullPath, StringComparison.OrdinalIgnoreCase)))
+                if (!loadedProjects.Contains(fullPath))
                 {
                     progress?.Report($"loading {file}");
                     await workspace.OpenProjectAsync(fullPath, loads, cancellationToken);
+                    loadedProjects.UnionWith(workspace.CurrentSolution.Projects.Select(project => project.FilePath).OfType<string>().Select(Path.GetFullPath));
                 }
             }
 
@@ -66,7 +73,7 @@ public sealed class RoslynMapper : ICodeMapper
         var unrestored = workspace.CurrentSolution.Projects
             .Select(project => project.FilePath)
             .OfType<string>()
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Distinct(ProjectPathComparer)
             .Where(project => !File.Exists(Path.Combine(Path.GetDirectoryName(project)!, "obj", "project.assets.json")))
             .Select(project => RepoPath.Normalize(Path.GetRelativePath(repoRoot, project)))
             .Select(project => $"{project} is not restored; run dotnet restore {restoreTarget ?? project}");
@@ -75,6 +82,9 @@ public sealed class RoslynMapper : ICodeMapper
 
     private static bool IsSolution(string path) =>
         path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase);
+
+    private static StringComparer ProjectPathComparer =>
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
     private sealed class LoadProgress(IProgress<string> progress, string repoRoot) : IProgress<ProjectLoadProgress>
     {

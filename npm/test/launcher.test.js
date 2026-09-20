@@ -73,12 +73,16 @@ function fakeBuild(dir, platform) {
 
 function packTarball(version, platform, changelog) {
   const root = tempDir();
-  fakeBuild(path.join(root, 'package'), platform);
-  fs.writeFileSync(path.join(root, 'package', 'package.json'), JSON.stringify({ version }));
-  if (changelog) fs.writeFileSync(path.join(root, 'package', 'CHANGELOG.md'), changelog);
-  const tarball = path.join(root, 'build.tgz');
-  launcher.tar(['-czf', tarball, '-C', root, 'package']);
-  return fs.readFileSync(tarball);
+  try {
+    fakeBuild(path.join(root, 'package'), platform);
+    fs.writeFileSync(path.join(root, 'package', 'package.json'), JSON.stringify({ version }));
+    if (changelog) fs.writeFileSync(path.join(root, 'package', 'CHANGELOG.md'), changelog);
+    const tarball = path.join(root, 'build.tgz');
+    launcher.tar(['-czf', tarball, '-C', root, 'package']);
+    return fs.readFileSync(tarball);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 }
 
 async function fakeRegistry({ latest, version, tarball, integrity }) {

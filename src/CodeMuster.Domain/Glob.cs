@@ -15,7 +15,7 @@ public static class Glob
             ? normalizedPath
             : normalizedPath[(normalizedPath.LastIndexOf('/') + 1)..];
 
-        return new Regex(ToRegex(normalizedPattern), RegexOptions.CultureInvariant).IsMatch(subject);
+        return new Regex(ToRegex(normalizedPattern), RegexOptions.CultureInvariant | RegexOptions.NonBacktracking).IsMatch(subject);
     }
 
     private static string ToRegex(string pattern)

@@ -41,7 +41,7 @@ public sealed class AgentStartPreview(
             while (clock.UtcNow < deadline)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var remaining = (int)Math.Ceiling((deadline - clock.UtcNow).TotalSeconds);
+                var remaining = (int)Math.Clamp(Math.Ceiling((deadline - clock.UtcNow).TotalSeconds), 0, 10);
                 if (remaining != displayed)
                 {
                     var bar = new string('#', 10 - remaining) + new string('-', remaining);

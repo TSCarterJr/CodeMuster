@@ -9,11 +9,6 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
     /// <summary>Runs until nothing needs work or every remaining unit has used its attempts, reporting after every attempt.</summary>
     public async Task<RunResult> RunAsync(RunOptions options, CancellationToken cancellationToken)
     {
-        if (options.Force)
-        {
-            await RestaleDoneUnitsAsync(options.Kind, options.Path, cancellationToken);
-        }
-
         var total = 0;
         var next = new Next(ledger, tree, config, interactive: false, options.Kind, options.Path);
         var done = new Done(ledger, clock, config, adapter.Identity);
@@ -25,6 +20,11 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
 
         try
         {
+            if (options.Force)
+            {
+                await RestaleDoneUnitsAsync(options.Kind, options.Path, cancellationToken);
+            }
+
             while (true)
             {
                 var units = (await ledger.NextAsync(options.Parallelism + gaveUp.Count, options.Kind, options.Path, cancellationToken))

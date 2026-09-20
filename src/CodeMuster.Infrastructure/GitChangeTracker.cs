@@ -27,7 +27,13 @@ public sealed class GitChangeTracker(string root) : CodeMuster.Domain.IChangeTra
     {
         var index = await GitProcess.RunAsync(root, ["ls-files", "--stage", "-z"], null, cancellationToken);
         var diff = await GitProcess.RunAsync(root, ["diff", "--binary", "--no-ext-diff", "--no-textconv"], null, cancellationToken);
-        return CodeMuster.Domain.Hashing.Sha256Hex(index + "\0" + diff);
+        var untracked = await GitProcess.RunAsync(root, ["ls-files", "--others", "--exclude-standard", "-z"], null, cancellationToken);
+        var snapshot = new System.Text.StringBuilder(index + "\0" + diff + "\0" + untracked);
+        foreach (var path in untracked.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+        {
+            snapshot.Append(await GitProcess.RunAsync(root, ["hash-object", "--no-filters", "--", path], null, cancellationToken));
+        }
+        return CodeMuster.Domain.Hashing.Sha256Hex(snapshot.ToString());
     }
     public async Task NotifyAsync(CancellationToken cancellationToken) =>
         await WriteAsync("changed", await SnapshotAsync(cancellationToken), cancellationToken);

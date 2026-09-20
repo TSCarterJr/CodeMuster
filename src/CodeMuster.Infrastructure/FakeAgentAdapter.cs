@@ -43,16 +43,17 @@ public sealed class FakeAgentAdapter : IAgentAdapter
 
     private static IReadOnlyList<long> FixTargets(string pack)
     {
-        var lines = pack.Split('\n').Select(line => line.TrimEnd('\r')).ToList();
-        if (!lines.Contains("- kind: fix"))
+        var lines = pack.Split('\n').Select(line => line.TrimEnd('\r')).TakeWhile(line => line != "## Files").ToList();
+        var heading = lines.IndexOf("## Findings");
+        if (!lines.Contains("- kind: fix") || heading < 0)
         {
             return [];
         }
 
-        return lines
-            .Select(line => line.Trim())
-            .Where(line => line.StartsWith("\"id\":", StringComparison.Ordinal))
-            .Select(line => long.Parse(line["\"id\":".Length..].Trim().TrimEnd(','), System.Globalization.CultureInfo.InvariantCulture))
+        var json = lines.Skip(heading + 3).TakeWhile(line => line != "```");
+        using var document = JsonDocument.Parse(string.Join('\n', json));
+        return document.RootElement.EnumerateArray()
+            .Select(finding => finding.GetProperty("id").GetInt64())
             .ToList();
     }
 

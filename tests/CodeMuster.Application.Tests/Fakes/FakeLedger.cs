@@ -11,7 +11,7 @@ public sealed class FakeLedger : ILedger
     public List<ScanRun> Runs { get; } = [];
     public Dictionary<long, VerifyResponse> Verifications { get; } = [];
     public Dictionary<long, FixOutcome> Fixes { get; } = [];
-    private List<(string UnitId, VerifyResponse Verdict)> PendingVerdicts { get; } = [];
+    private List<(int AnalysisIndex, VerifyResponse Verdict)> PendingVerdicts { get; } = [];
     public Action<Analysis>? OnRecordAnalysis { get; set; }
     public Action? OnRecordFix { get; set; }
 
@@ -83,7 +83,7 @@ public sealed class FakeLedger : ILedger
         Analyses.Add((analysis, findings));
         if (verifiedAs is not null)
         {
-            PendingVerdicts.Add((analysis.UnitId, verifiedAs));
+            PendingVerdicts.Add((Analyses.Count - 1, verifiedAs));
         }
 
         var index = Units.FindIndex(u => u.Id == analysis.UnitId);
@@ -132,7 +132,7 @@ public sealed class FakeLedger : ILedger
     {
         var live = Units.Where(u => u.Status != UnitStatus.Retired).Select(u => u.Id).ToHashSet();
         var id = 0L;
-        var numbered = Analyses.Select(a => (a.Analysis, Findings: a.Findings.Select(f => (Id: ++id, Finding: f)).ToList())).ToList();
+        var numbered = Analyses.Select((a, index) => (a.Analysis, AnalysisIndex: index, Findings: a.Findings.Select(f => (Id: ++id, Finding: f)).ToList())).ToList();
         var current = numbered
             .Where(a => a.Analysis.Succeeded && live.Contains(a.Analysis.UnitId))
             .GroupBy(a => a.Analysis.UnitId)
@@ -142,7 +142,7 @@ public sealed class FakeLedger : ILedger
                 a.Analysis.UnitId,
                 a.Analysis.Fingerprint,
                 f.Finding,
-                Verifications.GetValueOrDefault(f.Id) ?? PendingVerdicts.LastOrDefault(v => v.UnitId == a.Analysis.UnitId).Verdict,
+                Verifications.GetValueOrDefault(f.Id) ?? PendingVerdicts.LastOrDefault(v => v.AnalysisIndex == a.AnalysisIndex).Verdict,
                 Fixes.GetValueOrDefault(f.Id))))
             .OrderBy(f => f.Id)
             .ToList();

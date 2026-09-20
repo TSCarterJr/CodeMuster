@@ -9,17 +9,24 @@ public class PhysicalFileSystemTests
     {
         var dir = Path.Combine(Path.GetTempPath(), "codemuster-config-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
-        var path = Path.Combine(dir, "config.json");
-        IFileSystem fs = new PhysicalFileSystem();
-        await fs.WriteAllTextAsync(path, "original", CancellationToken.None);
-        using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
+        try
+        {
+            var path = Path.Combine(dir, "config.json");
+            IFileSystem fs = new PhysicalFileSystem();
+            await fs.WriteAllTextAsync(path, "original", CancellationToken.None);
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fs.WriteAllTextAtomicallyAsync(path, "cancelled", cancellation.Token));
-        Assert.Equal("original", await File.ReadAllTextAsync(path));
-        await fs.WriteAllTextAtomicallyAsync(path, "{\"name\":\"héllo\"}", CancellationToken.None);
-        Assert.Equal("{\"name\":\"héllo\"}", await File.ReadAllTextAsync(path));
-        Assert.Single(Directory.GetFiles(dir));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fs.WriteAllTextAtomicallyAsync(path, "cancelled", cancellation.Token));
+            Assert.Equal("original", await File.ReadAllTextAsync(path));
+            await fs.WriteAllTextAtomicallyAsync(path, "{\"name\":\"héllo\"}", CancellationToken.None);
+            Assert.Equal("{\"name\":\"héllo\"}", await File.ReadAllTextAsync(path));
+            Assert.Single(Directory.GetFiles(dir));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 
     [Fact]

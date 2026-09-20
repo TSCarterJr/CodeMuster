@@ -58,6 +58,11 @@ public sealed class GitFileFixer(string repoRoot, Func<string, IAgentAdapter> ad
 
             throw;
         }
+        catch (Exception exception) when (created && !retain)
+        {
+            retain = true;
+            throw new InvalidOperationException($"worker for {path} failed: {exception.Message}; no changes were applied; worker retained at {directory}", exception);
+        }
         finally
         {
             if (created && !retain)

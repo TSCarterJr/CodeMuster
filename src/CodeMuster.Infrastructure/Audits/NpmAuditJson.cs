@@ -21,7 +21,7 @@ public static class NpmAuditJson
             var value = package.Value;
             var range = Text(value, "range") ?? "";
             var direct = value.TryGetProperty("isDirect", out var isDirect) && isDirect.ValueKind == JsonValueKind.True;
-            var fixedVersion = FixedVersion(value);
+            var fixedVersion = FixedVersion(value, package.Name);
             foreach (var via in Advisories(value))
             {
                 found.Add(new VulnerablePackage(
@@ -52,8 +52,9 @@ public static class NpmAuditJson
         }
     }
 
-    private static string? FixedVersion(JsonElement package) =>
+    private static string? FixedVersion(JsonElement package, string packageName) =>
         package.TryGetProperty("fixAvailable", out var fix) && fix.ValueKind == JsonValueKind.Object
+            && string.Equals(Text(fix, "name"), packageName, StringComparison.Ordinal)
             ? Text(fix, "version")
             : null;
 

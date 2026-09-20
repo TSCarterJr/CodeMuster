@@ -86,7 +86,6 @@ public static class UxEvidence
             {
                 RelativePath(path, "source_paths");
                 if (!targets.Contains(RepoPath.Normalize(path))) throw new JsonException($"ux_review source path {path} is not an applicable UI target");
-                covered.Add(RepoPath.Normalize(path));
             }
 
             var route = Text(page, "route");
@@ -110,9 +109,10 @@ public static class UxEvidence
             Text(readability, "visual_inspection");
             Text(readability, "font_and_spacing");
             Text(readability, "overlays_and_states");
+            var contrastPaths = new HashSet<string>(StringComparer.Ordinal);
             foreach (var sample in Items(readability, "contrast_samples"))
             {
-                Location(sample, paths);
+                contrastPaths.Add(Location(sample, paths));
                 Text(sample, "target");
                 var (ratio, threshold) = Contrast(sample);
                 var reported = Number(sample, "contrast_ratio");
@@ -125,9 +125,10 @@ public static class UxEvidence
             Text(workflow, "task");
             Text(workflow, "result");
             if (Strings(workflow, "steps").Count < 2) throw new JsonException("ux_review workflow steps must include at least two observed steps through a task");
+            var workflowPaths = new HashSet<string>(StringComparer.Ordinal);
             foreach (var action in Items(workflow, "actions"))
             {
-                Location(action, paths);
+                workflowPaths.Add(Location(action, paths));
                 Text(action, "action");
                 Text(action, "expected_location");
                 Text(action, "evidence");
@@ -138,13 +139,14 @@ public static class UxEvidence
             }
 
             string[] requiredAreas = ["flow", "validation_recovery", "graphics", "interaction_feedback", "text_quality"];
-            var assessedAreas = new HashSet<string>(StringComparer.Ordinal);
+            var assessedAreas = paths.Select(RepoPath.Normalize).Distinct(StringComparer.Ordinal)
+                .ToDictionary(path => path, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
             foreach (var check in Items(page, "experience_checks"))
             {
-                Location(check, paths);
+                var path = Location(check, paths);
                 var area = Text(check, "area");
                 if (!requiredAreas.Contains(area, StringComparer.Ordinal)) throw new JsonException("ux_review experience_checks area must be flow, validation_recovery, graphics, interaction_feedback or text_quality");
-                assessedAreas.Add(area);
+                assessedAreas[path].Add(area);
                 Text(check, "evidence");
                 var assessment = Text(check, "assessment");
                 if (assessment is not ("pass" or "issue" or "not_applicable")) throw new JsonException("ux_review experience_checks assessment must be pass, issue or not_applicable");
@@ -156,8 +158,14 @@ public static class UxEvidence
                 }
             }
 
-            var missingAreas = requiredAreas.Except(assessedAreas).ToList();
-            if (missingAreas.Count > 0) throw new JsonException("ux_review experience_checks did not assess: " + string.Join(", ", missingAreas));
+            foreach (var (path, areas) in assessedAreas)
+            {
+                if (!contrastPaths.Contains(path)) throw new JsonException($"ux_review contrast_samples did not inspect UI target: {path}");
+                if (!workflowPaths.Contains(path)) throw new JsonException($"ux_review workflow actions did not inspect UI target: {path}");
+                var missingAreas = requiredAreas.Except(areas).ToList();
+                if (missingAreas.Count > 0) throw new JsonException($"ux_review experience_checks did not assess UI target {path}: " + string.Join(", ", missingAreas));
+                covered.Add(path);
+            }
         }
 
         var missing = targets.Except(covered).Order(StringComparer.Ordinal).ToList();
@@ -243,11 +251,12 @@ public static class UxEvidence
     private static string PageContext(JsonElement page) =>
         $"Route {Text(page, "route")}; state {Text(page, "state")}; theme {Text(page, "theme")}; artifact {Text(page, "artifact")}.";
 
-    private static void Location(JsonElement item, IReadOnlyList<string> pagePaths)
+    private static string Location(JsonElement item, IReadOnlyList<string> pagePaths)
     {
         var path = RepoPath.Normalize(Text(item, "source_path"));
         if (!pagePaths.Select(RepoPath.Normalize).Contains(path, StringComparer.Ordinal)) throw new JsonException($"ux_review evidence source_path {path} is not among the inspected UI source paths");
         if (PositiveInteger(item, "line_end") < PositiveInteger(item, "line_start")) throw new JsonException("ux_review line_end must not precede line_start");
+        return path;
     }
 
     private static (double Ratio, double Threshold) Contrast(JsonElement sample)

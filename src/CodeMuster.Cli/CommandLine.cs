@@ -32,7 +32,7 @@ public static class CommandLine
                 continue;
             }
 
-            if (i + 1 >= args.Length || args[i + 1].StartsWith("--", StringComparison.Ordinal))
+            if (i + 1 >= args.Length || args[i + 1].StartsWith("--", StringComparison.Ordinal) || ShortOptions.ContainsKey(args[i + 1]))
             {
                 return null;
             }
