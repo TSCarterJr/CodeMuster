@@ -236,8 +236,7 @@ async function update({ registry, stateDir, platform, arch, currentVersion, now 
 function runBuild(binary, args) {
   return new Promise((resolve, reject) => {
     const child = childProcess.spawn(binary, args, { stdio: 'inherit' });
-    // The terminal already delivers Ctrl+C to the build, which cancels cleanly; the launcher only has to outlive it.
-    const handlers = ['SIGINT', 'SIGTERM', 'SIGHUP'].map((signal) => [signal, () => signal !== 'SIGINT' && child.kill(signal)]);
+    const handlers = ['SIGINT', 'SIGTERM', 'SIGHUP'].map((signal) => [signal, () => child.kill(signal)]);
     handlers.forEach(([signal, handler]) => process.on(signal, handler));
     const done = () => handlers.forEach(([signal, handler]) => process.off(signal, handler));
     child.on('error', (error) => {
