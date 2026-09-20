@@ -9,7 +9,7 @@ namespace CodeMuster.Mapping.CSharp;
 internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> paths)
 {
     private readonly HashSet<string> included = paths.Select(RepoPath.Normalize).ToHashSet(StringComparer.Ordinal);
-    private readonly HashSet<string> seen = new(StringComparer.Ordinal);
+    private readonly HashSet<DocumentId> seen = [];
     private readonly Dictionary<string, Symbol> symbols = new(StringComparer.Ordinal);
     private readonly HashSet<Edge> edges = [];
     private readonly HashSet<EntryPoint> entryPoints = [];
@@ -24,8 +24,7 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
             .SelectMany(project => project.Documents)
             .Where(document => document.FilePath is not null)
             .Select(document => (Document: document, Path: RepoPath.Normalize(Path.GetRelativePath(repoRoot, document.FilePath!))))
-            .Where(item => included.Contains(item.Path) && !seen.Contains(item.Path))
-            .DistinctBy(item => item.Path, StringComparer.Ordinal)
+            .Where(item => included.Contains(item.Path) && !seen.Contains(item.Document.Id))
             .ToList();
         var perProject = documents.GroupBy(item => item.Document.Project.Id).ToDictionary(group => group.Key, group => group.Count());
         ProjectId? project = null;
@@ -38,7 +37,7 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
                 progress?.Report($"reading {document.Project.Name}, {perProject[project]} files");
             }
 
-            seen.Add(path);
+            seen.Add(document.Id);
             await AddDocumentAsync(document, path, dispatcher, cancellationToken);
             done++;
             if (done * 10 / documents.Count > (done - 1) * 10 / documents.Count)
@@ -113,6 +112,8 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
                 InvocationExpressionSyntax invocation when !IsNameOf(node) => InvokedName(invocation.Expression),
                 ObjectCreationExpressionSyntax creation => TypeName(creation.Type),
                 ImplicitObjectCreationExpressionSyntax => "new",
+                _ when OperatorInfo(node, model, cancellationToken).Symbol is IMethodSymbol method => method.Name,
+                _ when OperatorInfo(node, model, cancellationToken).CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault() is { } candidate => candidate.Name,
                 _ => null,
             };
             if (name is null)
@@ -160,13 +161,27 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
                 BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax => [model.GetSymbolInfo(node, cancellationToken).Symbol],
                 SimpleNameSyntax name => NameCallees(name, model.GetSymbolInfo(name, cancellationToken).Symbol),
                 ElementAccessExpressionSyntax element when model.GetSymbolInfo(element, cancellationToken).Symbol is IPropertySymbol indexer => Accessors(element, indexer),
-                _ => [],
+                _ => [OperatorInfo(node, model, cancellationToken).Symbol],
             };
             foreach (var callee in callees.OfType<IMethodSymbol>())
             {
                 yield return callee;
             }
         }
+    }
+
+    private static SymbolInfo OperatorInfo(SyntaxNode node, SemanticModel model, CancellationToken cancellationToken)
+    {
+        if (node is not (BinaryExpressionSyntax or PrefixUnaryExpressionSyntax or PostfixUnaryExpressionSyntax or AssignmentExpressionSyntax or CastExpressionSyntax))
+        {
+            return default;
+        }
+
+        var info = model.GetSymbolInfo(node, cancellationToken);
+        return info.Symbol is IMethodSymbol { MethodKind: MethodKind.UserDefinedOperator or MethodKind.Conversion }
+            || info.CandidateSymbols.OfType<IMethodSymbol>().Any(method => method.MethodKind is MethodKind.UserDefinedOperator or MethodKind.Conversion)
+            ? info
+            : default;
     }
 
     private static IEnumerable<ISymbol?> NameCallees(SimpleNameSyntax name, ISymbol? symbol)
