@@ -127,6 +127,33 @@ public class CodexSettingsResolverTests
             catch (ArgumentException) { }
         }
 
-        public void Dispose() => Directory.Delete(root, recursive: true);
+        public void Dispose()
+        {
+            WaitForServerExit();
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    Directory.Delete(root, recursive: true);
+                    return;
+                }
+                catch (IOException) when (attempt < 20)
+                {
+                    Thread.Sleep(100);
+                }
+            }
+        }
+
+        private void WaitForServerExit()
+        {
+            var path = Path.Combine(root, "pid");
+            if (!File.Exists(path)) return;
+            try
+            {
+                using var server = Process.GetProcessById(int.Parse(File.ReadAllText(path), System.Globalization.CultureInfo.InvariantCulture));
+                server.WaitForExit(milliseconds: 10_000);
+            }
+            catch (ArgumentException) { }
+        }
     }
 }
