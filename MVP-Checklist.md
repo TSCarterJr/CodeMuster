@@ -314,4 +314,4 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
-| REL032 | Integrate MODEL1 into main, validate the combined release, and publish npm/plugin 0.3.2 with release-note and fresh-install verification. | `[~]` | codex 2026-09-19 | Tim explicitly requests commit/push to main and npm publication. Preserve the ongoing repair run and its completed commits. Keep the release tag and published archives immutable. |
+| REL032 | Prepare MODEL1 and the completed audit repairs as npm/plugin 0.3.2 with matching release metadata and combined-source validation. | `[x]` | codex 2026-09-19 | Tim explicitly requests direct main delivery and npm publication, after his fix run finishes. Integrated its 30 commits without changing untracked setup/configuration files. All 1,256 .NET tests and 61 npm tests pass; formatting, plugin parity and diff checks pass. Hosted OS checks gate main; the immutable release tag gates builds, installed-package smoke checks and publication. Retain registry, archive-integrity and fresh-install receipts under TestResults/release-0.3.2/. |

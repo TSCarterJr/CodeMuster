@@ -10,6 +10,18 @@ start with 0.2.8.
   effective repository settings. Explicit flags override those settings, and all
   workers use the values shown. If lookup fails, request explicit model and effort
   instead of showing unknown defaults.
+- Improve cancellation forwarding and subprocess cleanup, and retain isolated
+  repair worktrees when a worker fails.
+- Correct C# and TypeScript mapping for inherited actions, linked documents,
+  standalone projects, operators and method-ID collisions; surface TypeScript
+  configuration diagnostics.
+- Strengthen configuration validation, glob matching, audit-pack code fences,
+  stale dependency handling and per-target UX evidence requirements.
+- Improve report layout, protect build output during package staging, and fix
+  test-process and temporary-file cleanup.
+
+Use `npm install -g codemuster@0.3.2` to receive the launcher changes as well as
+the native binary.
 
 ## 0.3.1 - 2026-09-19
 

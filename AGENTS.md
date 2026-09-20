@@ -2,6 +2,16 @@
 
 ## Current task status
 
+- 2026-09-19, codex: REL032 prepares 0.3.2 with MODEL1 and the 30 completed
+  repair commits from Tim's fix run, which was allowed to finish at his request.
+  Codex settings are resolved before preview and pinned for all workers (D55).
+  Release notes and plugin manifests match 0.3.2. All 1,256 .NET tests and 61
+  npm tests pass; formatting and plugin checks pass. Direct main delivery
+  requires the three push-triggered OS checks, then the
+  immutable v0.3.2 tag triggers package builds, smoke checks and publication.
+  Retain publication and fresh-install evidence in TestResults/release-0.3.2/.
+  Existing untracked agent/configuration files and the ledger are preserved.
+
 - 2026-09-19, codex: REL031 prepares version 0.3.1 for CLI1 at Tim's request.
   CHANGELOG.md has the dated release notes and plugin manifests match 0.3.1.
   All 1,241 .NET source tests and 61 npm tests pass; plugin parity/diff checks
