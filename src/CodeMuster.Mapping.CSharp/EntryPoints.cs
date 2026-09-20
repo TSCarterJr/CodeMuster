@@ -28,7 +28,7 @@ internal static class EntryPoints
         if (IsController(type))
         {
             var classTemplate = Template(type.GetAttributes().FirstOrDefault(attribute => NameOf(attribute.AttributeClass) == "Microsoft.AspNetCore.Mvc.RouteAttribute"));
-            foreach (var action in type.GetMembers().OfType<IMethodSymbol>().Where(IsAction))
+            foreach (var action in Actions(type))
             {
                 if (Entry(action, "http", Display(type, action, classTemplate)) is { } entry)
                 {
@@ -94,6 +94,26 @@ internal static class EntryPoints
         || Lineage(type).Any(ancestor => NameOf(ancestor) == "Microsoft.AspNetCore.Mvc.ControllerBase");
 
     private static bool IsBackgroundService(INamedTypeSymbol type) => NameOf(type) == "Microsoft.Extensions.Hosting.BackgroundService";
+
+    private static IEnumerable<IMethodSymbol> Actions(INamedTypeSymbol type)
+    {
+        var overridden = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+        foreach (var method in Lineage(type)
+            .TakeWhile(ancestor => ancestor.SpecialType != SpecialType.System_Object)
+            .SelectMany(ancestor => ancestor.GetMembers())
+            .OfType<IMethodSymbol>())
+        {
+            for (var ancestor = method.OverriddenMethod; ancestor is not null; ancestor = ancestor.OverriddenMethod)
+            {
+                overridden.Add(ancestor.OriginalDefinition);
+            }
+
+            if (!overridden.Contains(method.OriginalDefinition) && IsAction(method))
+            {
+                yield return method;
+            }
+        }
+    }
 
     private static bool IsAction(IMethodSymbol method) =>
         method is { MethodKind: MethodKind.Ordinary, DeclaredAccessibility: Accessibility.Public, IsStatic: false, IsAbstract: false }
