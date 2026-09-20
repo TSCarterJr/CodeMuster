@@ -297,3 +297,9 @@ Reached 2026-09-11 with `--agent fake`, on all three OSes in CI. The real CLI sc
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
 | CLI1 | Add a compact terminal banner, prominent agent settings, colored progress and elapsed activity feedback. Tests first: terminal/plain output, NO_COLOR/CI/dumb terminals, countdown controls, progress success/failure/cancellation and cleanup. | `[x]` | codex 2026-09-19 | Prioritized at Tim's request; D54. Preview and outcome regressions failed first; all 1,241 .NET tests pass, plus 27 focused cases after the final foreground-color adjustment. Real terminal fixtures verify colors, NO_COLOR, narrow layout, failure/cancellation cleanup, Enter skip, ten-second timeout, unchanged config/ledger, and CI/dumb fallback. Formatting and diff checks pass. Existing untracked setup/config files preserved. Source only; not released. |
+
+## Version 0.3.1 preparation (user-directed priority)
+
+| ID | Task | Status | Owner / Date | Notes |
+|---|---|---|---|---|
+| REL031 | Prepare CLI1 as version 0.3.1 with matching plugin metadata and dated release notes. | `[x]` | codex 2026-09-19 | Tim requested a version increase and npm publication; direct main delivery, no PR. All 1,241 .NET source tests and 61 npm tests pass; plugin parity and diff checks pass. Release rehearsal and tagged workflow gate delivery/publication; retain immutable archives and registry/fresh-install receipts under TestResults/release-0.3.1/. |

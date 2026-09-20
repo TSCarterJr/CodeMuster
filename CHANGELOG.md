@@ -4,7 +4,7 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
-## Unreleased
+## 0.3.1 - 2026-09-19
 
 - Add a compact terminal banner, highlighted provider/model/thinking settings and
   countdown bar before agent commands. Add colored audit progress counts and an

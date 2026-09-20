@@ -2,6 +2,15 @@
 
 ## Current task status
 
+- 2026-09-19, codex: REL031 prepares version 0.3.1 for CLI1 at Tim's request.
+  CHANGELOG.md has the dated release notes and plugin manifests match 0.3.1.
+  All 1,241 .NET source tests and 61 npm tests pass; plugin parity/diff checks
+  pass. Tim requests direct pushes to main, without PRs. Use the existing release
+  workflow's dispatch rehearsal on the candidate branch to satisfy required OS
+  checks before direct main delivery, then tag v0.3.1 for publication. Keep the
+  tag and published archives immutable. Publication/integrity/fresh-install
+  receipts belong under TestResults/release-0.3.1/ and in the GitHub release notes.
+
 - 2026-09-19, codex: CLI1 (D54) adds a compact ASCII terminal wordmark,
   emphasized provider/model/thinking/worker rows, countdown bar, colored audit
   progress and elapsed intelligent-config activity with success/error/cancel states.
