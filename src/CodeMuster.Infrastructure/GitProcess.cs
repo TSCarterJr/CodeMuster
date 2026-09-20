@@ -58,6 +58,7 @@ internal static class GitProcess
                 process.Kill(entireProcessTree: true);
             }
 
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
             throw;
         }
     }
