@@ -274,7 +274,7 @@ public static class Program
         var result = await fix.RunAsync(adapter, options, progress, cancellationToken);
         foreach (var unitId in result.GaveUp)
         {
-            Console.Error.WriteLine($"gave up on {unitId} after {options.MaxAttempts} attempts");
+            Console.Error.WriteLine($"gave up on {unitId}");
         }
 
         var skipped = result.Skipped.Count == 0 ? "" : string.Create(CultureInfo.InvariantCulture, $", {result.Skipped.Count} skipped");

@@ -20,10 +20,10 @@ public class FixRunTests
         var ids = await SeedAsync("a.cs", 10);
         ledger.OnRecordFix = () => throw new InvalidOperationException("disk full");
         var editor = new PackFixer(_ => new FileFixEdit(FixResponseJson.Serialize(new FixResponse("fixed", ids, [])), "a.cs"));
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new Fix(ledger, tree, clock, Config.Default, workspace, tests, editor)
-            .RunAsync(Fixer(_ => throw new Exception()), new FixOptions(), null, CancellationToken.None));
-        Assert.Contains("preserved", error.Message);
-        Assert.Contains("disk full", error.Message);
+        var result = await new Fix(ledger, tree, clock, Config.Default, workspace, tests, editor)
+            .RunAsync(Fixer(_ => throw new Exception()), new FixOptions(), new ListProgress(notes), CancellationToken.None);
+        Assert.Equal([UnitIds.Fix("a.cs")], result.GaveUp);
+        Assert.Contains(notes, note => note.Contains("preserved", StringComparison.Ordinal) && note.Contains("disk full", StringComparison.Ordinal));
         Assert.Single(workspace.Commits);
         Assert.Empty(workspace.RestoredFiles);
         Assert.Empty(ledger.Fixes);
@@ -644,4 +644,92 @@ public class FixRunTests
         lock (edited) edited.Add(path);
         return Task.FromResult(new FileFixEdit(FixResponseJson.Serialize(new FixResponse("fixed", findings, [])), path));
     });
+
+    [Fact]
+    public async Task AFileThatCannotBeIntegrated_DrainsTheRun_LettingRunningWorkersFinishAndRetainingTheirRepairs()
+    {
+        var ids = new Dictionary<string, IReadOnlyList<long>>(StringComparer.Ordinal);
+        foreach (var path in new[] { "a.cs", "b.cs", "c.cs" })
+        {
+            ids[path] = await SeedAsync(path, 10);
+        }
+
+        workspace.Changed.Add("outside.cs");
+        var started = new List<string>();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelledMidCall = false;
+        var editor = new ReleasingFixer(async (path, token) =>
+        {
+            lock (started)
+            {
+                started.Add(path);
+            }
+
+            if (path != "a.cs")
+            {
+                try
+                {
+                    await release.Task.WaitAsync(token);
+                }
+                catch (OperationCanceledException)
+                {
+                    cancelledMidCall = true;
+                    throw;
+                }
+            }
+
+            return new FileFixEdit(FixResponseJson.Serialize(new FixResponse("fixed", ids[path], [])), path, "worktree-" + path);
+        });
+        var progress = new WatchingProgress(notes, note =>
+        {
+            if (note.Contains("integration failed for a.cs", StringComparison.Ordinal))
+            {
+                release.TrySetResult();
+            }
+        });
+
+        var result = await new Fix(ledger, tree, clock, Config.Default, workspace, tests, editor)
+            .RunAsync(Fixer(_ => throw new Exception()), new FixOptions(Parallelism: 2), progress, CancellationToken.None);
+
+        var drained = started.Single(path => path != "a.cs");
+        Assert.False(cancelledMidCall);
+        Assert.Equal(2, started.Count);
+        Assert.Contains("a.cs", started);
+        Assert.Equal([UnitIds.Fix("a.cs")], result.GaveUp);
+        Assert.Equal(["worktree-a.cs"], editor.Released);
+        Assert.Contains(notes, note => note.Contains(drained, StringComparison.Ordinal) && note.Contains("worktree-" + drained, StringComparison.Ordinal));
+        Assert.Contains(notes, note => note.Contains("changed while validation ran, written either by the test command or by something else using this checkout: outside.cs", StringComparison.Ordinal));
+        Assert.DoesNotContain(drained, workspace.CommittedFiles);
+        Assert.False(ledger.Fixes.ContainsKey(ids[drained][0]));
+    }
+
+    private sealed class WatchingProgress(List<string> lines, Action<string> onNote) : IProgress<string>
+    {
+        public void Report(string value)
+        {
+            lock (lines)
+            {
+                lines.Add(value);
+            }
+
+            onNote(value);
+        }
+    }
+
+    private sealed class ReleasingFixer(Func<string, CancellationToken, Task<FileFixEdit>> run) : IFileFixer
+    {
+        public List<string> Released { get; } = [];
+
+        public Task<FileFixEdit> RunAsync(string path, string pack, CancellationToken cancellationToken) => run(path, cancellationToken);
+
+        public Task ReleaseAsync(FileFixEdit edit, CancellationToken cancellationToken)
+        {
+            lock (Released)
+            {
+                Released.Add(edit.Worktree!);
+            }
+
+            return Task.CompletedTask;
+        }
+    }
 }

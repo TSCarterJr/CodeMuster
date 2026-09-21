@@ -46,7 +46,8 @@ public sealed class GitFileFixer(string repoRoot, Func<string, IAgentAdapter> ad
             }
 
             var patch = await GitProcess.RunAsync(directory, ["--literal-pathspecs", "diff", "--binary", baseline, "--", .. allowed], null, cancellationToken).ConfigureAwait(false);
-            return new FileFixEdit(response, patch);
+            retain = true;
+            return new FileFixEdit(response, patch, directory);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -67,16 +68,29 @@ public sealed class GitFileFixer(string repoRoot, Func<string, IAgentAdapter> ad
         {
             if (created && !retain)
             {
-                await worktrees.WaitAsync(CancellationToken.None).ConfigureAwait(false);
-                try
-                {
-                    await GitProcess.RunAsync(repoRoot, ["worktree", "remove", "--force", directory], null, CancellationToken.None).ConfigureAwait(false);
-                }
-                finally
-                {
-                    worktrees.Release();
-                }
+                await RemoveAsync(directory).ConfigureAwait(false);
             }
+        }
+    }
+
+    public async Task ReleaseAsync(FileFixEdit edit, CancellationToken cancellationToken)
+    {
+        if (edit.Worktree is { } directory)
+        {
+            await RemoveAsync(directory).ConfigureAwait(false);
+        }
+    }
+
+    private async Task RemoveAsync(string directory)
+    {
+        await worktrees.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            await GitProcess.RunAsync(repoRoot, ["worktree", "remove", "--force", directory], null, CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            worktrees.Release();
         }
     }
 

@@ -13,7 +13,9 @@ public sealed class FakeWorkspace : IWorkspace
     public List<string> CommittedFiles { get; } = [];
     public List<string> RestoredFiles { get; } = [];
 
-    public Task<IReadOnlyList<string>> ChangedPathsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>([]);
+    public List<string> Changed { get; } = [];
+
+    public Task<IReadOnlyList<string>> ChangedPathsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>(Changed);
 
     public Task ApplyPatchAsync(string patch, CancellationToken cancellationToken)
     {

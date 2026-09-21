@@ -25,6 +25,7 @@ public sealed class GitFileFixerTests : IDisposable
             return Task.FromResult("response");
         }), relatedFiles: ["b.cs"]);
         var edit = await fixer.RunAsync("a.cs", "pack", CancellationToken.None);
+        await fixer.ReleaseAsync(edit, CancellationToken.None);
         var workspace = new GitWorkspace(repo.Root);
         await workspace.ApplyPatchAsync(edit.Patch, CancellationToken.None);
         await workspace.CommitFilesAsync(["a.cs", "b.cs"], "coherent repair", CancellationToken.None);
@@ -46,6 +47,8 @@ public sealed class GitFileFixerTests : IDisposable
         var edit = await fixer.RunAsync("a.cs", "pack", CancellationToken.None);
 
         Assert.Equal("response", edit.Response);
+        Assert.NotEqual(worktrees, repo.Run("worktree", "list", "--porcelain"));
+        await fixer.ReleaseAsync(edit, CancellationToken.None);
         Assert.Equal(worktrees, repo.Run("worktree", "list", "--porcelain"));
         var workspace = new GitWorkspace(repo.Root);
         await workspace.ApplyPatchAsync(edit.Patch, CancellationToken.None);
@@ -93,6 +96,8 @@ public sealed class GitFileFixerTests : IDisposable
 
         Assert.Contains("+fixed", edit.Patch);
         Assert.DoesNotContain("hook.cache", edit.Patch);
+        Assert.NotEqual(originalWorktrees, repo.Run("worktree", "list", "--porcelain"));
+        await fixer.ReleaseAsync(edit, CancellationToken.None);
         Assert.Equal(originalWorktrees, repo.Run("worktree", "list", "--porcelain"));
         Assert.Empty(repo.Run("status", "--porcelain"));
     }
@@ -150,6 +155,11 @@ public sealed class GitFileFixerTests : IDisposable
         var edits = await Task.WhenAll(fixer.RunAsync("a.cs", "a", timeout.Token), fixer.RunAsync("b.cs", "b", timeout.Token));
 
         Assert.All(edits, edit => Assert.Contains("+fixed", edit.Patch));
+        foreach (var edit in edits)
+        {
+            await fixer.ReleaseAsync(edit, CancellationToken.None);
+        }
+
         Assert.Empty(repo.Run("status", "--porcelain"));
     }
 

@@ -93,6 +93,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         var running = new Dictionary<Task<ParallelAttempt>, UnitPack>();
         var gaveUp = new List<string>();
         var skipped = new List<string>();
+        var draining = false;
         var units = 0;
         var fixedCount = 0;
         var declined = 0;
@@ -128,7 +129,33 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                 var unit = running[completed];
                 running.Remove(completed);
                 var attempt = await completed;
-                var response = attempt.Edit is null ? null : await IntegrateAsync(unit, attempt.Edit);
+                FixResponse? response = null;
+                if (attempt.Edit is { } edit)
+                {
+                    if (draining)
+                    {
+                        notes?.Report($"{unit.Key} finished after the run stopped; its repair was not applied and its worker is retained at {edit.Worktree}");
+                        continue;
+                    }
+
+                    try
+                    {
+                        response = await IntegrateAsync(unit, edit);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        draining = true;
+                        pending.Clear();
+                        gaveUp.Add(unit.UnitId);
+                        notes?.Report(string.Create(CultureInfo.InvariantCulture, $"stopped starting repairs after {unit.Key} could not be integrated; the {running.Count} running worker(s) will finish and their repairs are retained unapplied"));
+                        continue;
+                    }
+                    finally
+                    {
+                        await editor.ReleaseAsync(edit, CancellationToken.None);
+                    }
+                }
+
                 if (attempt.Error is { } workerError)
                 {
                     await RecordFailureAsync(unit, workerError, adapter.Identity, cancellationToken);
@@ -141,7 +168,12 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                         notes?.Report($"fix failed for {unit.Key}: {attempt.Error}");
                     }
 
-                    if (attempts[unit.UnitId] >= options.MaxAttempts)
+                    if (draining)
+                    {
+                        gaveUp.Add(unit.UnitId);
+                        notes?.Report($"gave up on {unit.Key}; the run stopped before it could be retried");
+                    }
+                    else if (attempts[unit.UnitId] >= options.MaxAttempts)
                     {
                         gaveUp.Add(unit.UnitId);
                         notes?.Report(string.Create(CultureInfo.InvariantCulture, $"gave up on {unit.Key} after {options.MaxAttempts} attempts; findings remain unfixed"));
@@ -248,7 +280,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                     if (extra.Length > 0)
                     {
                         preserve = true;
-                        throw new InvalidOperationException("validation changed files outside the allowed scope: " + string.Join(", ", extra));
+                        throw new InvalidOperationException("files outside the allowed scope changed while validation ran, written either by the test command or by something else using this checkout: " + string.Join(", ", extra));
                     }
                     if (!result.Passed)
                     {
