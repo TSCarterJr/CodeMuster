@@ -4,6 +4,21 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
+## 0.3.5 - 2026-09-21
+
+- A repair that cannot be integrated no longer ends the whole run. Previously one
+  such file cancelled every other worker mid-call, so a parallel `fix` could pay
+  for many agent calls and keep no repairs. The run now stops starting new
+  repairs, lets the calls already running finish, and retains each of those
+  repairs unapplied in its own worker checkout with the path reported, so they
+  can still be recovered. The file that could not be integrated is reported and
+  the command exits non-zero.
+- The message for a file changed outside the allowed scope during validation no
+  longer blames the configured test command. CodeMuster compares the checkout
+  before and after validation, so it now says the change came either from the
+  test command or from something else using the same checkout. Running `fix`
+  while another tool or agent writes to the same checkout is what produces this.
+
 ## 0.3.4 - 2026-09-20
 
 - `codemuster fix` no longer stops the whole run when one file is too large for a

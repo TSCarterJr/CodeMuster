@@ -2,6 +2,22 @@
 
 ## Current task status
 
+- 2026-09-21, claude: FIX2 stops a repair run from dying with its workers. An
+  integration failure left the tree dirty and rethrew, escaping the loop and
+  cancelling the worker token, so every in-flight agent call was lost; Tim's
+  `fix --agent claude -j 20` on ToolbagCRM kept no repairs when a concurrent
+  session edited a file mid-run. The run now drains: no new units are dispatched,
+  the quarantined unit is given up, the token is never cancelled, and the repairs
+  that finish afterwards are retained unapplied in their worktrees with each path
+  reported, because IsCleanAsync would reject any further integration. Retention
+  reuses GitFileFixer through FileFixEdit.Worktree and IFileFixer.ReleaseAsync.
+  The out-of-scope message no longer asserts a cause it cannot know. FLAKE1 also
+  ships here: the codex settings fake server is awaited before its temp root is
+  deleted, which failed test (windows) in the v0.3.4 release run. L16 records
+  Tim's proposal that fix run entirely off the main checkout; it is planning only,
+  open on the validation environment in a pristine worktree. All 1,263 .NET and
+  64 npm tests pass; formatting and plugin parity checks pass. Prepared for 0.3.5.
+
 - 2026-09-20, claude: D56 keeps `fix` running past an oversized file. A fix unit whose
   whole-file pack exceeds `slice_token_budget` is recorded skipped with its reason,
   spends no attempt, and the other files are still repaired and committed; the summary
