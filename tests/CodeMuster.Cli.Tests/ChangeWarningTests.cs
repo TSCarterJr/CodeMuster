@@ -91,6 +91,23 @@ public class ChangeWarningTests
     }
 
     [Fact]
+    public async Task Next_and_run_warn_on_stderr_before_working_from_a_stale_map()
+    {
+        using var repo = await ScannedAsync();
+        File.AppendAllText(Path.Combine(repo.Root, "web", "lib", "index.ts"), "\nexport const added = 1;\n");
+        const string expected = "web/lib/index.ts changed since the last scan; run codemuster scan to refresh coverage";
+
+        var next = await CliProcess.RunAsync(repo.Root, "next");
+        var run = await CliProcess.RunAsync(repo.Root, "run", "--agent", "fake", "--kind", "file", "--path", "web/lib/index.ts");
+
+        Assert.Equal(0, next.ExitCode);
+        Assert.StartsWith(expected, next.Stderr);
+        Assert.StartsWith("# CodeMuster unit", next.Stdout);
+        Assert.Equal(0, run.ExitCode);
+        Assert.Contains(expected, run.Stderr);
+    }
+
+    [Fact]
     public async Task A_changed_file_git_cannot_read_turns_the_change_check_into_a_warning_and_status_still_runs()
     {
         using var repo = await ScannedAsync();

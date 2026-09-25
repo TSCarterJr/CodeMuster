@@ -139,7 +139,7 @@ public static class Program
         using var ledger = await SqliteLedger.OpenAsync(Path.Combine(repoRoot, ".codemuster", "ledger.db"), cancellationToken);
         var clock = new SystemClock();
         var changes = ChangeTracker(repoRoot, config);
-        if (command.Verb is "status" or "report" or "fix" or "verify")
+        if (command.Verb is "status" or "report" or "fix" or "verify" or "run" or "next")
         {
             await WarnAboutChangesAsync(changes, cancellationToken);
         }

@@ -61,7 +61,7 @@ ledger or adding files to a worker patch. A hook that cannot record it prints a 
 exits 0, so it never fails the agent's tool call. Rerunning `init` updates an existing CodeMuster
 hook's matcher and timeout in place and leaves other hooks alone.
 
-`status`, `report`, `fix` and `verify` compare the tracked files scan reads with the last
+`status`, `report`, `next`, `run`, `fix` and `verify` compare the tracked files scan reads with the last
 completed scan and name what changed, for example
 `web/lib/index.ts changed since the last scan; run codemuster scan to refresh coverage`.
 Those are the files scan reviews, the `.sln`, `.slnx`, `.csproj` and `tsconfig.json` files the
