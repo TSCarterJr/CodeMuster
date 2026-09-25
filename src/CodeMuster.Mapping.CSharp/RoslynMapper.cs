@@ -10,6 +10,23 @@ public sealed class RoslynMapper : ICodeMapper
 
     public async Task<CodeMap> MapAsync(string repoRoot, IReadOnlyList<string> paths, IProgress<string>? progress, CancellationToken cancellationToken)
     {
+        // MSBuildWorkspace starts its build host by the bare name dotnet, and .NET on Linux and macOS looks for that in the current
+        // directory before PATH, so the repository being mapped could supply it. Every path below is absolute.
+        var root = Path.GetFullPath(repoRoot);
+        var previous = Directory.GetCurrentDirectory();
+        Directory.SetCurrentDirectory(AppContext.BaseDirectory);
+        try
+        {
+            return await MapFromBaseDirectoryAsync(root, paths, progress, cancellationToken);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(previous);
+        }
+    }
+
+    private static async Task<CodeMap> MapFromBaseDirectoryAsync(string repoRoot, IReadOnlyList<string> paths, IProgress<string>? progress, CancellationToken cancellationToken)
+    {
         var files = WorkspaceFiles(paths);
         if (files.Count == 0)
         {

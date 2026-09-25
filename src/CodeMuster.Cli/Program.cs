@@ -16,6 +16,13 @@ public static class Program
 
     public static async Task<int> Main(string[] args)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            // Programs started by bare name (Roslyn's build host starts dotnet.exe; npm's cmd-shims start node) are otherwise looked for
+            // in the current directory, usually the repository being audited. Children inherit this, so it covers the shims' cmd.exe too.
+            Environment.SetEnvironmentVariable("NoDefaultCurrentDirectoryInExePath", "1");
+        }
+
         if (Console.IsOutputRedirected)
         {
             Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true });

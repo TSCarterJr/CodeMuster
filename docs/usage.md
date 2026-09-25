@@ -291,9 +291,12 @@ For several checks, put them in a repository script and invoke its interpreter:
 
 The program is looked up only in absolute `PATH` directories, never in the current directory or a
 relative entry such as `.` or `node_modules/.bin`, and on Linux and macOS it must be executable.
-Git, Node.js, the agents and the audit tools are found the same way, so a program committed to the
-repository never runs in their place. Reach a project-local tool through its package manager, for
-example `["npx", "jest"]`.
+Git, Node.js, the agents and the audit tools are found the same way, and the programs those start by
+name (Roslyn's `dotnet` build host, the `node` an npm shim runs) are not looked for in the
+repository either, so a program committed to the repository is not started in their place. That
+does not make an untrusted repository safe to scan: C# mapping evaluates its MSBuild files,
+TypeScript mapping loads its `typescript` package, and the audit tools honour its settings. Reach a
+project-local tool through its package manager, for example `["npx", "jest"]`.
 
 Choose a command that terminates, returns nonzero on failure, and covers the affected project.
 Install its dependencies beforehand. `fix` runs it once on the unmodified tree before any agent

@@ -58,7 +58,13 @@ C# mapping also needs a suitable .NET SDK; TypeScript mapping needs the target r
 JavaScript compiler API. These requirements also apply to plugin use, which needs
 terminal access to your repository. Install and authenticate your chosen coding agent separately.
 CodeMuster starts Git, Node.js, agents, audit tools and `test_command` only from absolute `PATH`
-directories, so a program committed to the repository or a relative entry such as `.` never runs.
+directories, and keeps the repository out of the search for the programs those start by name
+(Roslyn's `dotnet` build host, the `node` an npm shim runs), so a program committed to the
+repository or a relative entry such as `.` is not started in their place. Scanning still runs code
+the repository controls: C# mapping evaluates its MSBuild project files, whose targets can run
+commands; TypeScript mapping loads its installed `typescript` package; and the audit runs its
+package manager, which honours settings such as a committed Yarn `yarnPath`. Scan only
+repositories you would build.
 
 ```sh
 npm install -g codemuster

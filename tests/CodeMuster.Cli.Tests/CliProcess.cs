@@ -9,9 +9,25 @@ public static class CliProcess
 {
     public static Task<CliResult> RunAsync(string workingDirectory, params string[] args) => RunAsync(workingDirectory, null, args);
 
-    public static async Task<CliResult> RunAsync(string workingDirectory, IReadOnlyDictionary<string, string>? environment, params string[] args)
+    public static Task<CliResult> RunAsync(string workingDirectory, IReadOnlyDictionary<string, string>? environment, params string[] args) =>
+        StartAsync("dotnet", [Path.Combine(AppContext.BaseDirectory, "codemuster.dll"), .. args], workingDirectory, environment);
+
+    /// <summary>
+    /// Runs the executable the release ships (codemuster.exe or codemuster) instead of dotnet codemuster.dll. Its folder, not the
+    /// dotnet install, is the first place Windows and .NET on Linux and macOS search for a program started by bare name.
+    /// </summary>
+    public static Task<CliResult> RunAppHostAsync(string workingDirectory, params string[] args)
     {
-        var start = new ProcessStartInfo("dotnet")
+        // A framework-dependent test build finds its runtime through DOTNET_ROOT when dotnet is not in a default install location.
+        var root = Environment.GetEnvironmentVariable("DOTNET_ROOT")
+            ?? Path.GetFullPath(Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", ".."));
+        return StartAsync(Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "codemuster.exe" : "codemuster"), args, workingDirectory,
+            new Dictionary<string, string> { ["DOTNET_ROOT"] = root });
+    }
+
+    private static async Task<CliResult> StartAsync(string program, IEnumerable<string> args, string workingDirectory, IReadOnlyDictionary<string, string>? environment)
+    {
+        var start = new ProcessStartInfo(program)
         {
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
@@ -20,7 +36,6 @@ public static class CliProcess
             StandardErrorEncoding = new UTF8Encoding(false),
             UseShellExecute = false,
         };
-        start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "codemuster.dll"));
         foreach (var arg in args)
         {
             start.ArgumentList.Add(arg);
