@@ -14,6 +14,14 @@ public class CommandLineTests
     }
 
     [Fact]
+    public void Parse_DoneRefusesAFixUnit_BecauseOnlyFixChecksTheRepair()
+    {
+        var error = Assert.Throws<UsageException>(() => CommandLine.Parse(["done", "fix:src/A.cs", "--fingerprint", "abc", "--findings", "f.json"]));
+
+        Assert.Equal("codemuster done: fix units are recorded by codemuster fix, which applies, tests and commits the repair; run codemuster fix --agent <agent> --path src/A.cs", error.Message);
+    }
+
+    [Fact]
     public void Parse_NoArguments_IsAMistake()
     {
         var error = Assert.Throws<UsageException>(() => CommandLine.Parse([]));

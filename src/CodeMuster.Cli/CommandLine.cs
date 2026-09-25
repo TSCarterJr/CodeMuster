@@ -80,6 +80,12 @@ public static class CommandLine
         }
 
         CheckPositionals(verb, spec.Positional, positionals);
+        if (verb == "done" && positionals[0].StartsWith(UnitIds.Fix(""), StringComparison.Ordinal))
+        {
+            // done cannot see whether the file changed, so a hand-typed fix unit would record Fixed over untouched code.
+            throw Mistake(verb, $"fix units are recorded by codemuster fix, which applies, tests and commits the repair; run codemuster fix --agent <agent> --path {positionals[0][UnitIds.Fix("").Length..]}");
+        }
+
         foreach (var required in spec.Required ?? [])
         {
             var choices = required == "agent" ? AgentAdapters.Names : Choices(verb, required);
