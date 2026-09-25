@@ -2,6 +2,19 @@
 
 ## Current task status
 
+- 2026-09-25, claude: Fixed the confirmed issues a review of the 0.3.6 changes found,
+  in 33 commits on main (SNAP1, EXEC1, VERIFY1, FIX3 to FIX5, AUDIT1, AUDIT2, TSAPI1,
+  HASH1, PERF2, USAGE1, T15.1), each with a failing test first where one was possible
+  and a sentence in its checklist row. Highlights: the shipped executable no longer
+  lets a committed dotnet or an npm shim's node run (EXEC1); scan and verify stop
+  re-checking unchanged findings (VERIFY1); a repair undone by test_command is no
+  longer recorded fixed (FIX4); a missing preferred audit tool falls back (AUDIT2).
+  All 1,547 .NET and 72 npm tests pass on Windows with zero skips; the Unix branches
+  ran on Ubuntu under WSL (git 2.34), and macOS was reasoned, not run. Waiting on Tim:
+  agree D58 (the hook writes a marker; refines D42), decide how a dotnet audit report
+  with one unrestorable project is treated (D38), whether to gate `--agent fake`
+  (the release smoke runs `fix --agent fake`), and whether init should keep a user's
+  larger hook timeout. Not pushed or tagged; CHANGELOG.md untouched.
 - 2026-09-25, claude: Product value review of v0.3.5 (cfb0aa9) at Tim's request,
   in docs/product-value-review.md. It covers bugs, CLI look and feel, setup and
   configuration, performance, security, product features, and the 30 audit-generated
