@@ -39,6 +39,12 @@ Install and authenticate the agent you intend to use: Claude Code, Codex, Gemini
 OpenCode. `doctor` checks Git and the code mappers, not your provider account. Follow its
 suggested restore or dependency-install commands if mapping is not ready.
 
+TypeScript mapping uses the compiler API from the `typescript` package installed next to each
+`tsconfig.json`. TypeScript 7 has no JavaScript compiler API, so with it the mapper uses
+`@typescript/typescript6` from the same project instead; when that is missing, `doctor` names the
+tsconfig, the version and the command to add it, such as
+`npm i -D @typescript/typescript6 --prefix web`.
+
 `init` offers a comma-separated choice of `claude`, `codex`, and `gemini` and installs each
 selected project's skill and change hook. `--for all` selects all; `--for none` or `--no-skills`
 skips integration. `--yes` skips prompts and selects all unless you specify `--for` or

@@ -61,7 +61,8 @@ status, see the [distribution guide](https://github.com/TSCarterJr/CodeMuster/bl
 
 You need Node.js 22 or later and Git. The CLI ships as a self-contained platform build.
 C# mapping also needs a suitable .NET SDK; TypeScript mapping needs the target repository's
-`typescript` dependency installed. These requirements also apply to plugin use, which needs
+`typescript` dependency installed, plus `@typescript/typescript6` with TypeScript 7, which has no
+JavaScript compiler API. These requirements also apply to plugin use, which needs
 terminal access to your repository. Install and authenticate your chosen coding agent separately.
 CodeMuster starts Git, Node.js, agents, audit tools and `test_command` only from absolute `PATH`
 directories, so a program committed to the repository or a relative entry such as `.` never runs.

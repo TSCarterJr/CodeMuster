@@ -8,31 +8,74 @@ const chunks = [];
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => chunks.push(chunk));
 process.stdin.on('end', () => {
-  const request = JSON.parse(chunks.join(''));
-  const missing = request.tsconfigs.find((tsconfig) => typeScriptPath(request.repo_root, tsconfig) === undefined);
-  if (missing !== undefined) {
-    process.stderr.write(`typescript was not found for ${missing}; run npm ci --prefix ${path.posix.dirname(missing)}\n`);
-    process.exitCode = 1;
-    return;
-  }
+  try {
+    const request = JSON.parse(chunks.join(''));
+    const compilers = new Map();
+    for (const tsconfig of request.tsconfigs) {
+      const loaded = loadTypeScript(request.repo_root, tsconfig);
+      if (loaded.error !== undefined) {
+        fail(loaded.error);
+        return;
+      }
 
-  process.stdout.write(JSON.stringify(mapRepo(request)));
+      compilers.set(tsconfig, loaded.ts);
+    }
+
+    process.stdout.write(JSON.stringify(mapRepo(request, compilers)));
+  } catch (error) {
+    fail(describe(error));
+  }
 });
+
+function fail(message) {
+  process.stderr.write(`${message}\n`);
+  process.exitCode = 1;
+}
+
+// This script runs from a temporary copy that is deleted before anyone reads the error, so name its line instead of its path.
+function describe(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  const frame = error instanceof Error ? String(error.stack).split('\n').find((line) => line.includes(__filename)) : undefined;
+  const line = frame === undefined ? null : /:(\d+):\d+\)?$/.exec(frame.trim());
+  return line === null ? message : `${message} (map.js line ${line[1]})`;
+}
 
 // Synchronous so each line reaches the parent while mapping runs, not in one burst after it.
 function report(message) {
   fs.writeSync(2, `progress: ${message}\n`);
 }
 
-function typeScriptPath(repoRoot, tsconfig) {
+function loadTypeScript(repoRoot, tsconfig) {
+  const folder = path.posix.dirname(tsconfig);
+  const paths = [path.dirname(path.resolve(repoRoot, tsconfig))];
+  const typescript = resolvePackage('typescript', paths);
+  if (typescript === undefined) {
+    return { error: `typescript was not found for ${tsconfig}; run npm ci --prefix ${folder}` };
+  }
+
+  const ts = require(typescript);
+  if (typeof ts.createProgram === 'function') {
+    return { ts };
+  }
+
+  // TypeScript 7 ships a native compiler with no JavaScript API; Microsoft publishes the TypeScript 6 API beside it.
+  const fallback = resolvePackage('@typescript/typescript6', paths);
+  if (fallback !== undefined && typeof require(fallback).createProgram === 'function') {
+    return { ts: require(fallback) };
+  }
+
+  return { error: `${tsconfig}: typescript ${ts.version} has no JavaScript compiler API; run npm i -D @typescript/typescript6 --prefix ${folder}` };
+}
+
+function resolvePackage(name, paths) {
   try {
-    return require.resolve('typescript', { paths: [path.dirname(path.resolve(repoRoot, tsconfig))] });
+    return require.resolve(name, { paths });
   } catch {
     return undefined;
   }
 }
 
-function mapRepo(request) {
+function mapRepo(request, compilers) {
   const repoRoot = path.resolve(request.repo_root);
   const included = new Set(request.paths);
   const mapped = new Set();
@@ -47,7 +90,7 @@ function mapRepo(request) {
   for (const tsconfig of request.tsconfigs) {
     report(`loading ${tsconfig}`);
     const configPath = path.join(repoRoot, tsconfig);
-    const ts = require(typeScriptPath(repoRoot, tsconfig));
+    const ts = compilers.get(tsconfig);
     const config = ts.readConfigFile(configPath, ts.sys.readFile);
     const parsed = ts.parseJsonConfigFileContent(config.config || {}, ts.sys, path.dirname(configPath), undefined, configPath);
     const program = ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options });

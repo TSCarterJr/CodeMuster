@@ -9,7 +9,7 @@ public sealed class ExecutableResolverTests : IDisposable
     public void Windows_semantics_resolve_the_cmd_shim_when_only_the_shim_exists()
     {
         var shim = Path.Combine(_dir.Root, "codex.cmd");
-        File.WriteAllText(shim, "@echo off\r\n");
+        WriteExecutable(shim);
 
         var resolved = ExecutableResolver.Resolve("codex", [_dir.Root], WindowsExtensions, isWindows: true);
 
@@ -21,7 +21,7 @@ public sealed class ExecutableResolverTests : IDisposable
     {
         File.WriteAllText(Path.Combine(_dir.Root, "codex"), "#!/bin/sh\n");
         var shim = Path.Combine(_dir.Root, "codex.cmd");
-        File.WriteAllText(shim, "@echo off\r\n");
+        WriteExecutable(shim);
 
         Assert.Equal(shim, ExecutableResolver.Resolve("codex", [_dir.Root], WindowsExtensions, isWindows: true));
     }
@@ -29,9 +29,9 @@ public sealed class ExecutableResolverTests : IDisposable
     [Fact]
     public void Windows_semantics_follow_pathext_order()
     {
-        File.WriteAllText(Path.Combine(_dir.Root, "claude.cmd"), "@echo off\r\n");
+        WriteExecutable(Path.Combine(_dir.Root, "claude.cmd"));
         var exe = Path.Combine(_dir.Root, "claude.exe");
-        File.WriteAllText(exe, "MZ");
+        WriteExecutable(exe);
 
         Assert.Equal(exe, ExecutableResolver.Resolve("claude", [_dir.Root], WindowsExtensions, isWindows: true));
     }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CodeMuster.Domain;
 
 namespace CodeMuster.Mapping.TypeScript.Tests;
@@ -56,5 +57,54 @@ public class TypeScriptMapperTests
 
         Assert.Contains("typescript was not found for web/tsconfig.json", error.Message);
         Assert.Contains("npm ci --prefix web", error.Message);
+    }
+
+    [Fact]
+    public async Task A_typescript_without_the_compiler_api_fails_with_one_line_naming_the_fix()
+    {
+        using var temp = WebWithTypeScript7();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None));
+
+        Assert.Equal(
+            "TypeScript mapping failed: web/tsconfig.json: typescript 7.0.2 has no JavaScript compiler API; run npm i -D @typescript/typescript6 --prefix web",
+            error.Message);
+    }
+
+    [Fact]
+    public async Task The_typescript6_package_stands_in_for_a_typescript_without_the_compiler_api()
+    {
+        using var temp = WebWithTypeScript7();
+        var realTypeScript = Path.Combine(TestPaths.MixedRepoWithTypeScript(), "web", "node_modules", "typescript");
+        temp.Write("web/node_modules/@typescript/typescript6/package.json", """{ "name": "@typescript/typescript6", "version": "6.0.2", "main": "index.js" }""");
+        temp.Write("web/node_modules/@typescript/typescript6/index.js", $"module.exports = require({JsonSerializer.Serialize(realTypeScript)});\n");
+
+        var map = await new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None);
+
+        GoldenAssert.Matches(map);
+    }
+
+    [Fact]
+    public async Task An_unexpected_failure_is_one_line_that_never_names_the_deleted_temp_script()
+    {
+        using var temp = new TempFolder();
+        temp.Copy(Path.Combine(TestPaths.MixedRepo, "web"), "web", "node_modules");
+        temp.Write("web/node_modules/typescript/package.json", """{ "name": "typescript", "version": "5.9.3", "main": "index.js" }""");
+        temp.Write("web/node_modules/typescript/index.js", "module.exports = { version: '5.9.3', sys: {}, createProgram() {}, readConfigFile() { throw new Error('config reader broke'); } };\n");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None));
+
+        Assert.StartsWith("TypeScript mapping failed: config reader broke", error.Message);
+        Assert.DoesNotContain("codemuster-ts-", error.Message);
+        Assert.DoesNotContain('\n', error.Message);
+    }
+
+    private static TempFolder WebWithTypeScript7()
+    {
+        var temp = new TempFolder();
+        temp.Copy(Path.Combine(TestPaths.MixedRepo, "web"), "web", "node_modules");
+        temp.Write("web/node_modules/typescript/package.json", """{ "name": "typescript", "version": "7.0.2", "exports": { ".": "./lib/version.cjs" } }""");
+        temp.Write("web/node_modules/typescript/lib/version.cjs", "module.exports = { version: '7.0.2', versionMajorMinor: '7.0' };\n");
+        return temp;
     }
 }
