@@ -178,6 +178,24 @@ public class FixCommandTests
     }
 
     [Fact]
+    public async Task ABaselineThatEditsTrackedFiles_UnderStash_NamesTheStashThatHoldsItsEdits()
+    {
+        using var repo = await AuditedAsync();
+        repo.WithTestCommand("node", "-e", "require('fs').appendFileSync('web/lib/api.ts', '// test run artifact')");
+        await File.AppendAllTextAsync(Path.Combine(repo.Root, "Directory.Build.props"), "\n<!-- local work -->\n");
+        var local = repo.Git("diff");
+
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--stash");
+
+        Assert.Equal(1, fix.ExitCode);
+        Assert.Contains("changed tracked files on the unmodified tree (web/lib/api.ts)", fix.Stderr);
+        Assert.Equal(local, repo.Git("diff"));
+        var saved = System.Text.RegularExpressions.Regex.Match(fix.Stdout, "were saved in stash ([0-9a-f]{40,64})");
+        Assert.True(saved.Success, fix.Stdout);
+        Assert.Contains("// test run artifact", repo.Git("stash", "show", "-p", saved.Groups[1].Value));
+    }
+
+    [Fact]
     public async Task AFailingBaseline_StopsBeforeAnyAgentCall_PrintsItsLastLines_AndRestoresTheStash()
     {
         using var repo = await AuditedAsync();

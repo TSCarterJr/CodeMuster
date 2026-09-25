@@ -18,8 +18,8 @@ public interface IWorkspace
     /// <summary>Saves tracked changes and their index state, returning the exact stash commit. Leaves untracked files alone.</summary>
     Task<string> StashAsync(CancellationToken cancellationToken);
 
-    /// <summary>Restores the saved tracked changes and index, retaining the stash as a recovery copy. Saves unfinished fix edits separately first.</summary>
-    Task RestoreStashAsync(string stash, CancellationToken cancellationToken);
+    /// <summary>Restores the saved tracked changes and index, retaining the stash as a recovery copy. Saves unfinished fix edits separately first and returns that stash's id, or null when the tree was clean.</summary>
+    Task<string?> RestoreStashAsync(string stash, CancellationToken cancellationToken);
 
     /// <summary>Applies a validated isolated worker patch to the working tree.</summary>
     Task ApplyPatchAsync(string patch, CancellationToken cancellationToken);

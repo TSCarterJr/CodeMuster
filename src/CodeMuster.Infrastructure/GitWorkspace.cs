@@ -60,16 +60,15 @@ public sealed class GitWorkspace(string repoRoot) : IWorkspace
     public Task<string> StashAsync(CancellationToken cancellationToken) =>
         SaveStashAsync("codemuster fix: saved tracked changes", cancellationToken);
 
-    public async Task RestoreStashAsync(string stash, CancellationToken cancellationToken)
+    public async Task<string?> RestoreStashAsync(string stash, CancellationToken cancellationToken)
     {
         try
         {
-            if (!await IsCleanAsync(cancellationToken).ConfigureAwait(false))
-            {
-                await SaveStashAsync($"codemuster fix: unfinished changes before restoring {stash}", cancellationToken).ConfigureAwait(false);
-            }
-
+            var unfinished = await IsCleanAsync(cancellationToken).ConfigureAwait(false)
+                ? null
+                : await SaveStashAsync($"codemuster fix: unfinished changes before restoring {stash}", cancellationToken).ConfigureAwait(false);
             await GitProcess.RunAsync(repoRoot, ["stash", "apply", "--index", stash], null, cancellationToken).ConfigureAwait(false);
+            return unfinished;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

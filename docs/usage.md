@@ -433,7 +433,9 @@ codemuster fix --agent codex -j 4 --stash
 
 The saved edits and staging state are restored at the end, including cancellation or failure.
 Untracked files stay in place. The recovery stash remains available after restoration, and the
-CLI prints its identifier. Do not apply it a second time after a successful restoration.
+CLI prints its identifier. Do not apply it a second time after a successful restoration. Tracked
+changes still in the working tree when restoration starts (output `test_command` wrote, or an
+interrupted repair) are saved first in a second stash, and the CLI names that one too.
 
 If restoration conflicts, CodeMuster keeps the completed commits and backup and reports the
 problem. Inspect `git status` and resolve the conflicts. To reapply later from a clean working

@@ -51,12 +51,13 @@ public sealed class FakeWorkspace : IWorkspace
         return Task.FromResult("saved-stash");
     }
 
-    public Task RestoreStashAsync(string stash, CancellationToken cancellationToken)
+    public Task<string?> RestoreStashAsync(string stash, CancellationToken cancellationToken)
     {
+        var unfinished = Clean ? null : "unfinished-stash";
         RestoredStash = stash;
         RestoreStashToken = cancellationToken;
         Clean = false;
-        return Task.CompletedTask;
+        return Task.FromResult(unfinished);
     }
 
     public Task<bool> IsCleanAsync(CancellationToken cancellationToken) => Task.FromResult(Clean);

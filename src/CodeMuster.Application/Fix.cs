@@ -45,7 +45,12 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         {
             if (stash is not null)
             {
-                await repository.RestoreStashAsync(stash, CancellationToken.None);
+                var unfinished = await repository.RestoreStashAsync(stash, CancellationToken.None);
+                if (unfinished is not null)
+                {
+                    notes?.Report($"changes in the working tree before restoring yours (test_command output or an unfinished repair) were saved in stash {unfinished}; git stash show -p {unfinished} lists them");
+                }
+
                 notes?.Report($"restored your tracked changes and staging; recovery stash {stash} retained");
             }
         }
@@ -370,7 +375,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         if (!await repository.IsCleanAsync(cancellationToken))
         {
             var changed = string.Join(", ", await repository.ChangedPathsAsync(cancellationToken));
-            throw new InvalidOperationException($"test_command changed tracked files on the unmodified tree ({changed}), so it cannot check a repair; no agent was called. Inspect git status and make the command leave tracked files alone.");
+            throw new InvalidOperationException($"test_command changed tracked files on the unmodified tree ({changed}), so it cannot check a repair; no agent was called. Make the command leave tracked files alone.");
         }
     }
 

@@ -102,7 +102,7 @@ public sealed class GitWorkspaceTests : IDisposable
         Assert.True(await _workspace.IsCleanAsync(CancellationToken.None));
         Assert.NotEqual(older, stash);
         Assert.Equal("{}\n", File.ReadAllText(Path.Combine(_repo.Root, ".codemuster", "config.json")));
-        await _workspace.RestoreStashAsync(stash, CancellationToken.None);
+        Assert.Null(await _workspace.RestoreStashAsync(stash, CancellationToken.None));
 
         Assert.Equal(index, _repo.Run("diff", "--cached"));
         Assert.Equal(worktree, _repo.Run("diff"));
@@ -116,10 +116,10 @@ public sealed class GitWorkspaceTests : IDisposable
         var stash = await _workspace.StashAsync(CancellationToken.None);
         _repo.WriteFile("src/a.cs", "unfinished fix\n");
 
-        await _workspace.RestoreStashAsync(stash, CancellationToken.None);
+        var unfinished = await _workspace.RestoreStashAsync(stash, CancellationToken.None);
 
         Assert.Equal("local work\n", File.ReadAllText(Path.Combine(_repo.Root, "src", "a.cs")));
-        Assert.Equal("unfinished fix", _repo.Run("show", "refs/stash:src/a.cs").Trim());
+        Assert.Equal("unfinished fix", _repo.Run("show", unfinished + ":src/a.cs").Trim());
         Assert.Contains(stash, _repo.Run("stash", "list", "--format=%H"));
     }
 
