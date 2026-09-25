@@ -47,8 +47,9 @@ public sealed class GitFileFixer(string repoRoot, Func<string, IAgentAdapter> ad
             }
 
             // Pin every format setting git apply depends on, so user config such as diff.noprefix, color.ui=always, diff.external or diff.context cannot reshape the patch.
+            // GIT_DIFF_OPTS overrides --unified on the command line, and git ignores it when it is empty.
             // Latin-1 maps each byte to one char and back, so a file in Windows-1252 or any other non-UTF-8 encoding reaches git apply unchanged.
-            var patch = await GitProcess.RunAsync(directory, ["--literal-pathspecs", "diff", "--binary", "--no-color", "--no-ext-diff", "--no-textconv", "--unified=3", "--src-prefix=a/", "--dst-prefix=b/", baseline, "--", .. allowed], null, cancellationToken, text: Encoding.Latin1).ConfigureAwait(false);
+            var patch = await GitProcess.RunAsync(directory, ["--literal-pathspecs", "diff", "--binary", "--no-color", "--no-ext-diff", "--no-textconv", "--unified=3", "--src-prefix=a/", "--dst-prefix=b/", baseline, "--", .. allowed], null, cancellationToken, new Dictionary<string, string> { ["GIT_DIFF_OPTS"] = "" }, Encoding.Latin1).ConfigureAwait(false);
             retain = true;
             return new FileFixEdit(response, patch, directory);
         }
