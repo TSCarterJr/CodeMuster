@@ -332,7 +332,7 @@ public static class Program
     }
 
     private static GitChangeTracker ChangeTracker(string repoRoot, Config config) =>
-        new(repoRoot, path => config.ExcludedReason(path, linguistGenerated: false) is null);
+        new(repoRoot, config.AffectsScan);
 
     private static string ChangeWarning(IReadOnlyList<string> paths)
     {

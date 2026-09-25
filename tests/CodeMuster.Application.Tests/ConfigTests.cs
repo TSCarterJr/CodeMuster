@@ -152,6 +152,25 @@ public class ConfigTests
     }
 
     [Fact]
+    public void AffectsScan_CountsReviewedFilesAndTheProjectFilesAndManifestsScanReads()
+    {
+        var config = Config.Default with { Exclude = ["legacy/**"] };
+
+        Assert.True(config.AffectsScan("src/A.cs", linguistGenerated: false));
+        Assert.False(config.AffectsScan("src/A.cs", linguistGenerated: true));
+        Assert.True(config.AffectsScan("App.sln", linguistGenerated: false));
+        Assert.True(config.AffectsScan("src/Api/Api.csproj", linguistGenerated: false));
+        Assert.True(config.AffectsScan("web/tsconfig.json", linguistGenerated: false));
+        Assert.True(config.AffectsScan("web/package.json", linguistGenerated: false));
+        Assert.False((config with { Vulnerabilities = false }).AffectsScan("web/package.json", linguistGenerated: false));
+        Assert.False(config.AffectsScan("web/package-lock.json", linguistGenerated: false));
+        Assert.False(config.AffectsScan("README.md", linguistGenerated: false));
+        Assert.False(config.AffectsScan("web/appsettings.json", linguistGenerated: false));
+        Assert.False(config.AffectsScan("legacy/package.json", linguistGenerated: false));
+        Assert.False(config.AffectsScan("legacy/Old.csproj", linguistGenerated: false));
+    }
+
+    [Fact]
     public void ExcludedReason_MatchesGlobstarDotSlashQuestionMarkAndCaseAsBefore()
     {
         var config = Config.Default with { Exclude = ["./web/**", "**/fixtures/**", "*.Gen.cs", "src/?/*.sql"] };

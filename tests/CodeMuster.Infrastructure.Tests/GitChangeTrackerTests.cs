@@ -71,10 +71,14 @@ public class GitChangeTrackerTests
         repo.WriteFile("gone.cs", "class Gone {}\n");
         repo.WriteFile("README.md", "# readme\n");
         repo.Commit("seed");
-        var changes = new GitChangeTracker(repo.Root, path => path.EndsWith(".cs", StringComparison.Ordinal));
+        repo.WriteFile("Gen.cs", "class Gen {}\n");
+        repo.WriteFile(".gitattributes", "Gen.cs linguist-generated=true\n");
+        repo.Commit("generated");
+        var changes = new GitChangeTracker(repo.Root, (path, generated) => !generated && path.EndsWith(".cs", StringComparison.Ordinal));
         await changes.AcknowledgeAsync(await changes.SnapshotAsync(None), None);
 
         repo.WriteFile("README.md", "# edited\n");
+        repo.WriteFile("Gen.cs", "class Gen { int regenerated; }\n");
         Assert.False((await changes.ChangesAsync(None)).Detected);
 
         repo.WriteFile("b.cs", "class B { int n; }\n");

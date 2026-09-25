@@ -61,11 +61,14 @@ ledger or adding files to a worker patch. A hook that cannot record it prints a 
 exits 0, so it never fails the agent's tool call. Rerunning `init` updates an existing CodeMuster
 hook's matcher and timeout in place and leaves other hooks alone.
 
-`status`, `report`, `fix` and `verify` compare the tracked files scan reviews with the last
+`status`, `report`, `fix` and `verify` compare the tracked files scan reads with the last
 completed scan and name what changed, for example
 `web/lib/index.ts changed since the last scan; run codemuster scan to refresh coverage`.
+Those are the files scan reviews, the `.sln`, `.slnx`, `.csproj` and `tsconfig.json` files the
+mappers load, and, while the vulnerability audit is on, each `package.json`.
 `scan` acknowledges the content it started with. Read-only commands, staging or committing
-unchanged content, excluded files, and untracked files (including `report --out audit.md`, nested
+unchanged content, other excluded files (lockfiles, documentation, files marked
+`linguist-generated`), and untracked files (including `report --out audit.md`, nested
 repositories and worktrees) do not count. An edit during a scan remains detectable. Untracked
 files remain outside scan coverage until tracked. Hooks do not trigger model calls, run scans, or
 automatically close findings.

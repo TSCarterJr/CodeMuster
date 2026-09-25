@@ -3,7 +3,8 @@ using CodeMuster.Domain;
 namespace CodeMuster.Infrastructure;
 
 // Tracked files only: scan reviews the index, so an untracked file, nested repository or worktree never affects coverage.
-public sealed class GitChangeTracker(string root, Func<string, bool>? include = null) : IChangeTracker
+// include takes a path and whether .gitattributes marks it linguist-generated, as scan reads it.
+public sealed class GitChangeTracker(string root, Func<string, bool, bool>? include = null) : IChangeTracker
 {
     private const string Header = "codemuster-snapshot-1";
     private const int MoveAttempts = 8;
@@ -11,13 +12,17 @@ public sealed class GitChangeTracker(string root, Func<string, bool>? include = 
     public async Task<string> SnapshotAsync(CancellationToken cancellationToken)
     {
         var index = await GitProcess.RunAsync(root, ["ls-files", "--stage", "-z"], null, cancellationToken);
+        var records = index.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        var generated = include is null
+            ? []
+            : GitSourceTree.ParseGenerated(await GitProcess.RunAsync(root, ["check-attr", "linguist-generated", "-z", "--stdin"], string.Concat(records.Select(record => record[(record.IndexOf('\t') + 1)..] + "\0")), cancellationToken));
         var identities = new SortedDictionary<string, string>(StringComparer.Ordinal);
-        foreach (var record in index.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var record in records)
         {
             var tab = record.IndexOf('\t');
             var fields = record[..tab].Split(' ');
             var path = record[(tab + 1)..];
-            if (fields[0] != "160000" && (include?.Invoke(path) ?? true))
+            if (fields[0] != "160000" && (include?.Invoke(path, generated.Contains(path)) ?? true))
             {
                 identities[path] = identities.TryGetValue(path, out var stages) ? stages + "," + fields[1] : fields[1];
             }

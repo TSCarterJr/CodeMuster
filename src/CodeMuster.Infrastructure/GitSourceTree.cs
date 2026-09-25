@@ -130,7 +130,7 @@ public sealed class GitSourceTree(string repoRoot) : ISourceTree
         return result;
     }
 
-    private static HashSet<string> ParseGenerated(string output)
+    internal static HashSet<string> ParseGenerated(string output)
     {
         var generated = new HashSet<string>(StringComparer.Ordinal);
         var tokens = output.Split('\0');

@@ -67,9 +67,33 @@ public class ChangeWarningTests
         Assert.StartsWith("warning: ", hook.Stderr);
     }
 
-    private static async Task<TempRepo> ScannedAsync()
+    [Fact]
+    public async Task Status_names_the_project_files_scan_loads_and_skips_generated_files_scan_skips()
+    {
+        using var repo = await ScannedAsync(repo =>
+        {
+            File.WriteAllText(Path.Combine(repo.Root, ".gitattributes"), "web/lib/api.ts linguist-generated=true\n");
+            repo.Git("add", ".gitattributes");
+            repo.Git("-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "generated");
+        });
+        File.AppendAllText(Path.Combine(repo.Root, "web", "lib", "api.ts"), "\n// regenerated\n");
+
+        var quiet = await CliProcess.RunAsync(repo.Root, "status");
+
+        Assert.Equal(0, quiet.ExitCode);
+        Assert.DoesNotContain(Warning, quiet.Stderr);
+
+        File.AppendAllText(Path.Combine(repo.Root, "web", "tsconfig.json"), "\n");
+        File.AppendAllText(Path.Combine(repo.Root, "src", "MixedRepo.Api", "MixedRepo.Api.csproj"), "\n");
+        var warned = await CliProcess.RunAsync(repo.Root, "status");
+
+        Assert.Equal("src/MixedRepo.Api/MixedRepo.Api.csproj, web/tsconfig.json changed since the last scan; run codemuster scan to refresh coverage", warned.Stderr.Trim());
+    }
+
+    private static async Task<TempRepo> ScannedAsync(Action<TempRepo>? prepare = null)
     {
         var repo = TempRepo.FromFixture("mixed-repo");
+        prepare?.Invoke(repo);
         Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "init", "--yes", "--no-skills")).ExitCode);
         repo.WithoutVulnerabilityScan();
         Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file")).ExitCode);
