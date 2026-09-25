@@ -68,6 +68,13 @@ public sealed class DependencyAuditor : IDependencyAuditor
                 continue;
             }
 
+            if (result.Output.Trim().Length == 0 && result.ExitCode == 0 && job.Tool == "yarn npm audit")
+            {
+                // Yarn 2 and later report a clean audit only as an info line, which --json leaves out; its errors are JSON lines on stdout.
+                manifests.Add(new ManifestVulnerabilities(job.Manifest, job.Tool, []));
+                continue;
+            }
+
             if (result.Output.Length == 0)
             {
                 diagnostics.Add($"{job.Manifest}: {job.Tool} wrote nothing (exit {result.ExitCode}); {Hint(job, result)}");

@@ -137,6 +137,32 @@ public class DependencyAuditorTests
             Assert.Single(audit.Diagnostics));
     }
 
+    [Theory]
+    [InlineData("4.9.2", true)]
+    [InlineData("1.22.22", false)]
+    public async Task Yarn_berry_writing_nothing_with_exit_0_is_a_clean_report_but_other_tools_are_not(string version, bool clean)
+    {
+        // Yarn 2 and later print "No audit suggestions" only as an info line, which --json leaves out, so a clean audit is empty.
+        var auditor = new DependencyAuditor((_, arguments, _, _) => Task.FromResult(arguments[0] == "--version"
+            ? new ProcessResult(0, version, "")
+            : new ProcessResult(0, "", "")));
+
+        var audit = await auditor.AuditAsync(Root, ["package.json", "yarn.lock"], null, CancellationToken.None);
+
+        if (clean)
+        {
+            var manifest = Assert.Single(audit.Manifests);
+            Assert.Equal(("package.json", "yarn npm audit"), (manifest.Manifest, manifest.Tool));
+            Assert.Empty(manifest.Packages);
+            Assert.Empty(audit.Diagnostics);
+        }
+        else
+        {
+            Assert.Empty(audit.Manifests);
+            Assert.StartsWith("package.json: yarn audit wrote nothing (exit 0)", Assert.Single(audit.Diagnostics), StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public async Task An_error_envelope_becomes_a_diagnostic_rather_than_a_clean_manifest()
     {
