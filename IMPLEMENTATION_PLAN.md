@@ -335,4 +335,12 @@ Retain the broader plan until those staging/production pilot gates are complete.
 **Goal**: Fix the thirteen verified defects Tim chose from `docs/product-value-review.md` (MVP-Checklist rows EXEC1 to USAGE1) and prepare 0.3.6.
 **Success Criteria**: Each defect's reproduction from `TestResults/value-review-2026-09-25/verification.json` no longer reproduces; every task has a regression test that failed first; the full suite passes locally and on the Linux, Windows and macOS runners; the `release.yml` dry run builds all six platforms and passes the installed-package smoke on win-x64, linux-x64 and darwin-arm64.
 **Tests**: Unit and infrastructure regressions per task, CLI end-to-end tests with `--agent fake`, npm launcher tests, three-OS CI, packaged smoke.
-**Status**: In Progress
+**Status**: Complete; tag pending Tim
+
+All thirteen tasks and 33 review follow-ups are on `release/0.3.6`. Every original
+reproduction was re-run against the new build; the one that still failed (USAGE1)
+was fixed by the follow-ups. The test workflow passed on Linux, Windows and macOS
+(run 36196642997, 1,547 .NET and 72 npm tests each) and the `release.yml` dry run
+36197253530 built all six platforms and passed the installed-package smoke on
+win-x64, linux-x64 and darwin-arm64. Open before the tag: D58 agreement and three
+decisions listed in the REL036 row.

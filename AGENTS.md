@@ -2,6 +2,18 @@
 
 ## Current task status
 
+- 2026-09-25, claude: REL036 prepares 0.3.6: the thirteen review fixes, the 33
+  follow-ups below, CHANGELOG 0.3.6 and plugin manifests at 0.3.6. Branch
+  release/0.3.6 passed the test workflow on Linux, Windows and macOS (run
+  36196642997: 1,547 .NET and 72 npm tests on each OS, zero skips) and the
+  release.yml dry run 36197253530 for 0.3.6-dev.1 (validation, all six platform
+  builds, installed-package smoke on win-x64, linux-x64 and darwin-arm64; release
+  and publish skipped). win-arm64, linux-arm64 and osx-x64 are built but not
+  smoke-tested, and no real model was called. main is not pushed and nothing is
+  tagged. Before Tim tags: agree D58 or revert d323681, and decide the three items
+  in the entry below. Tim fast-forwards main to release/0.3.6, tags v0.3.6 and
+  publishes. The lane worktrees and wt-* branches are removed; both stashes are
+  preserved.
 - 2026-09-25, claude: Fixed the confirmed issues a review of the 0.3.6 changes found,
   in 33 commits on main (SNAP1, EXEC1, VERIFY1, FIX3 to FIX5, AUDIT1, AUDIT2, TSAPI1,
   HASH1, PERF2, USAGE1, T15.1), each with a failing test first where one was possible
