@@ -24,12 +24,7 @@ public sealed class GitChangeTracker(string root, Func<string, bool>? include = 
         }
 
         var dirty = await GitProcess.RunAsync(root, ["diff", "--name-only", "-z", "--no-renames", "--ignore-submodules", "--no-ext-diff"], null, cancellationToken);
-        var worktree = await WorktreeIdentitiesAsync([.. dirty.Split('\0', StringSplitOptions.RemoveEmptyEntries).Where(identities.ContainsKey)], cancellationToken);
-        foreach (var (path, identity) in worktree)
-        {
-            identities[path] = identity;
-        }
-
+        await IdentifyWorktreeAsync(identities, [.. dirty.Split('\0', StringSplitOptions.RemoveEmptyEntries).Where(identities.ContainsKey)], cancellationToken);
         return Header + "\0" + string.Concat(identities.Select(entry => entry.Key + "\0" + entry.Value + "\0"));
     }
 
@@ -65,44 +60,30 @@ public sealed class GitChangeTracker(string root, Func<string, bool>? include = 
         return new ScanChanges(changed.Count > 0, changed);
     }
 
-    // Hashed as git add would store them, so staging or committing unchanged content keeps the identity.
-    private async Task<Dictionary<string, string>> WorktreeIdentitiesAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken)
+    // Identified as git add would store them, symlinks included, so staging or committing unchanged content keeps the identity.
+    // A deleted file leaves the snapshot, exactly as staging or committing the deletion would take it out of the index.
+    private async Task IdentifyWorktreeAsync(SortedDictionary<string, string> identities, IReadOnlyList<string> paths, CancellationToken cancellationToken)
     {
         for (var attempt = 1; ; attempt++)
         {
-            var identities = new Dictionary<string, string>(StringComparer.Ordinal);
-            var files = new List<string>();
-            foreach (var path in paths)
-            {
-                var info = new FileInfo(Path.Combine(root, path));
-                if (info.LinkTarget is { } target)
-                {
-                    identities[path] = "link:" + target;
-                }
-                else if (info.Exists)
-                {
-                    files.Add(path);
-                }
-                else
-                {
-                    identities[path] = "missing";
-                }
-            }
-
-            if (files.Count == 0)
-            {
-                return identities;
-            }
-
+            var present = paths.Where(path => new FileInfo(Path.Combine(root, path)) is var info && (info.LinkTarget is not null || info.Exists)).ToList();
             try
             {
                 // The same hasher scan uses (D57): hash-object would miss git's rule that a file committed with CRLF is not converted.
-                foreach (var (path, hash) in await new GitBlobHasher(root).HashFilesAsync(files, cancellationToken))
+                var hashes = await new GitBlobHasher(root).HashFilesAsync(present, cancellationToken);
+                foreach (var path in paths)
                 {
-                    identities[path] = hash;
+                    if (hashes.TryGetValue(path, out var hash))
+                    {
+                        identities[path] = hash;
+                    }
+                    else
+                    {
+                        identities.Remove(path);
+                    }
                 }
 
-                return identities;
+                return;
             }
             catch (InvalidOperationException) when (attempt < 3)
             {

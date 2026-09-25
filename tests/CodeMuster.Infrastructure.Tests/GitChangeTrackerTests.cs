@@ -123,6 +123,90 @@ public class GitChangeTrackerTests
     }
 
     [Fact]
+    public async Task Staging_or_committing_a_deletion_the_scan_already_saw_is_not_a_change()
+    {
+        using var repo = new TempRepo();
+        repo.WriteFile("a.cs", "class A {}\n");
+        repo.WriteFile("gone.cs", "class Gone {}\n");
+        repo.Commit("seed");
+        File.Delete(Path.Combine(repo.Root, "gone.cs"));
+        var changes = new GitChangeTracker(repo.Root);
+        await changes.AcknowledgeAsync(await changes.SnapshotAsync(None), None);
+
+        repo.Run("rm", "-q", "--cached", "gone.cs");
+        Assert.False((await changes.ChangesAsync(None)).Detected);
+
+        repo.Commit("remove gone.cs");
+        Assert.False((await changes.ChangesAsync(None)).Detected);
+
+        repo.WriteFile("gone.cs", "class Gone {}\n");
+        repo.Run("add", "gone.cs");
+        Assert.Equal(["gone.cs"], (await changes.ChangesAsync(None)).Paths);
+    }
+
+    [Fact]
+    public async Task Staging_or_committing_a_scanned_symlink_retarget_is_not_a_change()
+    {
+        using var repo = new TempRepo();
+        repo.WriteFile("a.ts", "export const a = 1;\n");
+        repo.WriteFile("b.ts", "export const b = 1;\n");
+        var native = SeedLink(repo, "link.ts", "a.ts");
+        repo.Commit("seed");
+        Assert.StartsWith("120000 ", repo.Run("ls-files", "-s", "link.ts"));
+
+        // Linux and macOS check a tracked symlink out as a real link; Windows does too with core.symlinks and the privilege to make one,
+        // and otherwise as a plain file holding the target, which is hashed like any file.
+        Retarget(repo, "link.ts", "b.ts", native);
+        Assert.Equal(native, new FileInfo(Path.Combine(repo.Root, "link.ts")).LinkTarget is not null);
+        var changes = new GitChangeTracker(repo.Root);
+        await changes.AcknowledgeAsync(await changes.SnapshotAsync(None), None);
+
+        repo.Run("add", "link.ts");
+        Assert.False((await changes.ChangesAsync(None)).Detected);
+
+        repo.Commit("retarget");
+        Assert.False((await changes.ChangesAsync(None)).Detected);
+    }
+
+    private static bool SeedLink(TempRepo repo, string path, string target)
+    {
+        repo.Run("config", "core.symlinks", "true");
+        if (TryLink(repo, path, target))
+        {
+            return true;
+        }
+
+        repo.Run("config", "core.symlinks", "false");
+        repo.WriteFile(path, target);
+        var blob = repo.Run("hash-object", "-w", path).Trim();
+        repo.Run("update-index", "--cacheinfo", "120000," + blob + "," + path);
+        return false;
+    }
+
+    private static void Retarget(TempRepo repo, string path, string target, bool native)
+    {
+        File.Delete(Path.Combine(repo.Root, path));
+        if (!native || !TryLink(repo, path, target))
+        {
+            repo.WriteFile(path, target);
+        }
+    }
+
+    private static bool TryLink(TempRepo repo, string path, string target)
+    {
+        try
+        {
+            File.CreateSymbolicLink(Path.Combine(repo.Root, path), target);
+            return true;
+        }
+        catch (Exception error) when (OperatingSystem.IsWindows() && error is IOException or UnauthorizedAccessException)
+        {
+            // Windows needs developer mode or elevation to make a symlink.
+            return false;
+        }
+    }
+
+    [Fact]
     public async Task An_untracked_nested_repository_or_worktree_does_not_break_the_snapshot()
     {
         using var repo = new TempRepo();
