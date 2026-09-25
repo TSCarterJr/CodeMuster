@@ -138,6 +138,17 @@ public class ConfigTests
         Assert.Contains("off, update, review, review_and_fix", error.Message);
     }
 
+    [Theory]
+    [InlineData("{\"lenses\": [], \"exclude\": [\"pkg1/**\", null]}", "exclude")]
+    [InlineData("{\"lenses\": [], \"exclude\": [\"*\", \" \"]}", "exclude")]
+    [InlineData("{\"lenses\": [{\"id\": \"default\", \"instructions\": \"x\", \"globs\": [\"src/**\", null], \"languages\": []}]}", "globs")]
+    public void Json_RejectsNullOrBlankGlobsNamingTheKey(string json, string key)
+    {
+        var error = Assert.Throws<JsonException>(() => ConfigJson.Parse(json));
+
+        Assert.Contains(key, error.Message);
+    }
+
     [Fact]
     public void ExcludedReason_PutsBuiltInRulesFirst_ThenTheFirstMatchingExcludeGlob()
     {
