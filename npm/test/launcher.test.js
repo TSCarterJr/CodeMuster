@@ -466,6 +466,28 @@ for (const args of [['UPDATE', '--check'], ['Update', '--check']]) {
   });
 }
 
+test('hook with no installed build records nothing and exits 0 instead of downloading one', async (t) => {
+  const home = tempDir();
+  t.mock.method(os, 'homedir', () => home);
+  const stdout = [], stderr = [], calls = [];
+  const write = process.stdout.write.bind(process.stdout);
+  t.mock.method(process.stdout, 'write', (line, ...args) => {
+    if (line === '{}\n') {
+      stdout.push(line);
+      return true;
+    }
+    return write(line, ...args);
+  });
+  t.mock.method(process.stderr, 'write', (line) => { stderr.push(line); return true; });
+  t.mock.method(global, 'fetch', async (url) => { calls.push(url); throw new Error('no network in this test'); });
+
+  assert.equal(await launcher.main(['hook'], {}), 0);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(stdout, ['{}\n']);
+  assert.match(stderr.join(''), /no CodeMuster build is installed yet/);
+  assert.equal(fs.existsSync(path.join(home, '.codemuster')), false);
+});
+
 for (const worker of ['1', '']) {
   test(`commands in a CodeMuster worker (CODEMUSTER_WORKER=${JSON.stringify(worker)}) skip the availability check`, async (t) => {
     const h = commandHarness(t, '0.2.10');

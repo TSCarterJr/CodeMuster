@@ -321,6 +321,13 @@ async function main(args, env = process.env) {
   if (pinnedVersion && !VERSION.test(pinnedVersion)) throw new Error(`invalid version pin: ${pinnedVersion}`);
   let build = newestBuild({ versionsDir, pinnedVersion, bundled: bundledBuild(platformPackage(platform, arch)), platform });
   if (build === null) {
+    if (verb === 'hook') {
+      // The hook is a best-effort notice after an agent's tool call, and a download could outlast its 10 s timeout on every call.
+      process.stderr.write('codemuster: no CodeMuster build is installed yet, so this hook recorded nothing; run any other codemuster command to install one\n');
+      process.stdout.write('{}\n');
+      return 0;
+    }
+
     const version = pinnedVersion || require('../package.json').version;
     process.stderr.write(`codemuster: downloading CodeMuster ${version} for ${platform}-${arch}\n`);
     await installVersion({ registry: REGISTRY, version, versionsDir, platform, arch });

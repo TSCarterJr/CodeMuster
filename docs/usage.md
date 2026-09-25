@@ -557,7 +557,9 @@ stderr so command stdout remains usable. The check has a two-second timeout; off
 or invalid registry responses print that the check was unavailable and let your command continue.
 It never claims you are up to date when the check fails. `hook`, which installed agent hooks run
 after every edit, and commands run inside a CodeMuster worker (`CODEMUSTER_WORKER` set) skip the
-check: they make no registry request and print no version line.
+check: they make no registry request and print no version line. When no build is installed yet,
+`hook` also skips the first-run download: it records nothing, prints one line saying so and exits
+0, and the next command you run installs the build.
 
 Available updates still install in the background at most daily, with package-integrity
 verification, and take effect on a later command. `CI`, `CODEMUSTER_NO_UPDATE`, and exact
