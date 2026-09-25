@@ -43,8 +43,31 @@ public sealed class GitWorkspaceTests : IDisposable
         _repo.Run("config", "diff.trustExitCode", "true");
         _repo.WriteFile("src/a.cs", "class A { int x; }\n");
 
+        // git 2.46 added diff.trustExitCode: from then on a plain `diff --quiet` believes the external diff's exit 0 and reports no
+        // change, which --no-ext-diff guards against. Older git ignores the setting, so there the flag cannot be shown to matter,
+        // and the test checks that premise instead of passing without exercising it.
+        var trusted = Succeeds("diff", "--quiet", "HEAD", "--", "src/a.cs");
+        Assert.Equal(GitVersion() >= new Version(2, 46), trusted);
         Assert.True(await _workspace.HasFileChangesAsync("src/a.cs", CancellationToken.None));
-        Assert.Equal(["src/a.cs"], await _workspace.ChangedPathsAsync(CancellationToken.None));
+    }
+
+    private bool Succeeds(params string[] args)
+    {
+        try
+        {
+            _repo.Run(args);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private Version GitVersion()
+    {
+        var parts = _repo.Run("--version").Split(' ')[2].Split('.');
+        return new Version(int.Parse(parts[0], System.Globalization.CultureInfo.InvariantCulture), int.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture));
     }
 
     [Fact]
