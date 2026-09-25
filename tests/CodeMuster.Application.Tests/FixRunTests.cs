@@ -455,6 +455,24 @@ public class FixRunTests
     }
 
     [Fact]
+    public async Task ARepairTheTestCommandUndoes_IsRejected_RestoredAndNeverRecordedFixed()
+    {
+        var ids = await SeedAsync("src/a.cs", 10);
+        var adapter = Fixer(_ => new FixResponse("Fixed.", ids, []));
+        // A codegen or restore step in the test command rewrites the assigned file to its committed content.
+        tests.OnRun = () => workspace.Clean = true;
+
+        var result = await RunAsync(adapter, runner: tests);
+
+        Assert.Equal([UnitIds.Fix("src/a.cs")], result.GaveUp);
+        Assert.Equal((0, 0), (result.Units, result.Fixed));
+        Assert.Empty(workspace.Commits);
+        Assert.Empty(ledger.Fixes);
+        Assert.Contains("src/a.cs", workspace.RestoredFiles);
+        Assert.Contains("addressed findings but no change remained after validation; edit it or decline each with a reason", adapter.Packs[1]);
+    }
+
+    [Fact]
     public async Task AFailingBaseline_StopsBeforeAnyAgentCall_WithItsLastLines_AndRestoresTheStash()
     {
         await SeedAsync("src/a.cs", 10);

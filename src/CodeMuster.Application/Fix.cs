@@ -300,6 +300,12 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                 var changed = new List<string>();
                 foreach (var path in allowed)
                     if (await repository.HasFileChangesAsync(path, CancellationToken.None)) changed.Add(path);
+                if (response.Addressed.Count > 0 && changed.Count == 0)
+                {
+                    // test_command rewrote the file to its committed content, as a codegen or restore step can; the finally restores the index stat.
+                    return await RejectAsync(pack, $"invalid fix response for {pack.Key}: addressed findings but no change remained after validation; edit it or decline each with a reason");
+                }
+
                 preserve = true;
                 if (changed.Count > 0)
                 {
