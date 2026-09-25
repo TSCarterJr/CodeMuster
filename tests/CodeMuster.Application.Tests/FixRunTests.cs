@@ -496,6 +496,22 @@ public class FixRunTests
     }
 
     [Fact]
+    public async Task AFailingBaseline_ShowsTheTailsOfStandardOutputAndStandardErrorEachLabelled()
+    {
+        await SeedAsync("src/a.cs", 10);
+        var warnings = string.Join('\n', Enumerable.Range(1, 25).Select(i => $"warning CS8618: nullable warning {i}"));
+        tests.Results.Enqueue(new TestRun(false, "Failed QuoteServiceTests.TotalIncludesTax: expected 110 but was 100\nTest Run Failed. Total 12, Failed 1\n", warnings));
+        var adapter = Fixer(_ => throw new InvalidOperationException("no agent call expected"));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(adapter, runner: tests));
+
+        Assert.Contains("standard output:\nFailed QuoteServiceTests.TotalIncludesTax: expected 110 but was 100\nTest Run Failed. Total 12, Failed 1\n", error.Message);
+        Assert.Contains("standard error:\nwarning CS8618: nullable warning 6\n", error.Message);
+        Assert.Contains("warning CS8618: nullable warning 25\n", error.Message);
+        Assert.DoesNotContain("nullable warning 5\n", error.Message);
+    }
+
+    [Fact]
     public async Task AFailingBaseline_StopsBeforeAnyAgentCall_WithItsLastLines_AndRestoresTheStash()
     {
         await SeedAsync("src/a.cs", 10);

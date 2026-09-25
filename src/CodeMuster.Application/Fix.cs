@@ -290,8 +290,8 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                     }
                     if (!result.Passed)
                     {
-                        notes?.Report($"tests failed after fixing {pack.Key}, restoring only this file: {LastLine(result.Output)}");
-                        return await RejectAsync(pack, "test command failed:\n" + result.Output);
+                        notes?.Report($"tests failed after fixing {pack.Key}, restoring only this file: {LastLine(result.Output.Trim().Length > 0 ? result.Output : result.Error)}");
+                        return await RejectAsync(pack, "test command failed:\n" + Transcript(result));
                     }
                 }
 
@@ -364,7 +364,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
 
         if (!baseline.Passed)
         {
-            throw new InvalidOperationException($"test_command fails on the unmodified tree, so every repair would be rejected; no agent was called. Its last lines:\n{LastLines(baseline.Output, 20)}\n{FailingHint}");
+            throw new InvalidOperationException($"test_command fails on the unmodified tree, so every repair would be rejected; no agent was called. Its last lines:\n{Tail(baseline, 20)}\n{FailingHint}");
         }
 
         if (!await repository.IsCleanAsync(cancellationToken))
@@ -375,6 +375,15 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
     }
 
     private static string LastLine(string output) => LastLines(output, 1).Trim();
+
+    // The streams come through separate pipes, so the order they were written in is lost: each is shown under its own label.
+    private static string Tail(TestRun run, int count) =>
+        run.Error.Trim().Length == 0 ? LastLines(run.Output, count)
+        : run.Output.Trim().Length == 0 ? LastLines(run.Error, count)
+        : $"standard output:\n{LastLines(run.Output, count)}\nstandard error:\n{LastLines(run.Error, count)}";
+
+    private static string Transcript(TestRun run) =>
+        run.Error.Trim().Length == 0 ? run.Output : $"{run.Output.TrimEnd()}\nstandard error:\n{run.Error}";
 
     private static string LastLines(string output, int count)
     {

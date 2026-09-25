@@ -170,7 +170,7 @@ public static class Program
             case "validate":
                 ITestRunner? runner = config.TestCommand.Count == 0 ? null : new CommandTestRunner(repoRoot, config.TestCommand);
                 var validation = await new Validate(runner).RunAsync(cancellationToken);
-                Console.WriteLine(validation.Output);
+                Console.WriteLine(validation.Output + validation.Error);
                 Console.WriteLine(validation.Passed ? "validation passed" : "validation failed");
                 return validation.Passed ? 0 : 1;
             case "fix":

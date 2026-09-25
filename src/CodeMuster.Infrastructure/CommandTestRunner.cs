@@ -30,8 +30,7 @@ public sealed class CommandTestRunner(string repoRoot, IReadOnlyList<string> com
             var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
             var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            var output = await stdout.ConfigureAwait(false) + await stderr.ConfigureAwait(false);
-            return new TestRun(process.ExitCode == 0, output);
+            return new TestRun(process.ExitCode == 0, await stdout.ConfigureAwait(false), await stderr.ConfigureAwait(false));
         }
         catch (OperationCanceledException)
         {
