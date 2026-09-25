@@ -457,7 +457,7 @@ and manage them.
 | `validate` | No options; runs configured final build/tests |
 | `hook` | No options; used by installed agent hooks |
 | `report` | `--out <file>`, `--include-refuted` |
-| `next` | `--batch N`, `--out <file>`, `--path <path>` |
+| `next` | `--batch N`, `--out <file>`, `--path <path>`, `--kind file\|slice\|orphan\|verify\|ux` |
 | `done <unit>` | Required `--fingerprint <fp>` and `--findings <json-file>` |
 | `skill install` | Required `--for claude\|codex\|gemini\|opencode`, optional `--global` |
 | `update` | `--check` to check without installing; handled by the npm launcher |
@@ -465,6 +465,29 @@ and manage them.
 
 `--version` prints the version. `--help`, `-h`, and `help` show the overview. Command-specific
 help accepts `codemuster help fix` or `codemuster fix --help`.
+
+Options take `--name value` or `--name=value`; when an option is repeated, the last one wins.
+Each command accepts only the options listed above, so a mistyped option is rejected rather than
+ignored. A usage mistake prints one line naming it, followed by the command's usage line, and
+exits 2:
+
+```text
+$ codemuster run
+codemuster run: --agent is required (claude, codex, gemini, opencode)
+usage: codemuster run --agent <name> [options]; see codemuster run --help
+
+$ codemuster next --pth web
+codemuster next: unknown option --pth; did you mean --path? (options: --batch, --out, --path, --kind)
+usage: codemuster next [--batch N] [--out <file>] [--path <path>] [--kind <kind>]; see codemuster next --help
+
+$ codemuster stauts
+codemuster: unknown command "stauts"; did you mean "status"?
+usage: codemuster <command> [options]; see codemuster --help
+```
+
+Running `codemuster` with no arguments prints the overview to stderr and exits 2. Errors found
+while a command runs start with `error:`, as in
+`error: unknown agent 'gpt'; choose one of claude, codex, gemini, opencode`.
 
 For manual sessions, `next` prints packs and `done` records responses using the pack's unit ID,
 fingerprint, and JSON schema. Reading a pack does not reserve it. Use one coordinator rather than

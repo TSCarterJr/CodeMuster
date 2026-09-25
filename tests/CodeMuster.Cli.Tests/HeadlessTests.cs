@@ -140,7 +140,7 @@ public class HeadlessTests
         var run = await CliProcess.RunAsync(repo.Root, "run", "--agent", "gpt5");
 
         Assert.Equal(2, run.ExitCode);
-        Assert.Contains("fake", run.Stderr);
+        Assert.Equal("error: unknown agent 'gpt5'; choose one of claude, codex, gemini, opencode", run.Stderr.TrimEnd());
         Assert.Contains("analyzed 0/", (await CliProcess.RunAsync(repo.Root, "status")).Stdout);
     }
 
@@ -212,11 +212,14 @@ public class HeadlessTests
     [InlineData("doctor --yes")]
     [InlineData("doctor --fix now")]
     [InlineData("report --include-refuted extra")]
-    public async Task BadUsage_ForNewVerbs_Exits2(string arguments)
+    public async Task BadUsage_ForNewVerbs_NamesTheProblem_AndExits2(string arguments)
     {
         var result = await CliProcess.RunAsync(Path.GetTempPath(), arguments.Split(' '));
 
         Assert.Equal(2, result.ExitCode);
-        Assert.Contains("usage: codemuster", result.Stderr);
+        var lines = result.Stderr.ReplaceLineEndings("\n").TrimEnd('\n').Split('\n');
+        Assert.Equal(2, lines.Length);
+        Assert.StartsWith("codemuster " + arguments.Split(' ')[0] + ": ", lines[0]);
+        Assert.StartsWith("usage: codemuster " + arguments.Split(' ')[0], lines[1]);
     }
 }

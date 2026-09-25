@@ -85,8 +85,10 @@ public class SkillInstallerTests
     [Fact]
     public async Task UnknownHarness_Throws_AndWritesNothing()
     {
-        Assert.Throws<ArgumentException>(() => SkillInstaller.PathFor("cursor", false, Root, Home));
+        var error = Assert.Throws<ArgumentException>(() => SkillInstaller.PathFor("cursor", false, Root, Home));
         await Assert.ThrowsAsync<ArgumentException>(() => InstallAsync("cursor", global: false));
+
+        Assert.Equal("unknown harness 'cursor'; expected one of claude, codex, gemini, opencode", error.Message);
 
         Assert.Empty(fileSystem.Files);
     }

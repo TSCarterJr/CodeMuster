@@ -93,6 +93,44 @@ public class UsageTests
 
         Assert.Equal(2, result.ExitCode);
         Assert.Empty(result.Stdout);
-        Assert.Contains("usage: codemuster", result.Stderr);
+        Assert.Equal(["codemuster: unknown command \"unknown\"", "usage: codemuster <command> [options]; see codemuster --help"], Lines(result.Stderr));
     }
+
+    [Theory]
+    [InlineData("run", "codemuster run: --agent is required (claude, codex, gemini, opencode)", "usage: codemuster run --agent <name> [options]; see codemuster run --help")]
+    [InlineData("run --agent claude -j 0", "codemuster run: -j must be a positive whole number (got \"0\")", "usage: codemuster run --agent <name> [options]; see codemuster run --help")]
+    [InlineData("run --agent claude --bogus x", "codemuster run: unknown option --bogus (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --kind, --force)", "usage: codemuster run --agent <name> [options]; see codemuster run --help")]
+    [InlineData("stauts", "codemuster: unknown command \"stauts\"; did you mean \"status\"?", "usage: codemuster <command> [options]; see codemuster --help")]
+    [InlineData("next --pth web", "codemuster next: unknown option --pth; did you mean --path? (options: --batch, --out, --path, --kind)", "usage: codemuster next [--batch N] [--out <file>] [--path <path>] [--kind <kind>]; see codemuster next --help")]
+    [InlineData("status --since yesterday", "codemuster status: unknown option --since (status takes no options)", "usage: codemuster status; see codemuster status --help")]
+    public async Task ArgumentMistake_PrintsItsReasonAndTheCommandsUsageLine_AndExits2(string arguments, string reason, string usage)
+    {
+        var result = await CliProcess.RunAsync(Path.GetTempPath(), arguments.Split(' '));
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Empty(result.Stdout);
+        Assert.Equal([reason, usage], Lines(result.Stderr));
+    }
+
+    [Fact]
+    public async Task RuntimeErrors_StartWithError_AndOptionsAcceptNameEqualsValue()
+    {
+        using var repo = TempRepo.FromFixture("mixed-repo");
+
+        var gated = await CliProcess.RunAsync(repo.Root, "status");
+        Assert.Equal(2, gated.ExitCode);
+        Assert.Equal(["error: not set up here; run `codemuster init`"], Lines(gated.Stderr));
+
+        var init = await CliProcess.RunAsync(repo.Root, "init", "--yes", "--for=none");
+        Assert.Equal(0, init.ExitCode);
+        Assert.Contains("no agent skills selected", init.Stdout);
+
+        var done = await CliProcess.RunAsync(repo.Root, "done", "u", "--fingerprint=f", "--findings=missing.json");
+        Assert.Equal(1, done.ExitCode);
+        var error = Assert.Single(Lines(done.Stderr));
+        Assert.StartsWith("error: ", error);
+        Assert.Contains("missing.json", error);
+    }
+
+    private static string[] Lines(string output) => output.ReplaceLineEndings("\n").TrimEnd('\n').Split('\n');
 }

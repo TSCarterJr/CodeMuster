@@ -14,10 +14,6 @@ public static class Program
 {
     public const string Usage = HelpText.Overview;
 
-    private static readonly string[] Verbs = ["init", "intelligent-config", "doctor", "scan", "status", "estimate", "next", "done", "run", "verify", "report", "skill", "fix", "hook", "validate"];
-
-    private static readonly string[] KindNames = Enum.GetNames<UnitKind>().Select(name => name.ToLowerInvariant()).ToArray();
-
     public static async Task<int> Main(string[] args)
     {
         if (Console.IsOutputRedirected)
@@ -50,10 +46,21 @@ public static class Program
             return 0;
         }
 
-        var command = CommandLine.Parse(args);
-        if (command is null || !Verbs.Contains(command.Verb) || !HasRequiredArguments(command))
+        if (args.Length == 0)
         {
             Console.Error.WriteLine(Usage);
+            return 2;
+        }
+
+        Command command;
+        try
+        {
+            command = CommandLine.Parse(args);
+        }
+        catch (UsageException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            Console.Error.WriteLine(ex.Usage);
             return 2;
         }
 
@@ -70,12 +77,12 @@ public static class Program
         }
         catch (NotInitializedException ex)
         {
-            Console.Error.WriteLine(ex.Message);
+            Console.Error.WriteLine("error: " + ex.Message);
             return 2;
         }
         catch (ArgumentException ex)
         {
-            Console.Error.WriteLine(ex.Message);
+            Console.Error.WriteLine("error: " + ex.Message);
             return 2;
         }
         catch (OperationCanceledException)
@@ -85,7 +92,7 @@ public static class Program
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine(ex.Message);
+            Console.Error.WriteLine("error: " + ex.Message);
             return 1;
         }
     }
@@ -475,48 +482,10 @@ public static class Program
         return 0;
     }
 
-    private static bool HasRequiredArguments(Command command) => command.Verb switch
-    {
-        "intelligent-config" => command.Flags.Count == 0 && command.Positionals.Count == 0
-            && command.Options.Keys.All(k => k is "agent" or "model" or "effort"),
-        "init" => command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "for")
-            && command.Flags.All(f => f is "yes" or "no-gitignore" or "no-hooks" or "no-skills")
-            && !(command.Flags.Contains("no-skills") && command.Options.ContainsKey("for")),
-        "validate" or "hook" => command.Positionals.Count == 0 && command.Options.Count == 0 && command.Flags.Count == 0,
-        "doctor" => command.Positionals.Count == 0 && command.Options.Count == 0 && command.Flags.Count == 0,
-        "scan" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "mode") && command.Options.GetValueOrDefault("mode", "file") is "file" or "slice",
-        "done" => command.Flags.Count == 0 && command.Positionals.Count == 1 && command.Options.ContainsKey("fingerprint") && command.Options.ContainsKey("findings"),
-        "next" => command.Flags.Count == 0 && command.Positionals.Count == 0 && IsPositiveOrAbsent(command, "batch")
-            && (!command.Options.TryGetValue("kind", out var nextKind) || KindNames.Contains(nextKind) && nextKind is not ("fix" or "dependency" or "deadcode")),
-        "run" => IsAgentRun(command, "kind") && (!command.Options.TryGetValue("kind", out var kind) || (KindNames.Contains(kind) && kind is not ("fix" or "dependency" or "deadcode"))),
-        "verify" => IsAgentRun(command),
-        "fix" => command.Positionals.Count == 0
-            && command.Flags.All(f => f is "stash" or "retry-declined" or "allow-failing-tests")
-            && command.Options.ContainsKey("agent")
-            && command.Options.Keys.All(k => k is "agent" or "attempts" or "model" or "effort" or "path" or "jobs" or "include-related")
-            && IsPositiveOrAbsent(command, "jobs")
-            && IsPositiveOrAbsent(command, "attempts"),
-        "estimate" => command.Flags.Count == 0 && command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "path"),
-        "report" => command.Positionals.Count == 0 && command.Options.Keys.All(k => k == "out") && command.Flags.All(f => f == "include-refuted"),
-        "skill" => command.Positionals.SequenceEqual(["install"]) && SkillInstaller.Harnesses.Contains(command.Options.GetValueOrDefault("for", "")) && command.Flags.All(f => f == "global"),
-        _ => command.Flags.Count == 0 && command.Positionals.Count == 0,
-    };
-
-    private static bool IsAgentRun(Command command, params string[] extraOptions) =>
-        command.Positionals.Count == 0
-        && command.Options.ContainsKey("agent")
-        && command.Options.Keys.All(k => k is "agent" or "jobs" or "attempts" or "model" or "effort" or "path" || extraOptions.Contains(k))
-        && command.Flags.All(f => f == "force")
-        && IsPositiveOrAbsent(command, "jobs")
-        && IsPositiveOrAbsent(command, "attempts");
-
     private static string Version =>
         (typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0").Split('+')[0];
 
     private static string HomeDirectory() =>
         Environment.GetEnvironmentVariable(OperatingSystem.IsWindows() ? "USERPROFILE" : "HOME")
         ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-
-    private static bool IsPositiveOrAbsent(Command command, string option) =>
-        !command.Options.TryGetValue(option, out var value) || (int.TryParse(value, out var n) && n > 0);
 }

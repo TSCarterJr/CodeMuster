@@ -7,12 +7,12 @@ public class AgentAdaptersTests
     private const string Pack = "# CodeMuster unit\n\n## Files\n\n### src/A.cs (csharp)\n\n```csharp\nclass A {}\n```\n\n## Response\n";
 
     [Fact]
-    public void Unknown_name_is_rejected_with_the_valid_names()
+    public void Unknown_name_is_rejected_with_the_valid_names_and_no_parameter_name()
     {
         var ex = Assert.Throws<ArgumentException>(() => AgentAdapters.Create("gpt5", null));
 
-        Assert.Contains("gpt5", ex.Message);
-        Assert.Contains("fake, claude, codex, gemini, opencode", ex.Message);
+        Assert.Equal("unknown agent 'gpt5'; choose one of claude, codex, gemini, opencode", ex.Message);
+        Assert.Null(ex.ParamName);
     }
 
     [Fact]

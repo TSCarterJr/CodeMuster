@@ -60,6 +60,10 @@ public static class HelpText
         CI and redirected commands start immediately. Omitted settings use the provider default.
         """;
 
+    public static string UsageLine(string? command) =>
+        (command is null ? Overview : For(command)!).Split('\n')[0].TrimEnd('\r')
+        + (command is null ? "; see codemuster --help" : $"; see codemuster {command} --help");
+
     public static string? For(string command) => command switch
     {
         "intelligent-config" => """

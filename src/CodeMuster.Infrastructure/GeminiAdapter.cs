@@ -14,7 +14,7 @@ public sealed class GeminiAdapter : IAgentAdapter
     {
         if (effort is not null)
         {
-            throw new ArgumentException("gemini has no effort level; drop --effort or run this kind with another agent", nameof(effort));
+            throw new ArgumentException("gemini has no effort level; drop --effort or run this kind with another agent");
         }
 
         _executable = executable;

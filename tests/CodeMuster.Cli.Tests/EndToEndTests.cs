@@ -142,11 +142,14 @@ public class EndToEndTests
     [InlineData("next --yes")]
     [InlineData("next --batch 2 --no-gitignore")]
     [InlineData("done u --fingerprint f --findings x --yes")]
-    public async Task BadUsage_PrintsUsage_AndExits2(string arguments)
+    public async Task BadUsage_NamesTheProblemAndTheUsageLine_AndExits2(string arguments)
     {
         var result = await CliProcess.RunAsync(Path.GetTempPath(), arguments.Split(' '));
 
         Assert.Equal(2, result.ExitCode);
-        Assert.Contains("usage: codemuster", result.Stderr);
+        var lines = result.Stderr.ReplaceLineEndings("\n").TrimEnd('\n').Split('\n');
+        Assert.Equal(2, lines.Length);
+        Assert.StartsWith("codemuster", lines[0]);
+        Assert.StartsWith("usage: codemuster ", lines[1]);
     }
 }

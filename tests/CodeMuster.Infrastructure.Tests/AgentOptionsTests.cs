@@ -40,7 +40,8 @@ public class AgentOptionsTests
 
         var error = Assert.Throws<ArgumentException>(() => new GeminiAdapter("gemini", null, "high"));
 
-        Assert.Contains("gemini has no effort level", error.Message);
+        Assert.Equal("gemini has no effort level; drop --effort or run this kind with another agent", error.Message);
+        Assert.Null(error.ParamName);
     }
 
     [Fact]

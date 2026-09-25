@@ -20,7 +20,7 @@ public sealed class SkillInstaller(IFileSystem fileSystem)
             "codex" => Path.Combine(root, ".codex", "skills"),
             "gemini" => Path.Combine(root, ".gemini", "skills"),
             "opencode" => global ? Path.Combine(root, ".config", "opencode", "skills") : Path.Combine(root, ".opencode", "skills"),
-            _ => throw new ArgumentException($"unknown harness '{harness}'; expected one of {string.Join(", ", Harnesses)}", nameof(harness)),
+            _ => throw new ArgumentException($"unknown harness '{harness}'; expected one of {string.Join(", ", Harnesses)}"),
         };
         return Path.Combine(skillsFolder, SkillName, "SKILL.md");
     }
