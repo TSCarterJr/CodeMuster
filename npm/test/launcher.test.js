@@ -446,6 +446,26 @@ test('hook runs without an availability check, version line or background update
   assert.match(h.stderr.join(''), /0\.2\.10 is available/);
 });
 
+for (const verb of ['Hook', 'HOOK']) {
+  test(`${verb} is the hook in any case, as the CLI reads it, so it skips the availability check`, async (t) => {
+    const h = commandHarness(t, '0.2.10');
+    assert.equal(await launcher.main([verb], {}), 3);
+    assert.deepEqual(h.calls, []);
+    assert.deepEqual(h.stderr, []);
+    assert.deepEqual(h.children.map((c) => c.args), [[verb]]);
+  });
+}
+
+for (const args of [['UPDATE', '--check'], ['Update', '--check']]) {
+  test(`${args[0]} is handled by the launcher like update, not passed to the CLI`, async (t) => {
+    const h = commandHarness(t, '0.2.10');
+    assert.equal(await launcher.main(args, {}), 0);
+    assert.deepEqual(h.calls, [launcher.REGISTRY + '/codemuster']);
+    assert.deepEqual(h.children, []);
+    assert.match(h.stdout.join(''), /0\.2\.10/);
+  });
+}
+
 for (const worker of ['1', '']) {
   test(`commands in a CodeMuster worker (CODEMUSTER_WORKER=${JSON.stringify(worker)}) skip the availability check`, async (t) => {
     const h = commandHarness(t, '0.2.10');

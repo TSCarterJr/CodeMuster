@@ -305,8 +305,10 @@ async function updateNow({ args, stateDir, platform, arch, currentVersion, regis
 }
 
 async function main(args, env = process.env) {
-  if ((args[0] === 'update' && args.slice(1).some((arg) => arg === '--help' || arg === '-h'))
-      || (args.length === 2 && args[0] === 'help' && args[1] === 'update')) {
+  // The CLI reads its verb in any case, so the launcher's own verbs (update, and hook's exemptions) match the same way.
+  const verb = args[0]?.toLowerCase();
+  if ((verb === 'update' && args.slice(1).some((arg) => arg === '--help' || arg === '-h'))
+      || (args.length === 2 && verb === 'help' && args[1].toLowerCase() === 'update')) {
     process.stdout.write('usage: codemuster update [--check]\n\nUpdate CodeMuster itself and show the intervening release notes.\n  --check   Show the available version without installing it\n\nNormal commands check availability with a two-second timeout; hook and commands in CodeMuster workers do not.\nAutomatic checks and background updates can be disabled with CI or CODEMUSTER_NO_UPDATE.\n');
     return 0;
   }
@@ -325,7 +327,7 @@ async function main(args, env = process.env) {
     build = newestBuild({ versionsDir, pinnedVersion, bundled: null, platform });
   }
 
-  if (args[0] === 'update') {
+  if (verb === 'update') {
     if (pinnedVersion) {
       process.stderr.write(`codemuster is pinned to ${pinnedVersion}; unset CODEMUSTER_VERSION before updating\n`);
       return 1;
@@ -334,7 +336,7 @@ async function main(args, env = process.env) {
   }
 
   // hook fires after every agent edit and workers are CodeMuster's own agent processes; neither is a command someone typed.
-  const automated = args[0] === 'hook' || env.CODEMUSTER_WORKER !== undefined;
+  const automated = verb === 'hook' || env.CODEMUSTER_WORKER !== undefined;
   if (!env.CI && !env.CODEMUSTER_NO_UPDATE && !pinnedVersion && !automated) {
     const latest = await checkForUpdate({ currentVersion: build.version });
     if (latest && compareVersions(latest, build.version) > 0
