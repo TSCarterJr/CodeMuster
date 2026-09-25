@@ -7,7 +7,7 @@ namespace CodeMuster.Application;
 /// <summary>Fixes what the audit confirmed: one unit per file with confirmed findings, one fresh agent call each, and one commit per changed file. Parallel workers edit in isolation (D40).</summary>
 public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock = null, Config? config = null, IWorkspace? workspace = null, ITestRunner? tests = null, IFileFixer? fileFixer = null, IContentHasher? hasher = null)
 {
-    /// <summary>Plans and fixes confirmed findings. With consent, saves tracked local changes and restores them afterward, including on failure or cancellation.</summary>
+    /// <summary>Plans and fixes confirmed findings. With consent, saves tracked local changes and restores them afterward, including on failure or cancellation. With a test runner, first requires the unmodified tree to pass it, before any agent call, unless the options allow failing tests.</summary>
     public async Task<FixResult> RunAsync(IAgentAdapter adapter, FixOptions options, IProgress<string>? notes, CancellationToken cancellationToken)
     {
         if (options.RelatedFiles.Count > 0 && (options.Parallelism != 1 || string.IsNullOrWhiteSpace(options.Path)))
@@ -87,6 +87,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         if (pending.Count == 0) return new FixResult(0, 0, 0, []);
         await CheckBrowserSourcesAsync(eligible.Where(f => options.Path is null || f.Finding.Path == options.Path || f.Finding.Path.StartsWith(options.Path.TrimEnd('/') + "/", StringComparison.Ordinal)), cancellationToken);
         var editor = fileFixer ?? throw new InvalidOperationException("parallel fix needs isolated file workers");
+        if (tests is not null && !options.AllowFailingTests) await CheckBaselineAsync(tests, repository, notes, cancellationToken);
         var next = new Next(ledger, tree!, config ?? Config.Default, interactive: false, UnitKind.Fix, options.Path);
         var done = new Done(ledger, clock!, config ?? Config.Default, adapter.Identity);
         var attempts = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -336,10 +337,40 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
 
     private sealed record ParallelAttempt(FileFixEdit? Edit, string? Error);
 
-    private static string LastLine(string output)
+    private const string BaselineHint = "Fix the suite or test_command in .codemuster/config.json (codemuster validate runs it), or pass --allow-failing-tests to skip this check.";
+
+    // A suite that cannot pass before any repair rejects every repair, so each attempt would be a paid agent call thrown away.
+    private static async Task CheckBaselineAsync(ITestRunner tests, IWorkspace repository, IProgress<string>? notes, CancellationToken cancellationToken)
     {
-        var lines = output.Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0).ToList();
-        return lines.Count == 0 ? "no output" : lines[^1];
+        notes?.Report("checking test_command on the unmodified tree before any repair");
+        TestRun baseline;
+        try
+        {
+            baseline = await tests.RunAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new InvalidOperationException($"test_command could not run on the unmodified tree, so no agent was called: {ex.Message}\n{BaselineHint}", ex);
+        }
+
+        if (!baseline.Passed)
+        {
+            throw new InvalidOperationException($"test_command fails on the unmodified tree, so every repair would be rejected; no agent was called. Its last lines:\n{LastLines(baseline.Output, 20)}\n{BaselineHint}");
+        }
+
+        if (!await repository.IsCleanAsync(cancellationToken))
+        {
+            var changed = string.Join(", ", await repository.ChangedPathsAsync(cancellationToken));
+            throw new InvalidOperationException($"test_command changed tracked files on the unmodified tree ({changed}), so it cannot check a repair; no agent was called. Inspect git status and make the command leave tracked files alone, or pass --allow-failing-tests to skip this check.");
+        }
+    }
+
+    private static string LastLine(string output) => LastLines(output, 1).Trim();
+
+    private static string LastLines(string output, int count)
+    {
+        var lines = output.Split('\n').Select(line => line.TrimEnd()).Where(line => line.Trim().Length > 0).ToList();
+        return lines.Count == 0 ? "no output" : string.Join('\n', lines.TakeLast(count));
     }
 
     private static string CommitMessage(string path, FixResponse response)

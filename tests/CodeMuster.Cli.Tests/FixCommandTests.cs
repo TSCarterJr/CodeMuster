@@ -30,7 +30,7 @@ public class FixCommandTests
         await File.WriteAllTextAsync(Path.Combine(repo.Root, "scope.patch"), patch);
         repo.WithTestCommand("git", "apply", "scope.patch");
         var head = repo.Git("rev-parse", "HEAD");
-        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--path", target, "-j", jobs, "--attempts", "1");
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--path", target, "-j", jobs, "--attempts", "1", "--allow-failing-tests");
         Assert.Equal(1, fix.ExitCode);
         Assert.Equal(head, repo.Git("rev-parse", "HEAD"));
         Assert.Contains(other, fix.Stdout + fix.Stderr);
@@ -139,7 +139,7 @@ public class FixCommandTests
         using var repo = await AuditedAsync();
         repo.WithTestCommand("git", "rev-parse", "--verify", "no-such-ref");
 
-        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--attempts", "1", "-j", jobs);
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--attempts", "1", "-j", jobs, "--allow-failing-tests");
 
         Assert.Equal(1, fix.ExitCode);
         Assert.Contains("running tests for", fix.Stdout);
@@ -156,6 +156,47 @@ public class FixCommandTests
         var recovered = await CliProcess.RunAsync(repo.Root, "report");
         Assert.Contains("test command failed:", recovered.Stdout);
         Assert.Contains("current status: done", recovered.Stdout);
+    }
+
+    [Fact]
+    public async Task AFailingBaseline_StopsBeforeAnyAgentCall_PrintsItsLastLines_AndRestoresTheStash()
+    {
+        using var repo = await AuditedAsync();
+        repo.WithTestCommand("git", "show", "codemuster-baseline-marker");
+        await File.AppendAllTextAsync(Path.Combine(repo.Root, "web", "lib", "api.ts"), "\n// local work\n");
+        var head = repo.Git("rev-parse", "HEAD");
+        var local = repo.Git("diff");
+        var worktrees = Worktrees(repo);
+
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--stash");
+
+        Assert.Equal(1, fix.ExitCode);
+        Assert.DoesNotContain("(attempt ", fix.Stdout);
+        Assert.Contains("codemuster-baseline-marker", fix.Stderr);
+        Assert.Contains("no agent was called", fix.Stderr);
+        Assert.Contains("codemuster validate", fix.Stderr);
+        Assert.Contains("--allow-failing-tests", fix.Stderr);
+        Assert.Contains("restored your tracked changes", fix.Stdout);
+        Assert.Equal(head, repo.Git("rev-parse", "HEAD"));
+        Assert.Equal(local, repo.Git("diff"));
+        Assert.Equal(worktrees, Worktrees(repo));
+        Assert.DoesNotContain("## Failed attempts", (await CliProcess.RunAsync(repo.Root, "report")).Stdout);
+    }
+
+    [Fact]
+    public async Task AMissingTestProgram_StopsBeforeAnyAgentCall()
+    {
+        using var repo = await AuditedAsync();
+        repo.WithTestCommand("codemuster-no-such-test-tool", "test");
+        var head = repo.Git("rev-parse", "HEAD");
+
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake");
+
+        Assert.Equal(1, fix.ExitCode);
+        Assert.DoesNotContain("(attempt ", fix.Stdout);
+        Assert.Contains("codemuster-no-such-test-tool", fix.Stderr);
+        Assert.Contains("no agent was called", fix.Stderr);
+        Assert.Equal(head, repo.Git("rev-parse", "HEAD"));
     }
 
     [Fact]
@@ -190,6 +231,8 @@ public class FixCommandTests
         var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake");
 
         Assert.Equal(0, fix.ExitCode);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(fix.Stdout, "unmodified tree"));
+        Assert.True(fix.Stdout.IndexOf("unmodified tree", StringComparison.Ordinal) < fix.Stdout.IndexOf("(attempt ", StringComparison.Ordinal));
         Assert.Contains("running tests for", fix.Stdout);
         Assert.Matches(@"fixed [1-9]\d* finding\(s\)", fix.Stdout);
         Assert.DoesNotContain("no test_command", fix.Stderr);
@@ -286,9 +329,11 @@ public class FixCommandTests
         var unstaged = repo.Git("diff");
         var untracked = repo.Git("ls-files", "--others", "--exclude-standard");
 
-        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--path", target, "--attempts", "1", "--stash", "-j", jobs);
+        string[] arguments = ["fix", "--agent", "fake", "--path", target, "--attempts", "1", "--stash", "-j", jobs];
+        var fix = await CliProcess.RunAsync(repo.Root, failTests ? [.. arguments, "--allow-failing-tests"] : arguments);
 
         Assert.Equal(failTests ? 1 : 0, fix.ExitCode);
+        Assert.Contains("(attempt 1/1)", fix.Stdout);
         Assert.Contains("restored your tracked changes", fix.Stdout);
         Assert.Equal(staged, repo.Git("diff", "--cached"));
         Assert.Equal(unstaged, repo.Git("diff"));

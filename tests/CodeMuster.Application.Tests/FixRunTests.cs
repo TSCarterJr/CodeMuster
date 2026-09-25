@@ -137,7 +137,11 @@ public class FixRunTests
             if (calls == 1 && failure == "json") return "not json";
             return FixResponseJson.Serialize(new FixResponse("fixed", ids, []));
         }
-        if (failure == "tests") tests.Results.Enqueue(new TestRun(false, "a.cs:10 compiler error\nBuild FAILED"));
+        if (failure == "tests")
+        {
+            tests.Results.Enqueue(PassingBaseline);
+            tests.Results.Enqueue(new TestRun(false, "a.cs:10 compiler error\nBuild FAILED"));
+        }
         var adapter = new FakeAgentAdapter((pack, _) => Task.FromResult(Respond(pack)));
         var editor = new PackFixer(pack => new FileFixEdit(Respond(pack), "a.cs"));
         var result = await new Fix(ledger, tree, clock, Config.Default, workspace, tests, editor).RunAsync(
@@ -187,7 +191,7 @@ public class FixRunTests
         var result = await run;
 
         Assert.Equal((3, 6, 0), (result.Units, result.Fixed, result.Declined));
-        Assert.Equal(3, tests.Runs);
+        Assert.Equal(4, tests.Runs);
         Assert.Equal(3, workspace.CommittedFiles.Distinct().Count());
         Assert.Equal("b.cs", workspace.CommittedFiles[0]);
         Assert.Equal(0, workspace.Restores);
@@ -215,6 +219,7 @@ public class FixRunTests
     public async Task ParallelFix_FailedTestsRetryOnlyThatFile()
     {
         var ids = await SeedAsync("a.cs", 10);
+        tests.Results.Enqueue(PassingBaseline);
         tests.Results.Enqueue(new TestRun(false, "broken"));
         tests.Results.Enqueue(new TestRun(true, "passed"));
         var calls = 0;
@@ -450,6 +455,106 @@ public class FixRunTests
     }
 
     [Fact]
+    public async Task AFailingBaseline_StopsBeforeAnyAgentCall_WithItsLastLines_AndRestoresTheStash()
+    {
+        await SeedAsync("src/a.cs", 10);
+        workspace.Clean = false;
+        var output = string.Join('\n', ["first line of the suite output", .. Enumerable.Range(1, 30).Select(i => $"test {i} ran"), "Build FAILED: expected 2, got 3"]);
+        tests.Results.Enqueue(new TestRun(false, output));
+        var adapter = Fixer(_ => throw new InvalidOperationException("no agent call expected"));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateFix(adapter, tests).RunAsync(adapter, new FixOptions(Stash: true), new ListProgress(notes), CancellationToken.None));
+
+        Assert.Empty(adapter.Packs);
+        Assert.Equal(1, tests.Runs);
+        Assert.Contains("Build FAILED: expected 2, got 3", error.Message);
+        Assert.DoesNotContain("first line of the suite output", error.Message);
+        Assert.Contains("codemuster validate", error.Message);
+        Assert.Contains("--allow-failing-tests", error.Message);
+        Assert.Equal("saved-stash", workspace.RestoredStash);
+        Assert.DoesNotContain(ledger.Analyses, a => !a.Analysis.Succeeded);
+    }
+
+    [Fact]
+    public async Task AMissingTestProgram_StopsBeforeAnyAgentCall()
+    {
+        await SeedAsync("src/a.cs", 10);
+        var runner = new CallbackTestRunner(() => throw new InvalidOperationException("'no-such-tool' was not found on PATH"));
+        var adapter = Fixer(_ => throw new InvalidOperationException("no agent call expected"));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(adapter, runner: runner));
+
+        Assert.Empty(adapter.Packs);
+        Assert.Contains("'no-such-tool' was not found on PATH", error.Message);
+        Assert.Contains("codemuster validate", error.Message);
+    }
+
+    [Fact]
+    public async Task ABaselineThatChangesTrackedFiles_StopsBeforeAnyAgentCall()
+    {
+        await SeedAsync("src/a.cs", 10);
+        var runner = new CallbackTestRunner(() =>
+        {
+            workspace.Clean = false;
+            workspace.Changed.Add("tests/__snapshots__/a.snap");
+            return new TestRun(true, "");
+        });
+        var adapter = Fixer(_ => throw new InvalidOperationException("no agent call expected"));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(adapter, runner: runner));
+
+        Assert.Empty(adapter.Packs);
+        Assert.Contains("tests/__snapshots__/a.snap", error.Message);
+    }
+
+    [Fact]
+    public async Task AllowFailingTests_SkipsTheBaselineCheck()
+    {
+        var ids = await SeedAsync("src/a.cs", 10);
+        tests.Results.Enqueue(new TestRun(false, "the suite is red"));
+        var adapter = Fixer(_ => new FixResponse("Fixed it.", ids, []));
+
+        var result = await CreateFix(adapter, tests).RunAsync(adapter, new FixOptions(MaxAttempts: 1) { AllowFailingTests = true }, new ListProgress(notes), CancellationToken.None);
+
+        Assert.Single(adapter.Packs);
+        Assert.Equal(1, tests.Runs);
+        Assert.Equal([UnitIds.Fix("src/a.cs")], result.GaveUp);
+        Assert.DoesNotContain(notes, note => note.Contains("unmodified tree", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task APassingBaseline_CostsExactlyOneExtraTestRun_BeforeTheFirstRepair()
+    {
+        var a = await SeedAsync("src/a.cs", 10);
+        var b = await SeedAsync("src/b.cs", 20);
+        var adapter = Fixer(pack => new FixResponse("Fixed.", pack.Contains("src/a.cs", StringComparison.Ordinal) ? a : b, []));
+
+        var result = await RunAsync(adapter, runner: tests);
+
+        Assert.Equal((2, 2), (result.Units, result.Fixed));
+        Assert.Equal(3, tests.Runs);
+        Assert.Contains("unmodified tree", notes[0]);
+        Assert.StartsWith("fixing ", notes[1]);
+    }
+
+    [Fact]
+    public async Task NothingToFix_RunsNoBaseline()
+    {
+        var result = await RunAsync(Fixer(_ => throw new InvalidOperationException("no agent call expected")), runner: tests);
+
+        Assert.Equal(0, result.Units);
+        Assert.Equal(0, tests.Runs);
+    }
+
+    private static readonly TestRun PassingBaseline = new(true, "baseline passes");
+
+    private sealed class CallbackTestRunner(Func<TestRun> run) : ITestRunner
+    {
+        public Task<TestRun> RunAsync(CancellationToken cancellationToken) => Task.FromResult(run());
+    }
+
+    [Fact]
     public async Task AUnitThatKeepsFailing_IsGivenUpOn_AndItsChangesAreRestored()
     {
         await SeedAsync("src/a.cs", 10);
@@ -488,7 +593,7 @@ public class FixRunTests
 
         var result = await RunAsync(adapter, runner: tests);
 
-        Assert.Equal(1, tests.Runs);
+        Assert.Equal(2, tests.Runs);
         Assert.Equal((1, 1, 0), (result.Units, result.Fixed, result.Declined));
         Assert.Single(workspace.Commits);
         Assert.Contains("running tests for src/a.cs", notes);
@@ -499,6 +604,7 @@ public class FixRunTests
     {
         var ids = await SeedAsync("src/a.cs", 10);
         var adapter = Fixer(_ => new FixResponse("Broke it.", ids, []));
+        tests.Results.Enqueue(PassingBaseline);
         tests.Results.Enqueue(new TestRun(false, "MyTest failed: expected 2, got 3"));
         tests.Results.Enqueue(new TestRun(false, "MyTest failed: expected 2, got 3"));
 
@@ -518,6 +624,7 @@ public class FixRunTests
     {
         var ids = await SeedAsync("src/a.cs", 10);
         var adapter = Fixer(_ => new FixResponse("Second time lucky.", ids, []));
+        tests.Results.Enqueue(PassingBaseline);
         tests.Results.Enqueue(new TestRun(false, "broken"));
         tests.Results.Enqueue(new TestRun(true, ""));
 
@@ -551,7 +658,7 @@ public class FixRunTests
 
         var result = await RunAsync(adapter, runner: tests);
 
-        Assert.Equal(1, tests.Runs);
+        Assert.Equal(2, tests.Runs);
         Assert.True(result.TestsRun);
         Assert.Empty(workspace.Commits);
     }

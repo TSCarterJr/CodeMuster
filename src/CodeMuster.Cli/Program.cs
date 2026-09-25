@@ -250,6 +250,7 @@ public static class Program
             command.Flags.Contains("retry-declined"))
         {
             RelatedFiles = command.Options.TryGetValue("include-related", out var related) ? related.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(RepoPath.Normalize).ToArray() : [],
+            AllowFailingTests = command.Flags.Contains("allow-failing-tests"),
         };
         if (options.RelatedFiles.Count > 0)
         {
@@ -490,7 +491,7 @@ public static class Program
         "run" => IsAgentRun(command, "kind") && (!command.Options.TryGetValue("kind", out var kind) || (KindNames.Contains(kind) && kind is not ("fix" or "dependency" or "deadcode"))),
         "verify" => IsAgentRun(command),
         "fix" => command.Positionals.Count == 0
-            && command.Flags.All(f => f is "stash" or "retry-declined")
+            && command.Flags.All(f => f is "stash" or "retry-declined" or "allow-failing-tests")
             && command.Options.ContainsKey("agent")
             && command.Options.Keys.All(k => k is "agent" or "attempts" or "model" or "effort" or "path" or "jobs" or "include-related")
             && IsPositiveOrAbsent(command, "jobs")

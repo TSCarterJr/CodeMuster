@@ -243,7 +243,7 @@ Edit the existing `.codemuster/config.json`; keep lenses that are already useful
 | `dead_code` | `false` | Record conservative static usage assessments and report-only unused candidates during scan. |
 | `user_experience` | Disabled | UI-only browser review settings: `enabled`, optional HTTP(S) `base_url`, and `include`/`exclude` globs. See [application reviews](application-reviews.md). |
 | `exclude` | `[]` | Additional repo-relative exclusion globs. |
-| `test_command` | `[]` | Program and arguments to run after each fix attempt; empty means no configured validation. |
+| `test_command` | `[]` | Program and arguments to run once before fixing and after each fix attempt; empty means no configured validation. |
 
 A glob without a slash matches file names anywhere. Use `vendor/**` to exclude a directory.
 Built-in exclusions cover generated files, migrations, lockfiles, binaries, and non-code files.
@@ -289,9 +289,13 @@ repository never runs in their place. Reach a project-local tool through its pac
 example `["npx", "jest"]`.
 
 Choose a command that terminates, returns nonzero on failure, and covers the affected project.
-Install its dependencies beforehand and ensure it passes on the starting code. A failing command
-rejects the attempt and triggers a retry. Without one, the CLI prints a warning and accepts fixes
-without running your repository's tests.
+Install its dependencies beforehand. `fix` runs it once on the unmodified tree before any agent
+call: if it fails, its program cannot start, or it changes tracked files, `fix` prints the
+command's last lines, restores any stash, and exits 1 without calling the agent. Fix the suite or
+the command (`codemuster validate` runs it), or pass `--allow-failing-tests` to skip that check for
+a suite that fails there on purpose. After a repair, a failing command rejects the attempt and
+triggers a retry. Without one, the CLI prints a warning and accepts fixes without running your
+repository's tests.
 
 ## Read the results
 
@@ -449,7 +453,7 @@ and manage them.
 | `estimate` | `--path <path>` |
 | `run --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--kind file\|slice\|orphan\|verify`, `--force` |
 | `verify --agent <name>` | Same as `run`, without `--kind` |
-| `fix --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--stash`, `--retry-declined`, `--include-related <files>` |
+| `fix --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--stash`, `--retry-declined`, `--allow-failing-tests`, `--include-related <files>` |
 | `validate` | No options; runs configured final build/tests |
 | `hook` | No options; used by installed agent hooks |
 | `report` | `--out <file>`, `--include-refuted` |
