@@ -1,3 +1,4 @@
+using System.Text;
 using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
@@ -27,7 +28,8 @@ public sealed class GitWorkspace(string repoRoot) : IWorkspace
     {
         if (patch.Length > 0)
         {
-            await GitProcess.RunAsync(repoRoot, ["apply", "--whitespace=nowarn", "-"], patch, cancellationToken).ConfigureAwait(false);
+            // The patch holds one byte per char (Latin-1), as GitFileFixer read it from git diff.
+            await GitProcess.RunAsync(repoRoot, ["apply", "--whitespace=nowarn", "-"], patch, cancellationToken, text: Encoding.Latin1).ConfigureAwait(false);
         }
     }
 

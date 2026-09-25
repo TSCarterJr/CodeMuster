@@ -60,6 +60,32 @@ public sealed class GitFileFixerTests : IDisposable
         Assert.True(await workspace.IsCleanAsync(CancellationToken.None));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_windows_1252_byte_near_the_repair_reaches_git_apply_unchanged(bool inContext)
+    {
+        // 0xE9 is an accented e in Windows-1252 and Latin-1 and is not valid UTF-8 on its own.
+        var legacy = "// caf" + (char)0xE9 + " Ltd\n";
+        var original = Latin1($"class C\n{{\n{(inContext ? legacy : "")}    int a;\n    int b;\n    int c;\n}}\n");
+        var repaired = Latin1($"class C\n{{\n{legacy}    int a;\n    int repaired;\n    int c;\n}}\n");
+        repo.WriteBytes("src/c.cs", original);
+        repo.Commit("legacy encoded file");
+        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
+        {
+            File.WriteAllBytes(Path.Combine(dir, "src", "c.cs"), repaired);
+            return Task.FromResult("response");
+        }));
+
+        var edit = await fixer.RunAsync("src/c.cs", "pack", CancellationToken.None);
+        await fixer.ReleaseAsync(edit, CancellationToken.None);
+        await new GitWorkspace(repo.Root).ApplyPatchAsync(edit.Patch, CancellationToken.None);
+
+        Assert.Equal(repaired, File.ReadAllBytes(Path.Combine(repo.Root, "src", "c.cs")));
+    }
+
+    private static byte[] Latin1(string text) => System.Text.Encoding.Latin1.GetBytes(text);
+
     [Fact]
     public async Task WorkerEditsAreIsolated_AndOnlyItsAssignedFileIsAppliedAndCommitted()
     {

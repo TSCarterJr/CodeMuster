@@ -5,16 +5,17 @@ namespace CodeMuster.Infrastructure;
 
 internal static class GitProcess
 {
-    public static async Task<string> RunAsync(string repoRoot, IReadOnlyList<string> arguments, string? standardInput, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? environment = null)
+    // text decodes stdout and encodes stdin, UTF-8 unless given; stderr is always UTF-8.
+    public static async Task<string> RunAsync(string repoRoot, IReadOnlyList<string> arguments, string? standardInput, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? environment = null, Encoding? text = null)
     {
-        var (exitCode, output, error) = await RunAllowingFailureAsync(repoRoot, arguments, standardInput, cancellationToken, environment).ConfigureAwait(false);
+        var (exitCode, output, error) = await RunAllowingFailureAsync(repoRoot, arguments, standardInput, cancellationToken, environment, text).ConfigureAwait(false);
         return exitCode == 0 ? output : throw Failure(arguments, exitCode, error);
     }
 
     public static InvalidOperationException Failure(IReadOnlyList<string> arguments, int exitCode, string error) =>
         new($"git {string.Join(' ', arguments)} exited with code {exitCode}: {error.Trim()}");
 
-    public static async Task<(int ExitCode, string Output, string Error)> RunAllowingFailureAsync(string repoRoot, IReadOnlyList<string> arguments, string? standardInput, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? environment = null)
+    public static async Task<(int ExitCode, string Output, string Error)> RunAllowingFailureAsync(string repoRoot, IReadOnlyList<string> arguments, string? standardInput, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? environment = null, Encoding? text = null)
     {
         var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
         var startInfo = new ProcessStartInfo(ExecutableResolver.Resolve("git"))
@@ -24,12 +25,12 @@ internal static class GitProcess
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             RedirectStandardInput = standardInput is not null,
-            StandardOutputEncoding = utf8,
+            StandardOutputEncoding = text ?? utf8,
             StandardErrorEncoding = utf8,
         };
         if (standardInput is not null)
         {
-            startInfo.StandardInputEncoding = utf8;
+            startInfo.StandardInputEncoding = text ?? utf8;
         }
 
         foreach (var argument in arguments)

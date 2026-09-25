@@ -1,6 +1,6 @@
 namespace CodeMuster.Domain;
 
-/// <summary>An isolated agent's response and the Git patch for its assigned file only (empty when the worker changed none of its allowed files), with the worker copy the patch came from while it is still on disk.</summary>
+/// <summary>An isolated agent's response and the Git patch for its assigned file only (empty when the worker changed none of its allowed files; one char per byte of git's output, so it round-trips files in any encoding), with the worker copy the patch came from while it is still on disk.</summary>
 public sealed record FileFixEdit(string Response, string Patch, string? Worktree = null);
 
 /// <summary>Runs one file's fix in isolation, without changing the coordinator's checkout or ledger.</summary>
