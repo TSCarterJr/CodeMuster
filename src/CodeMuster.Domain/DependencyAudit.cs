@@ -8,7 +8,7 @@ public sealed record ManifestVulnerabilities(string Manifest, string Tool, IRead
 
 /// <summary>Every manifest audited in one pass, and whatever went wrong (D38).</summary>
 /// <param name="Manifests">One entry per manifest whose audit ran and could be read.</param>
-/// <param name="Diagnostics">Manifests whose tool is missing, failed, or wrote something unreadable, each naming the fix.</param>
+/// <param name="Diagnostics">Manifests whose tool is missing, failed, or wrote something unreadable, each naming the fix, and manifests whose folder holds lockfiles for more than one tool, naming the tool used.</param>
 public sealed record DependencyAudit(IReadOnlyList<ManifestVulnerabilities> Manifests, IReadOnlyList<string> Diagnostics);
 
 /// <summary>Runs each ecosystem's own audit tool over the repository's manifests (D38). Never installs or restores anything.</summary>

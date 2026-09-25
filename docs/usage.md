@@ -87,7 +87,10 @@ With `vulnerabilities` enabled, scanning also invokes dependency audit tools for
 manifests. These tools may need network access. Their diagnostics are printed separately from
 code mapping, and they use no agent calls. When a tool fails, for example offline, on a registry
 error or on a failed restore, scan prints a warning naming the manifest and keeps that manifest's
-earlier findings; it never records the failure as a clean audit.
+earlier findings; it never records the failure as a clean audit. Each `package.json` folder is
+audited once. When it holds lockfiles for more than one tool, the tool named by `packageManager`
+in `package.json` is used if its lockfile is there, otherwise pnpm, then Yarn, then npm, and scan
+prints a warning naming the lockfiles and the tool it chose.
 
 `estimate` uses roughly four bytes per input token. It is not a price quote: responses, retries,
 and verification work created by future findings can add to usage.

@@ -117,6 +117,91 @@ public class DependencyAuditorTests
     }
 
     [Fact]
+    public async Task Two_lockfiles_in_one_folder_audit_once_with_pnpm_and_say_so()
+    {
+        _replies["npm"] = (1, Fixture("npm-audit.json"));
+        _replies["pnpm"] = (1, Fixture("pnpm-audit.json"));
+
+        var audit = await Auditor().AuditAsync(Root, ["web/package-lock.json", "web/package.json", "web/pnpm-lock.yaml"], null, CancellationToken.None);
+
+        var manifest = Assert.Single(audit.Manifests);
+        Assert.Equal("web/package.json", manifest.Manifest);
+        Assert.Equal("pnpm audit", manifest.Tool);
+        Assert.Equal("pnpm", Path.GetFileNameWithoutExtension(Assert.Single(_calls).File));
+        var warning = Assert.Single(audit.Diagnostics);
+        Assert.StartsWith("web/package.json: found package-lock.json and pnpm-lock.yaml; audited with pnpm", warning, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Three_lockfiles_prefer_pnpm_then_yarn_then_npm()
+    {
+        _replies["npm"] = (1, Fixture("npm-audit.json"));
+        _replies["pnpm"] = (1, Fixture("pnpm-audit.json"));
+        _replies["yarn"] = (1, Fixture("yarn-audit.json"));
+
+        var audit = await Auditor().AuditAsync(
+            Root,
+            ["web/package.json", "web/package-lock.json", "web/pnpm-lock.yaml", "web/yarn.lock", "site/package.json", "site/package-lock.json", "site/yarn.lock"],
+            null,
+            CancellationToken.None);
+
+        Assert.Equal(
+            [("site/package.json", "yarn audit"), ("web/package.json", "pnpm audit")],
+            audit.Manifests.OrderBy(m => m.Manifest, StringComparer.Ordinal).Select(m => (m.Manifest, m.Tool)));
+        Assert.Contains(audit.Diagnostics, d => d.StartsWith("web/package.json: found package-lock.json, pnpm-lock.yaml and yarn.lock; audited with pnpm", StringComparison.Ordinal));
+        Assert.Contains(audit.Diagnostics, d => d.StartsWith("site/package.json: found package-lock.json and yarn.lock; audited with yarn", StringComparison.Ordinal));
+        Assert.Equal(2, audit.Diagnostics.Count);
+    }
+
+    [Fact]
+    public async Task Npm_lockfile_and_shrinkwrap_are_one_npm_audit_without_a_warning()
+    {
+        _replies["npm"] = (1, Fixture("npm-audit.json"));
+
+        var audit = await Auditor().AuditAsync(Root, ["package.json", "package-lock.json", "npm-shrinkwrap.json"], null, CancellationToken.None);
+
+        Assert.Equal("npm audit", Assert.Single(audit.Manifests).Tool);
+        Assert.Single(_calls);
+        Assert.Empty(audit.Diagnostics);
+    }
+
+    [Theory]
+    [InlineData("npm@10.9.0", "npm audit", "as packageManager names it")]
+    [InlineData("yarn@4.9.2+sha224.953c8233f7a92884eee2de69a1b92d1f2ec1655e66d08071ba9a02fa", "yarn npm audit", "as packageManager names it")]
+    [InlineData("bun@1.2.0", "pnpm audit", "the first of pnpm, yarn and npm")]
+    public async Task PackageManager_picks_the_tool_among_its_lockfiles(string packageManager, string tool, string reason)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "codemuster-audit-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "web"));
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "web", "package.json"), $$"""{"name": "web", "packageManager": "{{packageManager}}"}""");
+            _replies["npm"] = (1, Fixture("npm-audit.json"));
+            _replies["pnpm"] = (1, Fixture("pnpm-audit.json"));
+            var auditor = new DependencyAuditor((file, arguments, directory, _) =>
+            {
+                _calls.Add((file, string.Join(' ', arguments), directory));
+                return Task.FromResult(Path.GetFileNameWithoutExtension(file) switch
+                {
+                    "yarn" when arguments[0] == "--version" => new ProcessResult(0, "4.9.2", ""),
+                    "yarn" => new ProcessResult(1, Fixture("yarn-berry.json"), ""),
+                    var key => new ProcessResult(1, _replies[key].Output, ""),
+                });
+            });
+
+            var audit = await auditor.AuditAsync(root, ["web/package.json", "web/package-lock.json", "web/pnpm-lock.yaml", "web/yarn.lock"], null, CancellationToken.None);
+
+            Assert.Equal(tool, Assert.Single(audit.Manifests).Tool);
+            Assert.All(_calls, call => Assert.EndsWith("web", call.WorkingDirectory.Replace('\\', '/').TrimEnd('/'), StringComparison.Ordinal));
+            Assert.Contains(reason, Assert.Single(audit.Diagnostics), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Without_any_manifest_nothing_runs()
     {
         var audit = await Auditor().AuditAsync(Root, ["src/A.cs", "README.md"], null, CancellationToken.None);

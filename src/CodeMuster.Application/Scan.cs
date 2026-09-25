@@ -62,7 +62,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         var auditPaths = AuditPaths(current).ToHashSet(StringComparer.Ordinal);
         var auditFiles = current.Where(f => auditPaths.Contains(f.Path)).ToList();
         var audit = config.Vulnerabilities && auditor is not null
-            ? await auditor.AuditAsync(repoRoot, AuditPaths(current), progress, cancellationToken)
+            ? Merged(await auditor.AuditAsync(repoRoot, AuditPaths(current), progress, cancellationToken))
             : null;
         if (audit is not null)
         {
@@ -137,6 +137,17 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             .Where(f => f.ExcludedReason is null || (f.ExcludedReason is "lockfile" or "data" && !config.ExcludedHere(f.Path)))
             .Select(f => f.Path)
             .ToList();
+
+    /// <summary>One entry per manifest, so a manifest reported twice cannot plan two units with one id.</summary>
+    private static DependencyAudit Merged(DependencyAudit audit) => audit with
+    {
+        Manifests = audit.Manifests
+            .GroupBy(manifest => manifest.Manifest, StringComparer.Ordinal)
+            .Select(group => group.Count() == 1
+                ? group.First()
+                : new ManifestVulnerabilities(group.Key, string.Join(" and ", group.Select(m => m.Tool).Distinct()), group.SelectMany(m => m.Packages).Distinct().ToList()))
+            .ToList(),
+    };
 
     private static IEnumerable<PlannedUnit> PlanDependencyUnitsAsync(DependencyAudit audit, IReadOnlyList<FileRecord> included)
     {

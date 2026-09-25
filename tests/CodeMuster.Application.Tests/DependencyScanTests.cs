@@ -104,6 +104,23 @@ public class DependencyScanTests
     }
 
     [Fact]
+    public async Task TwoResultsForOneManifest_AreMerged_RatherThanCrashingTheScan()
+    {
+        auditor.Manifests =
+        [
+            new ManifestVulnerabilities("web/package.json", "npm audit", [FakeDependencyAuditor.Package("next", Severity.Critical)]),
+            new ManifestVulnerabilities("web/package.json", "pnpm audit", [FakeDependencyAuditor.Package("sharp", Severity.High)]),
+        ];
+
+        var result = await ScanAsync();
+
+        var unit = Assert.Single(ledger.Units, u => u.Kind == UnitKind.Dependency);
+        Assert.Equal(["next", "sharp"], FindingsAsync().Where(f => f.UnitId == unit.Id).Select(f => f.Finding.Claim.Split(' ')[0]).Order(StringComparer.Ordinal));
+        Assert.Equal(1, result.Vulnerabilities!.Manifests);
+        Assert.Equal(2, result.Vulnerabilities.Packages);
+    }
+
+    [Fact]
     public async Task TurnedOff_NothingRuns()
     {
         Vulnerable(FakeDependencyAuditor.Package("next", Severity.Critical));

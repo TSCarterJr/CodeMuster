@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure.Audits;
@@ -13,6 +14,15 @@ public sealed record ProcessResult(int ExitCode, string Output, string Error);
 /// <summary>Runs npm, pnpm, yarn, and dotnet over the repository's manifests and turns what they say into findings-ready data (D38).</summary>
 public sealed class DependencyAuditor : IDependencyAuditor
 {
+    /// <summary>Node lockfiles in the order a folder with several of them is audited when <c>packageManager</c> names none of them.</summary>
+    private static readonly (string Lockfile, string Manager)[] NodeLockfiles =
+    [
+        ("pnpm-lock.yaml", "pnpm"),
+        ("yarn.lock", "yarn"),
+        ("npm-shrinkwrap.json", "npm"),
+        ("package-lock.json", "npm"),
+    ];
+
     private readonly Func<string, IReadOnlyList<string>, string, CancellationToken, Task<ProcessResult>> _run;
 
     /// <summary>Uses real processes.</summary>
@@ -30,9 +40,14 @@ public sealed class DependencyAuditor : IDependencyAuditor
     {
         var manifests = new List<ManifestVulnerabilities>();
         var diagnostics = new List<string>();
-        foreach (var candidate in Jobs(paths))
+        foreach (var candidate in Jobs(repoRoot, paths))
         {
             var job = candidate;
+            if (job.Warning is { } warning)
+            {
+                diagnostics.Add(warning);
+            }
+
             progress?.Report($"auditing {job.Manifest} with {job.Executable}");
             var directory = Path.GetFullPath(Path.Combine(repoRoot, job.WorkingDirectory));
             ProcessResult result;
@@ -63,7 +78,7 @@ public sealed class DependencyAuditor : IDependencyAuditor
             {
                 manifests.Add(new ManifestVulnerabilities(job.Manifest, job.Tool, job.Parse(result.Output)));
             }
-            catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException)
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException)
             {
                 diagnostics.Add($"{job.Manifest}: {job.Tool} gave no usable report ({ex.Message}); any earlier findings are kept, run it by hand to see why");
             }
@@ -77,27 +92,32 @@ public sealed class DependencyAuditor : IDependencyAuditor
             ? $"install {job.Executable} or exclude that folder"
             : result.Error.Trim() is { Length: > 0 } error ? error : "run it by hand to see why";
 
-    private static IEnumerable<Job> Jobs(IReadOnlyList<string> paths)
+    private static IEnumerable<Job> Jobs(string repoRoot, IReadOnlyList<string> paths)
     {
         var normalized = paths.Select(RepoPath.Normalize).ToList();
         var known = normalized.ToHashSet(StringComparer.Ordinal);
-        foreach (var path in normalized.Order(StringComparer.Ordinal))
+        foreach (var manifest in normalized.Where(path => Path.GetFileName(path) == "package.json").Order(StringComparer.Ordinal))
         {
-            var name = Path.GetFileName(path);
-            var folder = Folder(path);
-            var manifest = folder.Length == 0 ? "package.json" : folder + "/package.json";
-            switch (name)
+            var folder = Folder(manifest);
+            var present = NodeLockfiles.Where(entry => known.Contains(folder.Length == 0 ? entry.Lockfile : folder + "/" + entry.Lockfile)).ToList();
+            var managers = present.Select(entry => entry.Manager).Distinct().ToList();
+            if (managers.Count == 0)
             {
-                case "package-lock.json" or "npm-shrinkwrap.json" when known.Contains(manifest):
-                    yield return new Job(manifest, folder, "npm", "npm audit", ["audit", "--json"], NpmAuditJson.Parse);
-                    break;
-                case "pnpm-lock.yaml" when known.Contains(manifest):
-                    yield return new Job(manifest, folder, "pnpm", "pnpm audit", ["audit", "--json"], AdvisoryMapJson.Parse);
-                    break;
-                case "yarn.lock" when known.Contains(manifest):
-                    yield return new Job(manifest, folder, "yarn", "yarn audit", ["audit", "--json"], YarnAuditJson.Parse);
-                    break;
+                continue;
             }
+
+            var named = managers.Count > 1 ? PackageManager(repoRoot, manifest) : null;
+            var manager = named is not null && managers.Contains(named) ? named : managers[0];
+            var warning = managers.Count > 1
+                ? $"{manifest}: found {Names(present.Select(entry => entry.Lockfile))}; audited with {manager}, "
+                  + (manager == named ? "as packageManager names it; delete the lockfile you no longer use" : "the first of pnpm, yarn and npm; delete the lockfile you no longer use or set packageManager")
+                : null;
+            yield return manager switch
+            {
+                "pnpm" => new Job(manifest, folder, "pnpm", "pnpm audit", ["audit", "--json"], AdvisoryMapJson.Parse, warning),
+                "yarn" => new Job(manifest, folder, "yarn", "yarn audit", ["audit", "--json"], YarnAuditJson.Parse, warning),
+                _ => new Job(manifest, folder, "npm", "npm audit", ["audit", "--json"], NpmAuditJson.Parse, warning),
+            };
         }
 
         foreach (var solution in Solutions(normalized))
@@ -121,6 +141,26 @@ public sealed class DependencyAuditor : IDependencyAuditor
         return solutions.Count > 0
             ? solutions
             : paths.Where(path => path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>The <c>packageManager</c> field's tool name, such as <c>pnpm</c> for <c>pnpm@9.1.0</c>, or null when the manifest cannot be read or has none.</summary>
+    private static string? PackageManager(string repoRoot, string manifest)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(repoRoot, manifest)));
+            return AuditOutput.Text(document.RootElement, "packageManager")?.Split('@')[0].Trim();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string Names(IEnumerable<string> names)
+    {
+        var sorted = names.Order(StringComparer.Ordinal).ToList();
+        return string.Join(", ", sorted[..^1]) + " and " + sorted[^1];
     }
 
     private static string Folder(string path)
@@ -173,5 +213,6 @@ public sealed class DependencyAuditor : IDependencyAuditor
         string Executable,
         string Tool,
         IReadOnlyList<string> Arguments,
-        Func<string, IReadOnlyList<VulnerablePackage>> Parse);
+        Func<string, IReadOnlyList<VulnerablePackage>> Parse,
+        string? Warning = null);
 }
