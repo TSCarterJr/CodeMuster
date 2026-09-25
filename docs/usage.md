@@ -49,12 +49,20 @@ Standalone `skill install --for opencode` and `skill install --for codex --globa
 
 Hooks are registered in `.claude/settings.json`, `.codex/hooks.json`, or `.gemini/settings.json`.
 Reload the agent and complete its hook trust/approval prompt when required. They invoke
-`codemuster hook` after supported edit and shell tools. This records a tracked-content fingerprint
-in worktree-specific Git metadata, without writing the ledger or adding files to a worker patch.
-Status/report compare tracked content with the last completed scan and warn about changes;
-`scan` acknowledges the content it started with. Read-only commands do not invalidate coverage.
-An edit during a scan remains detectable. Untracked files remain outside scan coverage until
-tracked. Hooks do not trigger model calls, run scans, or automatically close findings.
+`codemuster hook` after supported edit and shell tools, including Claude Code's PowerShell tool.
+This records a tracked-content fingerprint in worktree-specific Git metadata, without writing the
+ledger or adding files to a worker patch. A hook that cannot record it prints a warning and still
+exits 0, so it never fails the agent's tool call. Rerunning `init` updates an existing CodeMuster
+hook's matcher and timeout in place and leaves other hooks alone.
+
+`status`, `report`, `fix` and `verify` compare the tracked files scan reviews with the last
+completed scan and name what changed, for example
+`web/lib/index.ts changed since the last scan; run codemuster scan to refresh coverage`.
+`scan` acknowledges the content it started with. Read-only commands, staging or committing
+unchanged content, excluded files, and untracked files (including `report --out audit.md`, nested
+repositories and worktrees) do not count. An edit during a scan remains detectable. Untracked
+files remain outside scan coverage until tracked. Hooks do not trigger model calls, run scans, or
+automatically close findings.
 
 Agent configuration references: [Claude hooks](https://code.claude.com/docs/en/hooks),
 [Codex hooks](https://learn.chatgpt.com/docs/hooks),

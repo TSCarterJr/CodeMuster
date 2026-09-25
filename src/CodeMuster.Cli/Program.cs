@@ -112,15 +112,13 @@ public static class Program
             return await DoctorAsync(fileSystem, cancellationToken);
         }
 
-        var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
-        var tree = new GitSourceTree(repoRoot);
-        var changes = new GitChangeTracker(repoRoot);
         if (command.Verb == "hook")
         {
-            if (fileSystem.FileExists(ConfigLoader.PathFor(repoRoot))) await changes.NotifyAsync(cancellationToken);
-            Console.WriteLine("{}");
-            return 0;
+            return await HookAsync(fileSystem, cancellationToken);
         }
+
+        var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
+        var tree = new GitSourceTree(repoRoot);
         if (command.Verb == "init")
         {
             return await InitAsync(command, repoRoot, fileSystem, tree, cancellationToken);
@@ -133,9 +131,10 @@ public static class Program
             return await IntelligentConfigAsync(command, repoRoot, fileSystem, tree, cancellationToken);
         using var ledger = await SqliteLedger.OpenAsync(Path.Combine(repoRoot, ".codemuster", "ledger.db"), cancellationToken);
         var clock = new SystemClock();
-        if (command.Verb is "status" or "report" or "fix" or "verify" && await changes.HasChangesAsync(cancellationToken))
+        var changes = ChangeTracker(repoRoot, config);
+        if (command.Verb is "status" or "report" or "fix" or "verify" && await changes.ChangesAsync(cancellationToken) is { Detected: true } changed)
         {
-            Console.Error.WriteLine("changes reported by an agent hook since the last scan; run codemuster scan to refresh coverage");
+            Console.Error.WriteLine(ChangeWarning(changed.Paths));
         }
 
         switch (command.Verb)
@@ -301,6 +300,41 @@ public static class Program
         var report = await new Doctor(new GitSourceTree(repoRoot), Mappers(), new SystemClock(), repoRoot, config, new ProgressWriter(Console.Error)).RunAsync(cancellationToken);
         Console.WriteLine(report.Render());
         return report.Ready ? 0 : 1;
+    }
+
+    private static async Task<int> HookAsync(PhysicalFileSystem fileSystem, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
+            if (fileSystem.FileExists(ConfigLoader.PathFor(repoRoot)))
+            {
+                var config = await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken);
+                await ChangeTracker(repoRoot, config).NotifyAsync(cancellationToken);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A nonzero exit would fail the agent's tool call, which costs more than one missed notification.
+            Console.Error.WriteLine($"warning: codemuster hook could not record the change: {ex.Message}");
+        }
+
+        Console.WriteLine("{}");
+        return 0;
+    }
+
+    private static GitChangeTracker ChangeTracker(string repoRoot, Config config) =>
+        new(repoRoot, path => config.ExcludedReason(path, linguistGenerated: false) is null);
+
+    private static string ChangeWarning(IReadOnlyList<string> paths)
+    {
+        const string Advice = "run codemuster scan to refresh coverage";
+        return paths.Count switch
+        {
+            0 => $"files changed since the last scan; {Advice}",
+            <= 3 => $"{string.Join(", ", paths)} changed since the last scan; {Advice}",
+            _ => string.Create(CultureInfo.InvariantCulture, $"{paths.Count} files changed since the last scan, including {string.Join(", ", paths.Take(3))}; {Advice}"),
+        };
     }
 
     private static IReadOnlyList<ICodeMapper> Mappers() => [new RoslynMapper(), new TypeScriptMapper(() => ExecutableResolver.Resolve("node"))];

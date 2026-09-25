@@ -192,7 +192,8 @@ public static class HelpText
 
             Used by installed agent hooks after editing or shell tools. Records a tracked-content
             notification in Git metadata without changing the ledger or working tree. Status and
-            report warn when content differs from the last completed scan. Prints empty JSON.
+            report name the reviewed files that differ from the last completed scan. Prints empty
+            JSON and exits 0, with a warning when the notification cannot be recorded.
             """,
         "report" => """
             usage: codemuster report [--out <file>] [--include-refuted]

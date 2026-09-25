@@ -46,8 +46,8 @@ public class InitAgentTests
         var before = repo.Git("status", "--porcelain");
         Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "hook")).ExitCode);
         Assert.Equal(before, repo.Git("status", "--porcelain"));
-        Assert.Contains("changes reported", (await CliProcess.RunAsync(repo.Root, "status")).Stderr);
+        Assert.Contains("files changed since the last scan; run codemuster scan to refresh coverage", (await CliProcess.RunAsync(repo.Root, "status")).Stderr);
         Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file")).ExitCode);
-        Assert.DoesNotContain("changes reported", (await CliProcess.RunAsync(repo.Root, "status")).Stderr);
+        Assert.DoesNotContain("since the last scan", (await CliProcess.RunAsync(repo.Root, "status")).Stderr);
     }
 }
