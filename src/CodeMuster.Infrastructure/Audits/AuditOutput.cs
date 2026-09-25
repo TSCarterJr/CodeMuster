@@ -11,7 +11,36 @@ internal static class AuditOutput
     public static InvalidOperationException Failed(params string?[] reasons) =>
         new((FirstText(reasons) ?? "it reported an error without a message").Split('\n')[0].Trim());
 
-    public static InvalidOperationException NoReport() => new("no audit report in its output");
+    public static InvalidOperationException NoReport() => new(NoReportMessage);
+
+    public const string NoReportMessage = "no audit report in its output";
+
+    /// <summary>The first line of the tool's own complaint on stderr: the data of a yarn <c>{"type":"error"}</c> line, else the first non-blank line.</summary>
+    public static string? StderrReason(string error)
+    {
+        var lines = error.Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0).ToList();
+        foreach (var line in lines.Where(line => line.StartsWith('{')))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(line);
+                if (Text(document.RootElement, "type") == "error" && Text(document.RootElement, "data") is { } data)
+                {
+                    return FirstLine(data);
+                }
+            }
+            catch (JsonException)
+            {
+                // Not one of yarn's JSON lines; the first plain line below stands in for it.
+            }
+        }
+
+        return lines.Count == 0 ? null : lines[0];
+    }
+
+    /// <summary>The first non-blank line of <paramref name="text"/>, trimmed, or null when there is none.</summary>
+    public static string? FirstLine(string text) =>
+        text.Split('\n').Select(line => line.Trim()).FirstOrDefault(line => line.Length > 0);
 
     /// <summary>The human-readable part of an <c>error</c> value, which tools write as a string or as an object.</summary>
     public static string? ErrorText(JsonElement error) => error.ValueKind == JsonValueKind.String

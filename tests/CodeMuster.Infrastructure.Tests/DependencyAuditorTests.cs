@@ -103,6 +103,41 @@ public class DependencyAuditorTests
     }
 
     [Fact]
+    public async Task Plain_text_instead_of_a_json_report_is_quoted_by_its_first_line()
+    {
+        // .NET 10's dotnet list package writes its restore errors to stdout as text when a NuGet source cannot be reached.
+        var auditor = new DependencyAuditor((_, _, _, _) => Task.FromResult(new ProcessResult(
+            1,
+            "error: Unable to load the service index for source https://127.0.0.1:9/v3/index.json.\nerror: No connection could be made because the target machine actively refused it. (127.0.0.1:9)\n",
+            "")));
+
+        var audit = await auditor.AuditAsync(Root, ["App/App.csproj"], null, CancellationToken.None);
+
+        Assert.Empty(audit.Manifests);
+        Assert.Equal(
+            "App/App.csproj: dotnet list package gave no usable report (error: Unable to load the service index for source https://127.0.0.1:9/v3/index.json.); any earlier findings are kept, run it by hand to see why",
+            Assert.Single(audit.Diagnostics));
+    }
+
+    [Fact]
+    public async Task A_yarn_classic_error_on_stderr_is_the_reason_when_stdout_holds_no_report()
+    {
+        var auditor = new DependencyAuditor((_, arguments, _, _) => Task.FromResult(arguments[0] == "--version"
+            ? new ProcessResult(0, "1.22.22", "")
+            : new ProcessResult(
+                1,
+                Fixture("yarn-offline.json"),
+                "{\"type\":\"error\",\"data\":\"Error: https://registry.yarnpkg.com/-/npm/v1/security/audits: tunneling socket could not be established, cause=connect ECONNREFUSED 127.0.0.1:9\\n    at ClientRequest.onError\"}\n")));
+
+        var audit = await auditor.AuditAsync(Root, ["package.json", "yarn.lock"], null, CancellationToken.None);
+
+        Assert.Empty(audit.Manifests);
+        Assert.Equal(
+            "package.json: yarn audit gave no usable report (Error: https://registry.yarnpkg.com/-/npm/v1/security/audits: tunneling socket could not be established, cause=connect ECONNREFUSED 127.0.0.1:9); any earlier findings are kept, run it by hand to see why",
+            Assert.Single(audit.Diagnostics));
+    }
+
+    [Fact]
     public async Task An_error_envelope_becomes_a_diagnostic_rather_than_a_clean_manifest()
     {
         _replies["npm"] = (1, Fixture("npm-offline.json"));

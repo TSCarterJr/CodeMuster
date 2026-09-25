@@ -80,7 +80,11 @@ public sealed class DependencyAuditor : IDependencyAuditor
             }
             catch (Exception ex) when (ex is JsonException or InvalidOperationException)
             {
-                diagnostics.Add($"{job.Manifest}: {job.Tool} gave no usable report ({ex.Message}); any earlier findings are kept, run it by hand to see why");
+                // The tool's own words beat the parser's: text on stdout (dotnet with an unreachable source) or an error on stderr (yarn classic offline).
+                var reason = ex is JsonException ? AuditOutput.FirstLine(result.Output)
+                    : ex.Message == AuditOutput.NoReportMessage ? AuditOutput.StderrReason(result.Error)
+                    : null;
+                diagnostics.Add($"{job.Manifest}: {job.Tool} gave no usable report ({reason ?? ex.Message}); any earlier findings are kept, run it by hand to see why");
             }
         }
 
