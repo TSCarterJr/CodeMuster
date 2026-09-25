@@ -164,6 +164,41 @@ public class DependencyAuditorTests
     }
 
     [Fact]
+    public async Task A_preferred_tool_that_is_not_installed_falls_back_to_the_next_lockfile_and_says_so()
+    {
+        var calls = new List<string>();
+        var auditor = new DependencyAuditor((file, _, _, _) =>
+        {
+            calls.Add(file);
+            return file == "npm"
+                ? Task.FromResult(new ProcessResult(1, Fixture("npm-audit.json"), ""))
+                : throw new InvalidOperationException($"'{file}' was not found on PATH. Install {file} and add it to PATH.");
+        });
+
+        var audit = await auditor.AuditAsync(Root, ["web/package.json", "web/package-lock.json", "web/yarn.lock", "web/pnpm-lock.yaml"], null, CancellationToken.None);
+
+        var manifest = Assert.Single(audit.Manifests);
+        Assert.Equal(("web/package.json", "npm audit"), (manifest.Manifest, manifest.Tool));
+        Assert.Equal(["pnpm", "yarn", "npm"], calls);
+        Assert.Equal(
+            "web/package.json: found package-lock.json, pnpm-lock.yaml and yarn.lock; audited with npm because pnpm and yarn could not run; delete the lockfile you no longer use or set packageManager",
+            Assert.Single(audit.Diagnostics));
+    }
+
+    [Fact]
+    public async Task When_no_tool_for_the_folders_lockfiles_can_run_the_warning_names_each_and_the_lockfiles()
+    {
+        var auditor = new DependencyAuditor((file, _, _, _) => throw new InvalidOperationException($"'{file}' was not found on PATH."));
+
+        var audit = await auditor.AuditAsync(Root, ["package.json", "package-lock.json", "yarn.lock"], null, CancellationToken.None);
+
+        Assert.Empty(audit.Manifests);
+        Assert.Equal(
+            "package.json: found package-lock.json and yarn.lock, but no tool for them could run (yarn: 'yarn' was not found on PATH.; npm: 'npm' was not found on PATH.); install one of them or delete the lockfile you no longer use",
+            Assert.Single(audit.Diagnostics));
+    }
+
+    [Fact]
     public async Task An_error_envelope_becomes_a_diagnostic_rather_than_a_clean_manifest()
     {
         _replies["npm"] = (1, Fixture("npm-offline.json"));

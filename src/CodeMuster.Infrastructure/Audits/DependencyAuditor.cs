@@ -40,31 +40,43 @@ public sealed class DependencyAuditor : IDependencyAuditor
     {
         var manifests = new List<ManifestVulnerabilities>();
         var diagnostics = new List<string>();
-        foreach (var candidate in Jobs(repoRoot, paths))
+        foreach (var choice in Jobs(repoRoot, paths))
         {
-            var job = candidate;
-            if (job.Warning is { } warning)
+            // A folder with several lockfiles tries its tools in preference order, so a preferred tool that is not installed still leaves an audit.
+            Job? job = null;
+            var result = new ProcessResult(0, "", "");
+            var failures = new List<(string Tool, string Reason)>();
+            foreach (var candidate in choice.Candidates)
+            {
+                progress?.Report($"auditing {candidate.Manifest} with {candidate.Executable}");
+                var directory = Path.GetFullPath(Path.Combine(repoRoot, candidate.WorkingDirectory));
+                try
+                {
+                    var attempt = candidate;
+                    if (attempt.Executable == "yarn")
+                    {
+                        var version = await _run("yarn", ["--version"], directory, cancellationToken);
+                        if (version.ExitCode != 0 || !Version.TryParse(version.Output.Trim(), out var parsed))
+                            throw new InvalidOperationException("could not determine Yarn version: " + version.Output + version.Error);
+                        if (parsed.Major >= 2) attempt = attempt with { Tool = "yarn npm audit", Arguments = ["npm", "audit", "--all", "--recursive", "--json"] };
+                    }
+                    result = await _run(attempt.Executable, attempt.Arguments, directory, cancellationToken).ConfigureAwait(false);
+                    job = attempt;
+                    break;
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    failures.Add((candidate.Executable, ex.Message));
+                }
+            }
+
+            if (choice.Warning(job?.Executable, failures) is { } warning)
             {
                 diagnostics.Add(warning);
             }
 
-            progress?.Report($"auditing {job.Manifest} with {job.Executable}");
-            var directory = Path.GetFullPath(Path.Combine(repoRoot, job.WorkingDirectory));
-            ProcessResult result;
-            try
+            if (job is null)
             {
-                if (job.Executable == "yarn")
-                {
-                    var version = await _run("yarn", ["--version"], directory, cancellationToken);
-                    if (version.ExitCode != 0 || !Version.TryParse(version.Output.Trim(), out var parsed))
-                        throw new InvalidOperationException("could not determine Yarn version: " + version.Output + version.Error);
-                    if (parsed.Major >= 2) job = job with { Tool = "yarn npm audit", Arguments = ["npm", "audit", "--all", "--recursive", "--json"] };
-                }
-                result = await _run(job.Executable, job.Arguments, directory, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-            {
-                diagnostics.Add($"{job.Manifest}: {job.Executable} could not run ({ex.Message}); install {job.Executable} or exclude that folder");
                 continue;
             }
 
@@ -103,7 +115,7 @@ public sealed class DependencyAuditor : IDependencyAuditor
             ? $"install {job.Executable} or exclude that folder"
             : result.Error.Trim() is { Length: > 0 } error ? error : "run it by hand to see why";
 
-    private static IEnumerable<Job> Jobs(string repoRoot, IReadOnlyList<string> paths)
+    private static IEnumerable<Choice> Jobs(string repoRoot, IReadOnlyList<string> paths)
     {
         var normalized = paths.Select(RepoPath.Normalize).ToList();
         var known = normalized.ToHashSet(StringComparer.Ordinal);
@@ -118,28 +130,28 @@ public sealed class DependencyAuditor : IDependencyAuditor
             }
 
             var named = managers.Count > 1 ? PackageManager(repoRoot, manifest) : null;
-            var manager = named is not null && managers.Contains(named) ? named : managers[0];
-            var warning = managers.Count > 1
-                ? $"{manifest}: found {Names(present.Select(entry => entry.Lockfile))}; audited with {manager}, "
-                  + (manager == named ? "as packageManager names it; delete the lockfile you no longer use" : "the first of pnpm, yarn and npm; delete the lockfile you no longer use or set packageManager")
-                : null;
-            yield return manager switch
+            var ordered = named is not null && managers.Contains(named) ? [named, .. managers.Where(manager => manager != named)] : managers;
+            var candidates = ordered.Select(manager => manager switch
             {
-                "pnpm" => new Job(manifest, folder, "pnpm", "pnpm audit", ["audit", "--json"], AdvisoryMapJson.Parse, warning),
-                "yarn" => new Job(manifest, folder, "yarn", "yarn audit", ["audit", "--json"], YarnAuditJson.Parse, warning),
-                _ => new Job(manifest, folder, "npm", "npm audit", ["audit", "--json"], NpmAuditJson.Parse, warning),
-            };
+                "pnpm" => new Job(manifest, folder, "pnpm", "pnpm audit", ["audit", "--json"], AdvisoryMapJson.Parse),
+                "yarn" => new Job(manifest, folder, "yarn", "yarn audit", ["audit", "--json"], YarnAuditJson.Parse),
+                _ => new Job(manifest, folder, "npm", "npm audit", ["audit", "--json"], NpmAuditJson.Parse),
+            }).ToList();
+            yield return new Choice(candidates, [.. present.Select(entry => entry.Lockfile)], named);
         }
 
         foreach (var solution in Solutions(normalized))
         {
-            yield return new Job(
-                solution,
-                "",
-                "dotnet",
-                "dotnet list package",
-                ["list", solution, "package", "--vulnerable", "--include-transitive", "--format", "json"],
-                output => DotnetAuditJson.Parse(output).Select(entry => entry.Package).ToList());
+            yield return new Choice(
+                [new Job(
+                    solution,
+                    "",
+                    "dotnet",
+                    "dotnet list package",
+                    ["list", solution, "package", "--vulnerable", "--include-transitive", "--format", "json"],
+                    output => DotnetAuditJson.Parse(output).Select(entry => entry.Package).ToList())],
+                [],
+                null);
         }
     }
 
@@ -224,6 +236,36 @@ public sealed class DependencyAuditor : IDependencyAuditor
         string Executable,
         string Tool,
         IReadOnlyList<string> Arguments,
-        Func<string, IReadOnlyList<VulnerablePackage>> Parse,
-        string? Warning = null);
+        Func<string, IReadOnlyList<VulnerablePackage>> Parse);
+
+    /// <summary>The jobs that can audit one manifest, in the order to try them; several only for a folder with lockfiles of several tools.</summary>
+    private sealed record Choice(IReadOnlyList<Job> Candidates, IReadOnlyList<string> Lockfiles, string? Named)
+    {
+        /// <summary>What to say about the tool that ran (null when none could), or nothing for a manifest with one candidate that ran.</summary>
+        public string? Warning(string? ran, IReadOnlyList<(string Tool, string Reason)> failures)
+        {
+            var manifest = Candidates[0].Manifest;
+            if (ran is null && Candidates.Count == 1)
+            {
+                var (tool, reason) = failures[0];
+                return $"{manifest}: {tool} could not run ({reason}); install {tool} or exclude that folder";
+            }
+
+            if (ran is null)
+            {
+                var reasons = string.Join("; ", failures.Select(failure => $"{failure.Tool}: {failure.Reason}"));
+                return $"{manifest}: found {Names(Lockfiles)}, but no tool for them could run ({reasons}); install one of them or delete the lockfile you no longer use";
+            }
+
+            if (Candidates.Count == 1)
+            {
+                return null;
+            }
+
+            var why = failures.Count > 0 ? $" because {Names(failures.Select(failure => failure.Tool))} could not run"
+                : ran == Named ? ", as packageManager names it"
+                : ", the first of pnpm, yarn and npm";
+            return $"{manifest}: found {Names(Lockfiles)}; audited with {ran}{why}; delete the lockfile you no longer use" + (ran == Named ? "" : " or set packageManager");
+        }
+    }
 }
