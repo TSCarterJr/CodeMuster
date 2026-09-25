@@ -169,7 +169,7 @@ public static class Program
             case "next":
                 return await NextAsync(command, ledger, tree, config, cancellationToken);
             case "done":
-                var response = await File.ReadAllTextAsync(command.Options["findings"], cancellationToken);
+                var response = await ReadOptionFileAsync("findings", command.Options["findings"], cancellationToken);
                 var done = await new Done(ledger, clock, config, fileSystem: fileSystem, repoRoot: repoRoot, tree: tree, hasher: new GitBlobHasher(repoRoot)).RunAsync(command.Positionals[0], command.Options["fingerprint"], response, cancellationToken);
                 Console.WriteLine(done.Message);
                 return done.Outcome == DoneOutcome.Recorded ? 0 : 1;
@@ -188,7 +188,7 @@ public static class Program
                 var markdown = await new Report(ledger, config, command.Flags.Contains("include-refuted")).RunAsync(cancellationToken);
                 if (command.Options.TryGetValue("out", out var reportPath))
                 {
-                    await File.WriteAllTextAsync(reportPath, markdown, cancellationToken);
+                    await WriteOptionFileAsync("out", reportPath, markdown, cancellationToken);
                     Console.WriteLine($"wrote report to {reportPath}");
                 }
                 else
@@ -397,7 +397,7 @@ public static class Program
         var text = string.Join('\n', packs.Select(pack => pack.Markdown));
         if (command.Options.TryGetValue("out", out var outPath))
         {
-            await File.WriteAllTextAsync(outPath, text, cancellationToken);
+            await WriteOptionFileAsync("out", outPath, text, cancellationToken);
             Console.WriteLine($"wrote {packs.Count} pack(s) to {outPath}");
         }
         else
@@ -518,6 +518,38 @@ public static class Program
         });
         return 0;
     }
+
+    private static async Task<string> ReadOptionFileAsync(string option, string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await File.ReadAllTextAsync(path, cancellationToken);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new ArgumentException(FileProblem(option, path, ex), ex);
+        }
+    }
+
+    private static async Task WriteOptionFileAsync(string option, string path, string text, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await File.WriteAllTextAsync(path, text, cancellationToken);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new ArgumentException(FileProblem(option, path, ex), ex);
+        }
+    }
+
+    // Names the option and the path as typed instead of .NET's text with the absolute path; the wording differs between Windows and Unix.
+    private static string FileProblem(string option, string path, Exception ex) =>
+        Directory.Exists(path) ? $"--{option} {path} is a folder; name a file"
+        : ex is FileNotFoundException ? $"--{option} {path}: no such file"
+        : ex is DirectoryNotFoundException ? $"--{option} {path}: folder {Path.GetDirectoryName(path)} does not exist"
+        : ex is UnauthorizedAccessException ? $"--{option} {path}: permission denied"
+        : $"--{option} {path}: {ex.Message}";
 
     private static string SetupLine(string repoRoot, AgentSetupResult result)
     {

@@ -126,10 +126,56 @@ public class UsageTests
         Assert.Contains("no agent skills selected", init.Stdout);
 
         var done = await CliProcess.RunAsync(repo.Root, "done", "u", "--fingerprint=f", "--findings=missing.json");
-        Assert.Equal(1, done.ExitCode);
+        Assert.Equal(2, done.ExitCode);
         var error = Assert.Single(Lines(done.Stderr));
         Assert.StartsWith("error: ", error);
         Assert.Contains("missing.json", error);
+    }
+
+    [Fact]
+    public async Task FileArguments_ThatCannotBeReadOrWritten_NameTheOption_AndExit2()
+    {
+        using var repo = TempRepo.FromFixture("mixed-repo");
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "init", "--yes", "--for=none")).ExitCode);
+        repo.WithoutVulnerabilityScan();
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file")).ExitCode);
+
+        foreach (var (arguments, expected) in new (string[], string)[]
+        {
+            (["report", "--out", "nodir/x.md"], "error: --out nodir/x.md: folder nodir does not exist"),
+            (["next", "--out", "nodir/p.md"], "error: --out nodir/p.md: folder nodir does not exist"),
+            (["report", "--out", "web"], "error: --out web is a folder; name a file"),
+            (["done", "u", "--fingerprint", "f", "--findings", "missing.json"], "error: --findings missing.json: no such file"),
+            (["done", "u", "--fingerprint", "f", "--findings", "web"], "error: --findings web is a folder; name a file"),
+        })
+        {
+            var result = await CliProcess.RunAsync(repo.Root, arguments);
+
+            Assert.Equal(2, result.ExitCode);
+            Assert.Equal([expected], Lines(result.Stderr));
+        }
+    }
+
+    [Fact]
+    public async Task Outside_a_git_repository_the_error_says_so_in_plain_words()
+    {
+        var folder = Directory.CreateTempSubdirectory("codemuster-outside-");
+        try
+        {
+            var environment = new Dictionary<string, string> { ["GIT_CEILING_DIRECTORIES"] = folder.Parent!.FullName };
+
+            var status = await CliProcess.RunAsync(folder.FullName, environment, "status");
+
+            Assert.Equal(1, status.ExitCode);
+            var error = Assert.Single(Lines(status.Stderr));
+            Assert.StartsWith("error: ", error);
+            Assert.EndsWith(" is not a git repository or inside one; run codemuster from a repository, or create one with git init", error);
+            Assert.DoesNotContain("rev-parse", error);
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
     }
 
     private static string[] Lines(string output) => output.ReplaceLineEndings("\n").TrimEnd('\n').Split('\n');

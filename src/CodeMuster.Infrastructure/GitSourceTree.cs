@@ -6,8 +6,13 @@ public sealed class GitSourceTree(string repoRoot) : ISourceTree
 {
     public static async Task<string> FindTopLevelAsync(string directory, CancellationToken cancellationToken)
     {
-        var output = await GitProcess.RunAsync(directory, ["rev-parse", "--show-toplevel"], null, cancellationToken).ConfigureAwait(false);
-        return Path.GetFullPath(output.Trim());
+        string[] arguments = ["rev-parse", "--show-toplevel"];
+        // English messages, so "not a git repository" can be told apart from other failures such as dubious ownership.
+        var (exitCode, output, error) = await GitProcess.RunAllowingFailureAsync(directory, arguments, null, cancellationToken, new Dictionary<string, string> { ["LC_ALL"] = "C" }).ConfigureAwait(false);
+        return exitCode == 0 ? Path.GetFullPath(output.Trim())
+            : error.Contains("not a git repository", StringComparison.Ordinal)
+                ? throw new InvalidOperationException($"{directory} is not a git repository or inside one; run codemuster from a repository, or create one with git init")
+                : throw GitProcess.Failure(arguments, exitCode, error);
     }
 
     public async Task<string> HeadCommitAsync(CancellationToken cancellationToken)
