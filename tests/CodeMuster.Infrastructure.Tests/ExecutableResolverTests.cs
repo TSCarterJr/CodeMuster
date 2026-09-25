@@ -137,6 +137,39 @@ public sealed class ExecutableResolverTests : IDisposable
     }
 
     [Fact]
+    public void A_dangling_link_earlier_on_path_is_skipped_for_the_real_program_after_it()
+    {
+        // A stale link left by an uninstall (Homebrew, nvm, volta) sits ahead of the real program, as a shell's search would skip it.
+        var stale = Path.Combine(_dir.Root, "stale");
+        var real = Path.Combine(_dir.Root, "real");
+        Directory.CreateDirectory(stale);
+        Directory.CreateDirectory(real);
+        var name = OperatingSystem.IsWindows() ? "tool.exe" : "tool";
+        var linked = TryLink(Path.Combine(stale, name), Path.Combine(_dir.Root, "uninstalled", name));
+        var program = Path.Combine(real, name);
+        WriteExecutable(program);
+
+        var resolved = ExecutableResolver.Resolve("tool", [stale, real], [".exe"], OperatingSystem.IsWindows());
+
+        // Windows needs developer mode or elevation to make the link; without it the stale directory is simply empty.
+        Assert.True(linked || OperatingSystem.IsWindows());
+        Assert.Equal(program, resolved);
+    }
+
+    private static bool TryLink(string path, string target)
+    {
+        try
+        {
+            File.CreateSymbolicLink(path, target);
+            return true;
+        }
+        catch (Exception error) when (OperatingSystem.IsWindows() && error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    [Fact]
     public void Missing_command_throws_naming_the_command_and_an_install_hint()
     {
         var ex = Assert.Throws<InvalidOperationException>(() => ExecutableResolver.Resolve("codex", [_dir.Root], WindowsExtensions, isWindows: true));

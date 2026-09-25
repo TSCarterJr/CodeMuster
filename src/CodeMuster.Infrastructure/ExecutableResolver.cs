@@ -24,7 +24,7 @@ public static class ExecutableResolver
             foreach (var fileName in fileNames)
             {
                 var candidate = Path.Combine(directory, fileName);
-                if (File.Exists(candidate) && IsExecutable(candidate))
+                if (IsRunnable(candidate))
                 {
                     return candidate;
                 }
@@ -34,9 +34,26 @@ public static class ExecutableResolver
         throw new InvalidOperationException($"'{name}' was not found on PATH. {InstallHint(name)}");
     }
 
-    private static bool IsExecutable(string path) =>
-        OperatingSystem.IsWindows()
-        || (File.GetUnixFileMode(path) & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
+    // File.Exists is true for a dangling link (on Unix it falls back to lstat), and GetUnixFileMode then throws; a shell skips such an
+    // entry for the next PATH directory, and so does this.
+    private static bool IsRunnable(string path)
+    {
+        try
+        {
+            var file = new FileInfo(path);
+            if (!file.Exists || file.LinkTarget is not null && file.ResolveLinkTarget(returnFinalTarget: true) is not { Exists: true })
+            {
+                return false;
+            }
+
+            return OperatingSystem.IsWindows()
+                || (File.GetUnixFileMode(path) & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     private static string InstallHint(string name) => name switch
     {
