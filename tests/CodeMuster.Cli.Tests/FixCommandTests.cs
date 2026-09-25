@@ -159,6 +159,25 @@ public class FixCommandTests
     }
 
     [Fact]
+    public async Task ATestCommandThatCannotStart_StopsBeforeThePreview_EvenWithAllowFailingTests()
+    {
+        using var repo = await AuditedAsync();
+        repo.WithTestCommand("codemuster-no-such-test-tool", "test");
+        var head = repo.Git("rev-parse", "HEAD");
+
+        var fix = await CliProcess.RunAsync(repo.Root, "fix", "--agent", "fake", "--allow-failing-tests");
+
+        Assert.Equal(1, fix.ExitCode);
+        Assert.DoesNotContain("Running up to", fix.Stderr);
+        Assert.DoesNotContain("(attempt ", fix.Stdout);
+        Assert.Contains("test_command cannot start, so no agent was called", fix.Stderr);
+        Assert.Contains("'codemuster-no-such-test-tool' was not found on PATH", fix.Stderr);
+        Assert.DoesNotContain("--allow-failing-tests", fix.Stderr);
+        Assert.Equal(head, repo.Git("rev-parse", "HEAD"));
+        Assert.Equal("", repo.Git("status", "--porcelain", "--untracked-files=no"));
+    }
+
+    [Fact]
     public async Task AFailingBaseline_StopsBeforeAnyAgentCall_PrintsItsLastLines_AndRestoresTheStash()
     {
         using var repo = await AuditedAsync();

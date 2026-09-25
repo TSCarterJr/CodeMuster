@@ -230,6 +230,19 @@ public static class Program
 
     private static async Task<int> FixAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, CancellationToken cancellationToken)
     {
+        if (config.TestCommand.Count > 0)
+        {
+            // Checked before the preview and even with --allow-failing-tests: every repair would fail to validate, after a paid agent call.
+            try
+            {
+                ExecutableResolver.Resolve(config.TestCommand[0]);
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new InvalidOperationException($"test_command cannot start, so no agent was called: {ex.Message} Fix test_command in .codemuster/config.json; codemuster validate runs it.", ex);
+            }
+        }
+
         var identity = await ResolveAgentAsync(command, repoRoot, cancellationToken);
         var adapter = AgentAdapters.Create(identity.Agent, null, identity.Model, identity.Effort, write: true, workingDirectory: repoRoot);
         var workspace = new GitWorkspace(repoRoot);

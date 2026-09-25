@@ -472,6 +472,29 @@ public class FixRunTests
         Assert.Contains("addressed findings but no change remained after validation; edit it or decline each with a reason", adapter.Packs[1]);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ABaselineThatCannotStartOrChangesTrackedFiles_DoesNotOfferToSkipTheCheck(bool cannotStart)
+    {
+        await SeedAsync("src/a.cs", 10);
+        tests.OnRun = cannotStart
+            ? () => throw new InvalidOperationException("'x' was not found on PATH.")
+            : () =>
+            {
+                workspace.Clean = false;
+                workspace.Changed.Add("web/lib/api.ts");
+            };
+        var adapter = Fixer(_ => throw new InvalidOperationException("no agent call expected"));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(adapter, runner: tests));
+
+        Assert.Empty(adapter.Packs);
+        Assert.Contains("no agent was called", error.Message);
+        Assert.Contains(cannotStart ? "was not found on PATH" : "web/lib/api.ts", error.Message);
+        Assert.DoesNotContain("--allow-failing-tests", error.Message);
+    }
+
     [Fact]
     public async Task AFailingBaseline_StopsBeforeAnyAgentCall_WithItsLastLines_AndRestoresTheStash()
     {

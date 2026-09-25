@@ -299,8 +299,9 @@ Choose a command that terminates, returns nonzero on failure, and covers the aff
 Install its dependencies beforehand. `fix` runs it once on the unmodified tree before any agent
 call: if it fails, its program cannot start, or it changes tracked files, `fix` prints the
 command's last lines, restores any stash, and exits 1 without calling the agent. Fix the suite or
-the command (`codemuster validate` runs it), or pass `--allow-failing-tests` to skip that check for
-a suite that fails there on purpose. After a repair, a failing command rejects the attempt and
+the command (`codemuster validate` runs it). `--allow-failing-tests` skips only that run, for a
+suite that fails there on purpose until the repair lands; a command whose program cannot start
+still stops `fix` before the agent preview. After a repair, a failing command rejects the attempt and
 triggers a retry. Without one, the CLI prints a warning and accepts fixes without running your
 repository's tests.
 

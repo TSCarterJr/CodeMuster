@@ -343,7 +343,10 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
 
     private sealed record ParallelAttempt(FileFixEdit? Edit, string? Error);
 
-    private const string BaselineHint = "Fix the suite or test_command in .codemuster/config.json (codemuster validate runs it), or pass --allow-failing-tests to skip this check.";
+    private const string CommandHint = "Fix test_command in .codemuster/config.json; codemuster validate runs it.";
+
+    // Skipping the check helps only a suite that fails on purpose: a command that cannot start or edits tracked files fails every repair too.
+    private const string FailingHint = "Fix the suite or test_command in .codemuster/config.json (codemuster validate runs it). If the suite is expected to fail until this repair lands, pass --allow-failing-tests.";
 
     // A suite that cannot pass before any repair rejects every repair, so each attempt would be a paid agent call thrown away.
     private static async Task CheckBaselineAsync(ITestRunner tests, IWorkspace repository, IProgress<string>? notes, CancellationToken cancellationToken)
@@ -356,18 +359,18 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            throw new InvalidOperationException($"test_command could not run on the unmodified tree, so no agent was called: {ex.Message}\n{BaselineHint}", ex);
+            throw new InvalidOperationException($"test_command could not run on the unmodified tree, so no agent was called: {ex.Message}\n{CommandHint}", ex);
         }
 
         if (!baseline.Passed)
         {
-            throw new InvalidOperationException($"test_command fails on the unmodified tree, so every repair would be rejected; no agent was called. Its last lines:\n{LastLines(baseline.Output, 20)}\n{BaselineHint}");
+            throw new InvalidOperationException($"test_command fails on the unmodified tree, so every repair would be rejected; no agent was called. Its last lines:\n{LastLines(baseline.Output, 20)}\n{FailingHint}");
         }
 
         if (!await repository.IsCleanAsync(cancellationToken))
         {
             var changed = string.Join(", ", await repository.ChangedPathsAsync(cancellationToken));
-            throw new InvalidOperationException($"test_command changed tracked files on the unmodified tree ({changed}), so it cannot check a repair; no agent was called. Inspect git status and make the command leave tracked files alone, or pass --allow-failing-tests to skip this check.");
+            throw new InvalidOperationException($"test_command changed tracked files on the unmodified tree ({changed}), so it cannot check a repair; no agent was called. Inspect git status and make the command leave tracked files alone.");
         }
     }
 

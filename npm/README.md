@@ -153,7 +153,8 @@ without changing the file is rejected and retried, so every finding `fix` record
 commit. The untracked Impeccable hook cache is excluded from the patch and does not block it.
 Without `test_command`, CodeMuster warns that it is accepting fixes without running your tests.
 With one, `fix` first runs it on the unmodified tree and stops before any agent call, printing
-its last lines, if it fails or cannot start; `--allow-failing-tests` skips that check.
+its last lines, if it fails or cannot start; `--allow-failing-tests` skips that run for a suite
+that fails on purpose, but a command whose program cannot start still stops `fix`.
 
 A file whose whole-file pack exceeds `slice_token_budget` is skipped with its reason, counted in the
 run summary, and left unanalyzed without spending an attempt; the other files are still fixed.
