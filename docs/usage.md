@@ -331,7 +331,9 @@ after recovery; the report labels the current unit status separately. Versions b
 support did not persist every fix failure, and those missing diagnostics cannot be reconstructed.
 
 A finding being verified does not guarantee a worker will produce an acceptable patch. An agent
-error, invalid response, out-of-scope edit, or failing test command can reject an attempt.
+error, invalid response, out-of-scope edit, or failing test command can reject an attempt. So can
+an answer that marks findings addressed while the file is unchanged: the retry is told to edit the
+file or decline each finding with a reason, so every finding `fix` records as fixed has a commit.
 
 ### A file was skipped as too large
 

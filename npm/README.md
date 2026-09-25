@@ -148,9 +148,10 @@ including their staging state. Use `--stash` for unattended consent. Untracked f
 place, and recovery stashes are retained. Avoid editing the checkout during a fix run.
 
 A failed attempt is retried up to `--attempts N` times in total (default three). Extra file edits
-are rejected and reported with a retained worker path. The untracked Impeccable hook cache is
-excluded from the patch and does not block it. Without `test_command`, CodeMuster warns that
-it is accepting fixes without running your tests.
+are rejected and reported with a retained worker path, and an answer that marks findings addressed
+without changing the file is rejected and retried, so every finding `fix` records as fixed has a
+commit. The untracked Impeccable hook cache is excluded from the patch and does not block it.
+Without `test_command`, CodeMuster warns that it is accepting fixes without running your tests.
 
 A file whose whole-file pack exceeds `slice_token_budget` is skipped with its reason, counted in the
 run summary, and left unanalyzed without spending an attempt; the other files are still fixed.

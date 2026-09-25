@@ -427,6 +427,28 @@ public class FixRunTests
         Assert.Equal(FixState.Declined, ledger.Fixes[ids[0]].State);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AddressedFindingsWithoutAChangedFile_AreRejected_AndTheRetryIsToldWhy(bool alsoDeclines)
+    {
+        var ids = await SeedAsync("src/a.cs", 10, 20);
+        var adapter = Fixer(_ => alsoDeclines
+            ? new FixResponse("Fixed one.", [ids[0]], [new DeclinedFix(ids[1], "Not real.")])
+            : new FixResponse("Fixed both.", ids, []), touchesFiles: false);
+
+        var result = await RunAsync(adapter, runner: tests);
+
+        Assert.Equal(2, adapter.Packs.Count);
+        Assert.Contains("addressed findings but the file is unchanged; edit it or decline each with a reason", adapter.Packs[1]);
+        Assert.Equal([UnitIds.Fix("src/a.cs")], result.GaveUp);
+        Assert.Equal((0, 0, 0), (result.Units, result.Fixed, result.Declined));
+        Assert.Empty(workspace.Commits);
+        Assert.Empty(ledger.Fixes);
+        Assert.DoesNotContain("running tests for src/a.cs", notes);
+        Assert.Equal(2, ledger.Analyses.Count(a => !a.Analysis.Succeeded && a.Analysis.Error!.Contains("the file is unchanged", StringComparison.Ordinal)));
+    }
+
     [Fact]
     public async Task AUnitThatKeepsFailing_IsGivenUpOn_AndItsChangesAreRestored()
     {

@@ -262,6 +262,11 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                 return await RejectAsync(pack, $"invalid fix response for {pack.Key}: answer every unresolved confirmed finding in this file exactly once, with reasons");
             }
 
+            if (response.Addressed.Count > 0 && edit.Patch.Length == 0)
+            {
+                return await RejectAsync(pack, $"invalid fix response for {pack.Key}: addressed findings but the file is unchanged; edit it or decline each with a reason");
+            }
+
             var applied = false;
             var recorded = false;
             var preserve = false;

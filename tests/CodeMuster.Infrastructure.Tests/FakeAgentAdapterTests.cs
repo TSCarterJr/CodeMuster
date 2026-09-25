@@ -74,6 +74,50 @@ public class FakeAgentAdapterTests
         Assert.Equal(VerifyResponseJson.Serialize(new VerifyResponse(verdict, "fake verification")), output);
     }
 
+    [Theory]
+    [InlineData("src/Api/Quotes.cs", "class Quotes { }\n")]
+    [InlineData("web/lib/api.ts", "export const api = 1;\n")]
+    [InlineData("web/package.json", "{ \"name\": \"web\" }\n")]
+    public async Task A_fix_pack_edits_its_file_in_the_working_directory_and_addresses_every_target(string key, string original)
+    {
+        using var repo = new TempRepo();
+        repo.WriteFile(key, original);
+        var adapter = AgentAdapters.Create("fake", null, write: true, workingDirectory: repo.Root);
+
+        var response = FixResponseJson.Parse(await adapter.RunAsync(FixPack(key, 7, 9), CancellationToken.None));
+
+        Assert.Equal([7L, 9L], response.Addressed);
+        Assert.Empty(response.Declined);
+        var edited = File.ReadAllText(Path.Combine(repo.Root, key));
+        Assert.StartsWith(original, edited, StringComparison.Ordinal);
+        Assert.NotEqual(original, edited);
+        if (key.EndsWith(".json", StringComparison.Ordinal))
+        {
+            using var stillValid = JsonDocument.Parse(edited);
+        }
+        else
+        {
+            Assert.Contains("// codemuster fake fix", edited, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task A_fix_pack_without_write_access_edits_nothing()
+    {
+        using var repo = new TempRepo();
+        repo.WriteFile("src/A.cs", "class A { }\n");
+        var adapter = AgentAdapters.Create("fake", null, workingDirectory: repo.Root);
+
+        await adapter.RunAsync(FixPack("src/A.cs", 1), CancellationToken.None);
+
+        Assert.Equal("class A { }\n", File.ReadAllText(Path.Combine(repo.Root, "src", "A.cs")));
+    }
+
+    private static string FixPack(string key, params long[] ids) => string.Join('\n',
+        "# CodeMuster unit", "", "- unit: fix:" + key, "- kind: fix", "- key: " + key, "", "## Instructions", "", "Fix them.", "",
+        "## Findings", "", "```json", "[" + string.Join(",", ids.Select(id => "{\"id\":" + id.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}")) + "]", "```", "",
+        "## Files", "", "### " + key + " (csharp)", "", "```csharp", "class A {}", "```", "", "## Response", "");
+
     [Fact]
     public async Task Pack_without_files_throws()
     {

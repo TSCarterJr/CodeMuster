@@ -6,7 +6,7 @@ public static class AgentAdapters
 {
     public static IAgentAdapter Create(string name, string? fakeTemplateJson, string? model = null, string? effort = null, bool write = false, string? workingDirectory = null) => name switch
     {
-        "fake" => new FakeAgentAdapter(fakeTemplateJson ?? FakeAgentAdapter.DefaultTemplate, model, effort),
+        "fake" => new FakeAgentAdapter(fakeTemplateJson ?? FakeAgentAdapter.DefaultTemplate, model, effort, workingDirectory: write ? workingDirectory : null),
         "claude" => new ClaudeAdapter(ExecutableResolver.Resolve("claude"), model, effort, write, workingDirectory),
         "codex" => new CodexAdapter(ExecutableResolver.Resolve("codex"), model, effort, write, workingDirectory),
         "gemini" => new GeminiAdapter(ExecutableResolver.Resolve("gemini"), model, effort, write, workingDirectory),

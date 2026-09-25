@@ -11,9 +11,11 @@ public sealed class FakeAgentAdapter : IAgentAdapter
 
     private readonly AnalysisResponse _template;
     private readonly string? _rawResponse;
+    private readonly string? _workingDirectory;
 
-    public FakeAgentAdapter(string templateJson, string? model = null, string? effort = null, bool rawResponse = false)
+    public FakeAgentAdapter(string templateJson, string? model = null, string? effort = null, bool rawResponse = false, string? workingDirectory = null)
     {
+        _workingDirectory = workingDirectory;
         _rawResponse = rawResponse ? templateJson : null;
         _template = AnalysisResponseJson.Parse(rawResponse ? DefaultTemplate : templateJson);
         Identity = new AgentIdentity("fake", model, effort);
@@ -27,6 +29,14 @@ public sealed class FakeAgentAdapter : IAgentAdapter
         if (_rawResponse is not null) return Task.FromResult(_rawResponse);
         if (FixTargets(pack) is { Count: > 0 } targets)
         {
+            if (_workingDirectory is not null)
+            {
+                var key = pack.Split('\n').Select(line => line.TrimEnd('\r')).First(line => line.StartsWith("- key: ", StringComparison.Ordinal))["- key: ".Length..];
+                // A comment keeps C#, TypeScript and JavaScript building; a newline keeps JSON and project files valid.
+                var edit = Languages.FromPath(key) is Languages.CSharp or Languages.TypeScript or Languages.JavaScript ? "\n// codemuster fake fix\n" : "\n";
+                File.AppendAllText(Path.Combine(_workingDirectory, key), edit);
+            }
+
             return Task.FromResult(FixResponseJson.Serialize(new FixResponse("fake fix", targets, [])));
         }
 
