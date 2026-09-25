@@ -20,9 +20,16 @@ public class InitAgentTests
         Assert.True(File.Exists(Path.Combine(repo.Root, ".codex", "hooks.json")));
         Assert.True(File.Exists(Path.Combine(repo.Root, ".codex", "skills", "codemuster", "SKILL.md")));
         Assert.False(Directory.Exists(Path.Combine(repo.Root, ".gemini")));
-        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "init", "--yes", "--for", "claude,codex")).ExitCode);
+        var lines = first.Stdout.ReplaceLineEndings("\n");
+        Assert.Contains("installed claude skill; added its change hook to .claude/settings.json, which rewrites that file without its comments (reload the agent and approve hooks if prompted)\n", lines);
+        Assert.Contains("installed codex skill; added its change hook to .codex/hooks.json (reload the agent and approve hooks if prompted)\n", lines);
+
+        var again = await CliProcess.RunAsync(repo.Root, "init", "--yes", "--for", "claude,codex");
+
+        Assert.Equal(0, again.ExitCode);
         Assert.Equal(installed, await File.ReadAllTextAsync(settings));
         Assert.NotNull(JsonNode.Parse(installed));
+        Assert.StartsWith("claude skill and change hook already current\ncodex skill and change hook already current\n", again.Stdout.ReplaceLineEndings("\n"));
     }
 
     [Fact]

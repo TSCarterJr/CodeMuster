@@ -59,7 +59,9 @@ Reload the agent and complete its hook trust/approval prompt when required. They
 This records a change marker in worktree-specific Git metadata, without writing the
 ledger or adding files to a worker patch. A hook that cannot record it prints a warning and still
 exits 0, so it never fails the agent's tool call. Rerunning `init` updates an existing CodeMuster
-hook's matcher and timeout in place and leaves other hooks alone.
+hook's matcher and timeout in place and leaves other hooks alone. Adding or repairing a hook
+rewrites that settings file as plain JSON, so its comments and trailing commas are not kept; `init`
+names each settings file it changed and says when a skill and hook were already current.
 
 `status`, `report`, `next`, `run`, `fix` and `verify` compare the tracked files scan reads with the last
 completed scan and name what changed, for example

@@ -479,8 +479,8 @@ public static class Program
         }
         selection ??= command.Flags.Contains("yes") ? "all" : "none";
         var agents = command.Flags.Contains("no-skills") || selection == "none" ? Array.Empty<string>() : AgentSetup.Select(selection);
-        await new AgentSetup(fileSystem).InstallAsync(repoRoot, agents, !command.Flags.Contains("no-hooks"), EmbeddedSkill.Text, cancellationToken);
-        foreach (var agent in agents) Console.WriteLine($"installed {agent} skill" + (command.Flags.Contains("no-hooks") ? "" : " and change hook (reload the agent and approve hooks if prompted)"));
+        var setup = await new AgentSetup(fileSystem).InstallAsync(repoRoot, agents, !command.Flags.Contains("no-hooks"), EmbeddedSkill.Text, cancellationToken);
+        foreach (var agentSetup in setup) Console.WriteLine(SetupLine(repoRoot, agentSetup));
         if (agents.Count == 0) Console.WriteLine("no agent skills selected; use init --for claude,codex,gemini to install them");
         var result = await new Init(fileSystem, tree).RunAsync(repoRoot, _ => Task.FromResult(GitignorePrompt.Decide(command.Flags, interactive, () =>
         {
@@ -495,6 +495,25 @@ public static class Program
             _ => "left .gitignore alone; make sure .codemuster/ledger.db is ignored",
         });
         return 0;
+    }
+
+    private static string SetupLine(string repoRoot, AgentSetupResult result)
+    {
+        if (result.Hook == HookChange.Current && !result.SkillWritten)
+        {
+            return $"{result.Agent} skill and change hook already current";
+        }
+
+        var skill = result.SkillWritten ? $"installed {result.Agent} skill" : $"{result.Agent} skill already current";
+        var settings = result.SettingsPath is null ? "" : RepoPath.Normalize(Path.GetRelativePath(repoRoot, result.SettingsPath));
+        var rewrote = result.RewroteSettings ? ", which rewrites that file without its comments" : "";
+        return skill + result.Hook switch
+        {
+            HookChange.Added => $"; added its change hook to {settings}{rewrote} (reload the agent and approve hooks if prompted)",
+            HookChange.Repaired => $"; repaired its change hook's matcher and timeout in {settings}{rewrote} (reload the agent and approve hooks if prompted)",
+            HookChange.Current => "; change hook already current",
+            _ => "",
+        };
     }
 
     private static string Version =>

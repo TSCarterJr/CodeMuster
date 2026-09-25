@@ -82,6 +82,27 @@ public class AgentSetupTests
         Assert.Equal(writes, fileSystem.Writes);
     }
 
+    [Fact]
+    public async Task Each_agent_reports_whether_its_skill_and_hook_were_added_repaired_or_already_current()
+    {
+        var path = SettingsPath("claude");
+        fileSystem.Files[path] = """
+            // user comment
+            {"permissions":{"allow":["Bash(ls)"]},}
+            """;
+
+        var added = await new AgentSetup(fileSystem).InstallAsync(Root, ["claude"], hooks: true, "skill", CancellationToken.None);
+        var current = await new AgentSetup(fileSystem).InstallAsync(Root, ["claude"], hooks: true, "skill", CancellationToken.None);
+        fileSystem.Files[path] = fileSystem.Files[path].Replace("|PowerShell", "", StringComparison.Ordinal);
+        var repaired = await new AgentSetup(fileSystem).InstallAsync(Root, ["claude"], hooks: true, "skill", CancellationToken.None);
+        var skillOnly = await new AgentSetup(fileSystem).InstallAsync(Root, ["claude"], hooks: false, "new skill", CancellationToken.None);
+
+        Assert.Equal([new AgentSetupResult("claude", true, HookChange.Added, path, true)], added);
+        Assert.Equal([new AgentSetupResult("claude", false, HookChange.Current, path, false)], current);
+        Assert.Equal([new AgentSetupResult("claude", false, HookChange.Repaired, path, true)], repaired);
+        Assert.Equal([new AgentSetupResult("claude", true, HookChange.None, null, false)], skillOnly);
+    }
+
     private JsonObject CodeMusterEntry(string agent) =>
         Entries(agent).Single(entry => entry["hooks"]!.AsArray().Any(handler => handler!["command"]!.GetValue<string>() == "codemuster hook"));
 
