@@ -104,6 +104,25 @@ public class GitChangeTrackerTests
     }
 
     [Fact]
+    public async Task Staging_the_scanned_edit_of_a_file_committed_with_crlf_is_not_a_change()
+    {
+        using var repo = new TempRepo();
+        repo.WriteFile("a.cs", "class A {}\r\n");
+        repo.Commit("seed with CRLF");
+        repo.Run("config", "core.autocrlf", "true");
+        repo.WriteFile("a.cs", "class A {\r\n    int n;\r\n}\r\n");
+        var changes = new GitChangeTracker(repo.Root);
+        await changes.AcknowledgeAsync(await changes.SnapshotAsync(None), None);
+
+        repo.Run("add", "a.cs");
+        Assert.Equal("class A {\r\n    int n;\r\n}\r\n", repo.Run("show", ":a.cs"));
+        Assert.False((await changes.ChangesAsync(None)).Detected);
+
+        repo.Commit("edit");
+        Assert.False((await changes.ChangesAsync(None)).Detected);
+    }
+
+    [Fact]
     public async Task An_untracked_nested_repository_or_worktree_does_not_break_the_snapshot()
     {
         using var repo = new TempRepo();

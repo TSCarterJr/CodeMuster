@@ -79,7 +79,7 @@ public sealed class GitChangeTracker(string root, Func<string, bool>? include = 
                 {
                     identities[path] = "link:" + target;
                 }
-                else if (info.Exists && !path.Contains('\n'))
+                else if (info.Exists)
                 {
                     files.Add(path);
                 }
@@ -94,23 +94,19 @@ public sealed class GitChangeTracker(string root, Func<string, bool>? include = 
                 return identities;
             }
 
-            string[] arguments = ["hash-object", "--stdin-paths"];
-            var (exitCode, output, error) = await GitProcess.RunAllowingFailureAsync(root, arguments, string.Concat(files.Select(file => file + "\n")), cancellationToken);
-            if (exitCode == 0)
+            try
             {
-                var hashes = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                for (var i = 0; i < files.Count; i++)
+                // The same hasher scan uses (D57): hash-object would miss git's rule that a file committed with CRLF is not converted.
+                foreach (var (path, hash) in await new GitBlobHasher(root).HashFilesAsync(files, cancellationToken))
                 {
-                    identities[files[i]] = hashes[i];
+                    identities[path] = hash;
                 }
 
                 return identities;
             }
-
-            // A file deleted between the diff and the hash makes git exit 128, so look at the files again.
-            if (attempt == 3)
+            catch (InvalidOperationException) when (attempt < 3)
             {
-                throw GitProcess.Failure(arguments, exitCode, error);
+                // A file deleted between the diff and the hash makes git exit 128, so look at the files again.
             }
         }
     }
