@@ -44,6 +44,19 @@ public class DependencyScanTests
     }
 
     [Fact]
+    public async Task AnUnchangedRescan_CountsNoAuditedManifestAsStale()
+    {
+        Vulnerable(FakeDependencyAuditor.Package("next", Severity.High));
+        await ScanAsync();
+
+        var again = await ScanAsync();
+
+        Assert.Equal(0, again.UnitsStale);
+        var unit = Assert.Single(ledger.Units, u => u.Kind == UnitKind.Dependency);
+        Assert.Equal(Config.HashOf(Config.Default.LensesFor([("web/package.json", Languages.FromPath("web/package.json"))])), unit.LensHash);
+    }
+
+    [Fact]
     public async Task EachAdvisory_BecomesAConfirmedFindingOnItsManifest()
     {
         Vulnerable(

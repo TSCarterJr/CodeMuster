@@ -174,7 +174,9 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
 
             var findings = manifest.Packages.Select(package => Finding(manifest.Manifest, package)).ToList();
             var summary = string.Create(CultureInfo.InvariantCulture, $"{findings.Count} vulnerable package(s) reported by {manifest.Tool}");
-            var analysis = new Analysis(unit.Id, unit.Fingerprint, unit.LensHash ?? "", now, true, summary, null, new AgentIdentity(manifest.Tool));
+            // The lens hash scan plans for this unit, so the next unchanged scan finds the recorded analysis current instead of stale.
+            var lensHash = Config.HashOf(config.LensesFor([(manifest.Manifest, Languages.FromPath(manifest.Manifest))]));
+            var analysis = new Analysis(unit.Id, unit.Fingerprint, lensHash, now, true, summary, null, new AgentIdentity(manifest.Tool));
             await ledger.RecordAnalysisAsync(analysis, findings, cancellationToken, new VerifyResponse(Verdict.Confirmed, $"reported by {manifest.Tool}"));
             recorded += findings.Count;
             foreach (var finding in findings)
