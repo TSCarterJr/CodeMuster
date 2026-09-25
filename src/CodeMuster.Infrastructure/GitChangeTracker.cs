@@ -33,13 +33,18 @@ public sealed class GitChangeTracker(string root, Func<string, bool, bool>? incl
         return Header + "\0" + string.Concat(identities.Select(entry => entry.Key + "\0" + entry.Value + "\0"));
     }
 
+    // Only whether a notification arrived is ever read, and only before the first scan (D58), so the hook costs one git call.
     public async Task NotifyAsync(CancellationToken cancellationToken)
     {
-        var snapshot = await SnapshotAsync(cancellationToken);
         var path = await PathAsync("changed", cancellationToken);
+        if (File.Exists(path))
+        {
+            return;
+        }
+
         try
         {
-            await WriteAsync(path, snapshot, cancellationToken);
+            await WriteAsync(path, "changed\n", cancellationToken);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException && File.Exists(path))
         {

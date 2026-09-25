@@ -317,8 +317,7 @@ public static class Program
             var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
             if (fileSystem.FileExists(ConfigLoader.PathFor(repoRoot)))
             {
-                var config = await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken);
-                await ChangeTracker(repoRoot, config).NotifyAsync(cancellationToken);
+                await new GitChangeTracker(repoRoot).NotifyAsync(cancellationToken);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

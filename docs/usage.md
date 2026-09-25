@@ -56,7 +56,7 @@ Standalone `skill install --for opencode` and `skill install --for codex --globa
 Hooks are registered in `.claude/settings.json`, `.codex/hooks.json`, or `.gemini/settings.json`.
 Reload the agent and complete its hook trust/approval prompt when required. They invoke
 `codemuster hook` after supported edit and shell tools, including Claude Code's PowerShell tool.
-This records a tracked-content fingerprint in worktree-specific Git metadata, without writing the
+This records a change marker in worktree-specific Git metadata, without writing the
 ledger or adding files to a worker patch. A hook that cannot record it prints a warning and still
 exits 0, so it never fails the agent's tool call. Rerunning `init` updates an existing CodeMuster
 hook's matcher and timeout in place and leaves other hooks alone.

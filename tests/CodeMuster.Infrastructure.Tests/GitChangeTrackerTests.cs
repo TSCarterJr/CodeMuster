@@ -47,6 +47,40 @@ public class GitChangeTrackerTests
     }
 
     [Fact]
+    public async Task A_notification_only_records_a_marker_so_a_changed_file_git_cannot_read_does_not_fail_it()
+    {
+        using var repo = new TempRepo();
+        repo.WriteFile("a.cs", "class A {}\n");
+        repo.Commit("seed");
+        var path = Path.Combine(repo.Root, "a.cs");
+        repo.WriteFile("a.cs", "class A { int n; }\n");
+        var changes = new GitChangeTracker(repo.Root);
+
+        // Hashing this file would fail: Windows cannot open a file held with no sharing, and Unix cannot read one with mode 000.
+        if (OperatingSystem.IsWindows())
+        {
+            using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                await changes.NotifyAsync(None);
+            }
+        }
+        else
+        {
+            File.SetUnixFileMode(path, UnixFileMode.None);
+            try
+            {
+                await changes.NotifyAsync(None);
+            }
+            finally
+            {
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+        }
+
+        Assert.True((await changes.ChangesAsync(None)).Detected);
+    }
+
+    [Fact]
     public async Task A_snapshot_stored_by_an_older_version_falls_back_to_the_notification()
     {
         using var repo = new TempRepo();

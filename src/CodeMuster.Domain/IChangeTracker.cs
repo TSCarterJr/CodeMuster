@@ -5,7 +5,7 @@ public interface IChangeTracker
 {
     /// <summary>The tracked files a scan would review and the content identity of each, as text <see cref="AcknowledgeAsync"/> can store.</summary>
     Task<string> SnapshotAsync(CancellationToken cancellationToken);
-    /// <summary>Records that an agent tool may have changed repository content.</summary>
+    /// <summary>Records that an agent tool may have changed repository content; only its presence is read, before the first scan.</summary>
     Task NotifyAsync(CancellationToken cancellationToken);
     /// <summary>Acknowledges only the snapshot taken before a completed scan.</summary>
     Task AcknowledgeAsync(string snapshot, CancellationToken cancellationToken);
