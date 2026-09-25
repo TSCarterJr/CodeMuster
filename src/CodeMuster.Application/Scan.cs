@@ -5,7 +5,8 @@ namespace CodeMuster.Application;
 
 /// <summary>
 /// Discovers the tree, refreshes file rows through the stat cache (D05), plans units, retires every live unit the plan no longer holds, and records a <see cref="ScanRun"/>.
-/// A current finding keeps its verify unit while the code of the unit that reported it is unchanged since that analysis (D27), unless verification is off (D28).
+/// A current finding keeps its verify unit while the code of the unit that reported it is unchanged since that analysis (D27), unless verification is off (D28);
+/// a check that verify completed over whole files whose content is unchanged stays done in the reporting unit's form.
 /// With at least one mapper the scan runs in slice mode: the mappers map the repository at <paramref name="repoRoot"/> and units are slices, orphans, and file units (D25). Without mappers every included file is one file unit.
 /// Each step is reported to <paramref name="progress"/> as it starts or finishes, with mapper steps under their language.
 /// </summary>
@@ -65,6 +66,9 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         }
 
         var existingUnits = (await ledger.GetUnitsAsync(cancellationToken)).ToDictionary(u => u.Id, StringComparer.Ordinal);
+        var verified = (await ledger.GetMembersAsync(
+            planned.Where(p => p.Kind == UnitKind.Verify && existingUnits.GetValueOrDefault(p.Id)?.Status == UnitStatus.Done).Select(p => p.Id).ToList(),
+            cancellationToken)).ToLookup(m => m.UnitId, StringComparer.Ordinal);
         var units = new List<Unit>(planned.Count);
         var created = 0;
         foreach (var plan in planned)
@@ -78,6 +82,10 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             }
 
             var status = StatusFor(previous, fingerprint, lensHash);
+            if (status == UnitStatus.Stale && previous!.LensHash == lensHash && RefreshVerification.CoveredByWholeFiles([.. verified[plan.Id]], plan.Members, hashes))
+            {
+                status = UnitStatus.Done;
+            }
             units.Add(new Unit(plan.Id, plan.Kind, plan.Key, fingerprint, status, plan.Fidelity, previous?.LensHash, previous?.Status == UnitStatus.Skipped ? null : previous?.Summary, previous?.Status == UnitStatus.Skipped ? null : previous?.SummaryHash));
         }
 

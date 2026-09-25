@@ -7,7 +7,8 @@ namespace CodeMuster.Application;
 public sealed class RefreshVerification(ILedger ledger, ISourceTree tree, Config? config, IContentHasher hasher)
 {
     /// <summary>
-    /// Reopens checks whose code changed, including checks retired by scan. Completed unchanged checks remain done unless the caller forces them.
+    /// Reopens checks whose code changed, including checks retired by scan. Completed unchanged checks remain done unless the caller forces them,
+    /// and so does a retired check rebuilt exactly as its last verdict saw it.
     /// While the reporting unit and its files are as the last scan recorded them, a check keeps that unit's members, exactly as done and scan build it; otherwise it covers the whole current files, hashed the way scan hashes them.
     /// </summary>
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -51,7 +52,10 @@ public sealed class RefreshVerification(ILedger ledger, ISourceTree tree, Config
             }
             var fingerprint = Fingerprints.Compute(parts);
             units.TryGetValue(id, out var previous);
-            var status = previous is null || previous.Status == UnitStatus.Retired || previous.Fingerprint != fingerprint ? UnitStatus.Pending : previous.Status;
+            var status = previous is null || previous.Fingerprint != fingerprint ? UnitStatus.Pending
+                : previous.Status != UnitStatus.Retired ? previous.Status
+                : finding.Verification is not null && previous.SummaryHash == fingerprint ? UnitStatus.Done
+                : UnitStatus.Pending;
             planned.Add(new Unit(id, UnitKind.Verify, FindingLocation.Of(finding.Finding), fingerprint, status, source.Fidelity, previous?.LensHash, previous?.Summary, previous?.SummaryHash));
             updatedMembers.AddRange(parts);
         }
@@ -61,6 +65,15 @@ public sealed class RefreshVerification(ILedger ledger, ISourceTree tree, Config
         updatedMembers.AddRange(await ledger.GetMembersAsync(retired.Select(unit => unit.Id).ToList(), cancellationToken));
         await ledger.UpsertUnitsAsync(planned, updatedMembers, cancellationToken);
     }
+
+    /// <summary>
+    /// True when a check was verified over whole files that still hash to <paramref name="hashes"/> and include every file of <paramref name="planned"/>,
+    /// so that verdict already covers the reporting unit's members and scan can keep it done in their form.
+    /// </summary>
+    internal static bool CoveredByWholeFiles(IReadOnlyList<UnitMember> verified, IReadOnlyList<UnitMember> planned, IReadOnlyDictionary<string, string> hashes) =>
+        verified.Count > 0
+        && verified.All(member => member.Symbol is null && hashes.GetValueOrDefault(member.Path) == member.MemberHash)
+        && planned.All(member => verified.Any(file => file.Path == member.Path));
 
     private static IEnumerable<string> SourcePaths(UnitFinding finding, ILookup<string, UnitMember> members) =>
         members[finding.UnitId].Select(member => member.Path).Append(finding.Finding.Path).Distinct(StringComparer.Ordinal);

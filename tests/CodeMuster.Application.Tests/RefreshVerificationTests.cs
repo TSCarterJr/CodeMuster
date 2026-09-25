@@ -161,6 +161,52 @@ public class RefreshVerificationTests
         Assert.All(members, m => Assert.Null(m.Symbol));
     }
 
+    [Fact]
+    public async Task CheckVerifiedOverWholeFilesBeforeTheScanStaysDoneWhenTheScanFindsTheReportedSymbolsUnchanged()
+    {
+        var verify = await VerifiedSliceFindingAsync();
+        tree.Add(MixedRepo.ControllerPath, "content of the controller, with a comment appended outside every symbol");
+        await RefreshAsync();
+        var reopened = ledger.Units.Single(unit => unit.Id == verify.Id);
+        Assert.Equal(UnitStatus.Pending, reopened.Status);
+        await VerifyAsync(reopened);
+
+        var scan = await SliceScanAsync();
+
+        Assert.Equal(0, scan.UnitsStale);
+        Assert.Equal((verify.Fingerprint, UnitStatus.Done), Check(verify.Id));
+        await RefreshAsync();
+        Assert.Equal((verify.Fingerprint, UnitStatus.Done), Check(verify.Id));
+    }
+
+    [Fact]
+    public async Task CheckOfAStaleUnitVerifiedOnceIsNotReopenedByEveryLaterScanAndRefresh()
+    {
+        const string path = "src/A.cs";
+        tree.Add(path, "class A { int x; }");
+        await new Scan(ledger, tree, hasher, clock, Config.Default).RunAsync(CancellationToken.None);
+        var verify = await VerifiedFindingAsync(UnitIds.File(path), path);
+        tree.Add(path, "class A { int y; }");
+        await new Scan(ledger, tree, hasher, clock, Config.Default).RunAsync(CancellationToken.None);
+        Assert.Equal(UnitStatus.Retired, Check(verify.Id).Status);
+        await RefreshAsync();
+        var reopened = ledger.Units.Single(unit => unit.Id == verify.Id);
+        Assert.Equal(UnitStatus.Pending, reopened.Status);
+        await VerifyAsync(reopened);
+
+        await new Scan(ledger, tree, hasher, clock, Config.Default).RunAsync(CancellationToken.None);
+        Assert.Equal(UnitStatus.Retired, Check(verify.Id).Status);
+        await RefreshAsync();
+
+        Assert.Equal((reopened.Fingerprint, UnitStatus.Done), Check(verify.Id));
+        tree.Add(path, "class A { int z; }");
+        await RefreshAsync();
+        Assert.Equal(UnitStatus.Pending, Check(verify.Id).Status);
+    }
+
+    private async Task VerifyAsync(Unit check) =>
+        Assert.Equal(DoneOutcome.Recorded, (await new Done(ledger, clock, Config.Default).RunAsync(check.Id, check.Fingerprint, """{"verdict":"confirmed","reason":"Still there."}""", CancellationToken.None)).Outcome);
+
     private Task RefreshAsync() => new RefreshVerification(ledger, tree, Config.Default, hasher).RunAsync(CancellationToken.None);
 
     private (string Fingerprint, UnitStatus Status) Check(string id) =>

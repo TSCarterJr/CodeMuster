@@ -68,6 +68,30 @@ public class VerifyTests
         Assert.Equal(0, await VerifiedAsync(repo, environment));
     }
 
+    [Fact]
+    public async Task Checks_verified_after_an_edit_but_before_the_next_scan_are_not_verified_again_after_it()
+    {
+        using var repo = TempRepo.FromFixture("mixed-repo");
+        repo.CopyRestoredFromFixture("mixed-repo", Path.Combine("web", "node_modules"), "npm ci --prefix fixtures/mixed-repo/web");
+        repo.Dotnet("restore", "MixedRepo.sln");
+        await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
+        var sample = AnalysisResponseJson.Parse(AnalysisResponseJson.Sample).Findings[0];
+        var template = Path.Combine(repo.Root, "template.json");
+        await File.WriteAllTextAsync(template, AnalysisResponseJson.Serialize(new AnalysisResponse("planted", [sample with { Confidence = 0.9 }])));
+        var environment = new Dictionary<string, string> { ["CODEMUSTER_FAKE_RESPONSE"] = template };
+        Assert.Contains("5 slices, 3 orphans", (await CliProcess.RunAsync(repo.Root, "scan")).Stdout);
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, environment, "run", "--agent", "fake", "-j", "4")).ExitCode);
+
+        // A comment outside every symbol, as fix's commits and hand edits leave: the slices that span this file keep their fingerprints.
+        await File.AppendAllTextAsync(Path.Combine(repo.Root, "src", "MixedRepo.Api", "Shared", "Money.cs"), "// reviewed\n");
+        Assert.NotEqual(0, await VerifiedAsync(repo, environment));
+        Assert.Contains(": 0 new, 0 stale,", (await CliProcess.RunAsync(repo.Root, "scan")).Stdout);
+
+        Assert.Equal(0, await VerifiedAsync(repo, environment));
+        Assert.EndsWith("\ncomplete", await StatusAsync(repo));
+    }
+
     private static async Task<int> VerifiedAsync(TempRepo repo, IReadOnlyDictionary<string, string> environment)
     {
         var verify = await CliProcess.RunAsync(repo.Root, environment, "verify", "--agent", "fake", "-j", "4");
