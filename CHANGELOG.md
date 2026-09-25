@@ -4,6 +4,58 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
+## 0.3.6 - 2026-09-25
+
+Fixes chosen from a review of 0.3.5 (`docs/product-value-review.md`).
+
+- A `git`, `node` or `dotnet` program committed to a repository, or sitting in the
+  folder you run CodeMuster from, no longer runs in place of the real tool. Git,
+  Node.js, agents, audit tools and `test_command` are found only in absolute `PATH`
+  directories, and on Linux and macOS a file without the execute bit is skipped. A
+  relative `PATH` entry such as `node_modules/.bin` no longer satisfies
+  `test_command` (use `["npx", "jest"]`). On Windows, programs CodeMuster starts
+  inherit `NoDefaultCurrentDirectoryInExePath=1`, so a script run by `test_command`
+  must name a program in the current folder with a path, such as `.\build.cmd`.
+- An untracked nested repository or worktree, such as a Claude Code worktree under
+  `.claude/worktrees/`, no longer makes `status`, `report`, `scan`, `fix`, `verify`
+  or the hook exit 1, and many untracked files no longer slow them down. The change
+  warning names what changed (`web/lib/index.ts changed since the last scan`) and
+  no longer fires for untracked or excluded files, including `report --out
+  audit.md`, or for staging unchanged content. `codemuster hook` always exits 0, so
+  it never fails an agent's tool call. `init` adds PowerShell to the Claude hook
+  matcher and repairs an existing CodeMuster matcher.
+- Committing content that was analyzed while modified no longer marks it stale
+  under `core.autocrlf=true` (the Git for Windows default) or in a SHA-256
+  repository.
+- `verify` and `scan` no longer re-check unchanged findings on every cycle. Each
+  re-check was a model call.
+- A failed dependency audit (offline, registry or restore error) warns and keeps the
+  earlier vulnerable-package findings instead of recording none. A folder with
+  lockfiles for more than one package manager is audited once, with a warning that
+  names the tool used, instead of making every scan exit 2. When the preferred tool
+  is not installed, the next lockfile's tool is used. pnpm findings no longer call
+  every vulnerable package indirect.
+- `fix` works with `diff.noprefix`, `color.ui=always`, `diff.external` and similar
+  Git settings, which used to discard every repair. It never records a finding
+  fixed unless the file changed. It runs `test_command` once on the unmodified tree
+  before calling any agent and stops when the suite already fails or the program is
+  missing; `fix --allow-failing-tests` skips that check.
+- With TypeScript 7, which has no JavaScript compiler API, the mapper uses
+  `@typescript/typescript6` from the same project when it is installed, and
+  otherwise says in one line what to install instead of printing a Node stack trace.
+- Argument mistakes name the problem and show the command's usage line instead of
+  the full overview, and a mistyped command gets a suggestion. `--name=value` and
+  `-j4` work. `next`, `status`, `done` and `skill` reject options they do not read,
+  so `next --pth web` no longer reviews the whole repository. Errors start with
+  `error:` and no longer end in `(Parameter 'name')`.
+- Scans with `exclude`, lens or `user_experience` globs no longer slow down with the
+  number of files: 3,000 files and 10 globs went from about 10 s to 1.5 s. The npm
+  launcher skips its update check for `codemuster hook` and inside CodeMuster
+  workers.
+
+Use `npm install -g codemuster@0.3.6` once to receive the launcher change as well as
+the native binary; older launchers update only the binary.
+
 ## 0.3.5 - 2026-09-21
 
 - A repair that cannot be integrated no longer ends the whole run. Previously one
