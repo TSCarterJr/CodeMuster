@@ -40,10 +40,13 @@ OpenCode. `doctor` checks Git and the code mappers, not your provider account. F
 suggested restore or dependency-install commands if mapping is not ready.
 
 TypeScript mapping uses the compiler API from the `typescript` package installed next to each
-`tsconfig.json`. TypeScript 7 has no JavaScript compiler API, so with it the mapper uses
-`@typescript/typescript6` from the same project instead; when that is missing, `doctor` names the
-tsconfig, the version and the command to add it, such as
-`npm i -D @typescript/typescript6 --prefix web`.
+`tsconfig.json`. TypeScript 7 has no JavaScript compiler API, so with it, or with no `typescript`
+package at all, the mapper uses `@typescript/typescript6` from the same project instead; when that
+is missing too, `doctor` names the tsconfig, the version and how to add it. Where the tsconfig's
+folder has its own `package-lock.json` that is an npm command such as
+`npm i -D @typescript/typescript6 --prefix web`; in a workspace member or a pnpm or Yarn project it
+says to add the package with that project's package manager, since `--prefix` on a workspace
+member would write a second lockfile there.
 
 `init` offers a comma-separated choice of `claude`, `codex`, and `gemini` and installs each
 selected project's skill and change hook. `--for all` selects all; `--for none` or `--no-skills`

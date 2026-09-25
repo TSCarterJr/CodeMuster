@@ -85,6 +85,53 @@ public class TypeScriptMapperTests
     }
 
     [Fact]
+    public async Task A_typescript_package_that_throws_when_loaded_is_named_in_one_line_with_the_reinstall_command()
+    {
+        using var temp = WebWithTypeScript7();
+        // The real @typescript/typescript6 re-exports @typescript/old; a partial install leaves that one out.
+        temp.Write("web/node_modules/@typescript/typescript6/package.json", """{ "name": "@typescript/typescript6", "version": "6.0.2", "main": "lib/typescript.js" }""");
+        temp.Write("web/node_modules/@typescript/typescript6/lib/typescript.js", "module.exports = require('@typescript/old');\n");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None));
+
+        Assert.Equal(
+            "TypeScript mapping failed: web/tsconfig.json: @typescript/typescript6 could not be loaded (Cannot find module '@typescript/old'); run npm ci --prefix web",
+            error.Message);
+    }
+
+    [Fact]
+    public async Task The_typescript6_package_is_used_when_no_typescript_package_is_installed()
+    {
+        using var temp = new TempFolder();
+        temp.Copy(Path.Combine(TestPaths.MixedRepo, "web"), "web", "node_modules");
+        var realTypeScript = Path.Combine(TestPaths.MixedRepoWithTypeScript(), "web", "node_modules", "typescript");
+        temp.Write("web/node_modules/@typescript/typescript6/package.json", """{ "name": "@typescript/typescript6", "version": "6.0.2", "main": "index.js" }""");
+        temp.Write("web/node_modules/@typescript/typescript6/index.js", $"module.exports = require({JsonSerializer.Serialize(realTypeScript)});\n");
+
+        var map = await new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None);
+
+        GoldenAssert.Matches(map);
+    }
+
+    [Fact]
+    public async Task A_workspace_member_without_its_own_lockfile_gets_a_hint_that_does_not_fork_the_workspace()
+    {
+        using var temp = new TempFolder();
+        temp.Copy(Path.Combine(TestPaths.MixedRepo, "web"), "web", "node_modules");
+        File.Delete(Path.Combine(temp.Root, "web", "package-lock.json"));
+        temp.Write("package.json", """{ "name": "root", "private": true, "workspaces": ["web"] }""");
+        temp.Write("package-lock.json", """{ "name": "root", "lockfileVersion": 3, "packages": {} }""");
+        temp.Write("node_modules/typescript/package.json", """{ "name": "typescript", "version": "7.0.2", "exports": { ".": "./lib/version.cjs" } }""");
+        temp.Write("node_modules/typescript/lib/version.cjs", "module.exports = { version: '7.0.2', versionMajorMinor: '7.0' };\n");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None));
+
+        Assert.Equal(
+            "TypeScript mapping failed: web/tsconfig.json: typescript 7.0.2 has no JavaScript compiler API; add @typescript/typescript6 as a dev dependency of web with its package manager",
+            error.Message);
+    }
+
+    [Fact]
     public async Task An_unexpected_failure_is_one_line_that_never_names_the_deleted_temp_script()
     {
         using var temp = new TempFolder();

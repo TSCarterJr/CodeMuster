@@ -33,11 +33,18 @@ function fail(message) {
 }
 
 // This script runs from a temporary copy that is deleted before anyone reads the error, so name its line instead of its path.
+// Only the message's first line is kept: Node's "Require stack" continues it with paths, this script's among them.
 function describe(error) {
-  const message = error instanceof Error ? error.message : String(error);
-  const frame = error instanceof Error ? String(error.stack).split('\n').find((line) => line.includes(__filename)) : undefined;
+  const message = firstLine(error);
+  const frame = error instanceof Error
+    ? String(error.stack).split('\n').find((line) => line.trim().startsWith('at ') && line.includes(__filename))
+    : undefined;
   const line = frame === undefined ? null : /:(\d+):\d+\)?$/.exec(frame.trim());
   return line === null ? message : `${message} (map.js line ${line[1]})`;
+}
+
+function firstLine(error) {
+  return (error instanceof Error ? error.message : String(error)).split('\n')[0].trim();
 }
 
 // Synchronous so each line reaches the parent while mapping runs, not in one burst after it.
@@ -45,26 +52,40 @@ function report(message) {
   fs.writeSync(2, `progress: ${message}\n`);
 }
 
+// TypeScript 7 ships a native compiler with no JavaScript API; Microsoft publishes the TypeScript 6 API beside it, so the first of the two
+// packages that resolves and has createProgram maps the project.
 function loadTypeScript(repoRoot, tsconfig) {
   const folder = path.posix.dirname(tsconfig);
-  const paths = [path.dirname(path.resolve(repoRoot, tsconfig))];
-  const typescript = resolvePackage('typescript', paths);
-  if (typescript === undefined) {
-    return { error: `typescript was not found for ${tsconfig}; run npm ci --prefix ${folder}` };
+  const directory = path.dirname(path.resolve(repoRoot, tsconfig));
+  // npm's --prefix on a workspace member writes a second lockfile there, so npm's command is named only where the folder has its own.
+  const hint = (npm, other) => (fs.existsSync(path.join(directory, 'package-lock.json')) ? `run ${npm} --prefix ${folder}` : other);
+  const candidates = ['typescript', '@typescript/typescript6']
+    .map((name) => ({ name, file: resolvePackage(name, [directory]) }))
+    .filter((candidate) => candidate.file !== undefined);
+  if (candidates.length === 0) {
+    return { error: `typescript was not found for ${tsconfig}; ${hint('npm ci', `install the dependencies of ${folder} with its package manager`)}` };
   }
 
-  const ts = require(typescript);
-  if (typeof ts.createProgram === 'function') {
-    return { ts };
+  let version;
+  for (const candidate of candidates) {
+    let ts;
+    try {
+      ts = require(candidate.file);
+    } catch (error) {
+      return { error: `${tsconfig}: ${candidate.name} could not be loaded (${firstLine(error)}); ${hint('npm ci', `reinstall the dependencies of ${folder} with its package manager`)}` };
+    }
+
+    if (typeof ts.createProgram === 'function') {
+      return { ts };
+    }
+
+    version ??= ts.version;
   }
 
-  // TypeScript 7 ships a native compiler with no JavaScript API; Microsoft publishes the TypeScript 6 API beside it.
-  const fallback = resolvePackage('@typescript/typescript6', paths);
-  if (fallback !== undefined && typeof require(fallback).createProgram === 'function') {
-    return { ts: require(fallback) };
-  }
-
-  return { error: `${tsconfig}: typescript ${ts.version} has no JavaScript compiler API; run npm i -D @typescript/typescript6 --prefix ${folder}` };
+  return {
+    error: `${tsconfig}: typescript ${version} has no JavaScript compiler API; `
+      + hint('npm i -D @typescript/typescript6', `add @typescript/typescript6 as a dev dependency of ${folder} with its package manager`),
+  };
 }
 
 function resolvePackage(name, paths) {
