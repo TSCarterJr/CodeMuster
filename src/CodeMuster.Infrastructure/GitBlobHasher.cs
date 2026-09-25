@@ -15,7 +15,10 @@ public sealed class GitBlobHasher(string repoRoot) : IContentHasher
         // Staging into a copy of the index gives the id `git add` would record, including git's rule that a file committed with CRLF
         // is not converted, which hash-object cannot see. --info-only writes no object, and an unsplit copy writes nothing into .git.
         var index = Path.Combine(repoRoot, (await GitProcess.RunAsync(repoRoot, ["rev-parse", "--git-path", "index"], null, cancellationToken).ConfigureAwait(false)).Trim());
-        var copy = Path.Combine(Path.GetTempPath(), "codemuster-index-" + Guid.NewGuid().ToString("N"));
+        // A folder of its own is created with mode 0700 on Linux and macOS, so other users of a shared /tmp cannot read the copy's
+        // paths, blob ids and stat data; the copy inherits the index's 0644 and git rewrites it with 0666 less the umask.
+        var folder = Directory.CreateTempSubdirectory("codemuster-index-");
+        var copy = Path.Combine(folder.FullName, "index");
         var environment = new Dictionary<string, string> { ["GIT_INDEX_FILE"] = copy };
         try
         {
@@ -36,11 +39,11 @@ public sealed class GitBlobHasher(string repoRoot) : IContentHasher
         {
             try
             {
-                File.Delete(copy);
+                folder.Delete(recursive: true);
             }
-            catch (IOException)
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
-                // A scanner holding the copy open on Windows must not fail the scan; a leftover temp file is harmless.
+                // A scanner holding the copy open on Windows must not fail the scan; a leftover private temp folder is harmless.
             }
         }
 
