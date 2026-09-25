@@ -6,7 +6,7 @@ namespace CodeMuster.Infrastructure;
 public sealed class GitWorkspace(string repoRoot) : IWorkspace
 {
     public async Task<IReadOnlyList<string>> ChangedPathsAsync(CancellationToken cancellationToken) =>
-        (await GitProcess.RunAsync(repoRoot, ["diff", "--name-only", "-z", "HEAD"], null, cancellationToken)).Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        (await GitProcess.RunAsync(repoRoot, ["diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", "HEAD"], null, cancellationToken)).Split('\0', StringSplitOptions.RemoveEmptyEntries);
 
     public async Task<bool> IsCleanAsync(CancellationToken cancellationToken)
     {
@@ -33,7 +33,7 @@ public sealed class GitWorkspace(string repoRoot) : IWorkspace
 
     public async Task<bool> HasFileChangesAsync(string path, CancellationToken cancellationToken)
     {
-        var result = await GitProcess.RunAllowingFailureAsync(repoRoot, ["--literal-pathspecs", "diff", "--quiet", "HEAD", "--", path], null, cancellationToken).ConfigureAwait(false);
+        var result = await GitProcess.RunAllowingFailureAsync(repoRoot, ["--literal-pathspecs", "diff", "--quiet", "--no-ext-diff", "--no-textconv", "HEAD", "--", path], null, cancellationToken).ConfigureAwait(false);
         return result.ExitCode switch
         {
             0 => false,

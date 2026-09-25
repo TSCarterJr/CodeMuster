@@ -37,6 +37,17 @@ public sealed class GitWorkspaceTests : IDisposable
     }
 
     [Fact]
+    public async Task AnExternalDiffTrustedForItsExitCode_DoesNotHideAChangedFile()
+    {
+        _repo.Run("config", "diff.external", "echo");
+        _repo.Run("config", "diff.trustExitCode", "true");
+        _repo.WriteFile("src/a.cs", "class A { int x; }\n");
+
+        Assert.True(await _workspace.HasFileChangesAsync("src/a.cs", CancellationToken.None));
+        Assert.Equal(["src/a.cs"], await _workspace.ChangedPathsAsync(CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Restore_ThrowsAwayUncommittedEdits()
     {
         _repo.WriteFile("src/a.cs", "class A { int broken }\n");

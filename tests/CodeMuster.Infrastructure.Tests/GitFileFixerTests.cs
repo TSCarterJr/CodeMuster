@@ -33,6 +33,33 @@ public sealed class GitFileFixerTests : IDisposable
         Assert.True(await workspace.IsCleanAsync(CancellationToken.None));
     }
 
+    [Theory]
+    [InlineData("diff.noprefix", "true")]
+    [InlineData("color.ui", "always")]
+    [InlineData("diff.external", "echo")]
+    [InlineData("diff.context", "0")]
+    public async Task UserDiffSettings_DoNotStopTheRepairFromApplyingAndCommitting(string key, string value)
+    {
+        repo.WriteFile("src/c.cs", "class C\n{\n    int a;\n    int b;\n    int c;\n    int d;\n    int e;\n}\n");
+        repo.Commit("multi-line file");
+        repo.Run("config", key, value);
+        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
+        {
+            File.WriteAllText(Path.Combine(dir, "src", "c.cs"), "class C\n{\n    int a;\n    int b;\n    int repaired;\n    int d;\n    int e;\n}\n");
+            return Task.FromResult("response");
+        }));
+
+        var edit = await fixer.RunAsync("src/c.cs", "pack", CancellationToken.None);
+        await fixer.ReleaseAsync(edit, CancellationToken.None);
+        var workspace = new GitWorkspace(repo.Root);
+        await workspace.ApplyPatchAsync(edit.Patch, CancellationToken.None);
+
+        Assert.True(await workspace.HasFileChangesAsync("src/c.cs", CancellationToken.None));
+        await workspace.CommitFileAsync("src/c.cs", "fix src/c.cs", CancellationToken.None);
+        Assert.Contains("int repaired;", repo.Run("show", "HEAD:src/c.cs"));
+        Assert.True(await workspace.IsCleanAsync(CancellationToken.None));
+    }
+
     [Fact]
     public async Task WorkerEditsAreIsolated_AndOnlyItsAssignedFileIsAppliedAndCommitted()
     {
