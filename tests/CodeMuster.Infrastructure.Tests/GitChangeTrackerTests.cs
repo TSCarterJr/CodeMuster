@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using CodeMuster.Domain;
 using CodeMuster.Infrastructure;
 
 namespace CodeMuster.Infrastructure.Tests;
@@ -252,6 +253,27 @@ public class GitChangeTrackerTests
         Assert.False((await changes.ChangesAsync(None)).Detected);
         // One process per untracked file took about 25 ms each on Windows; a few git calls take well under a second.
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"the snapshot of 500 untracked files took {watch.Elapsed}");
+    }
+
+    [Fact]
+    public async Task Reading_the_stored_snapshot_waits_out_a_writer_that_briefly_holds_it()
+    {
+        using var repo = new TempRepo();
+        repo.WriteFile("a.cs", "class A {}\n");
+        repo.Commit("seed");
+        var changes = new GitChangeTracker(repo.Root);
+        await changes.AcknowledgeAsync(await changes.SnapshotAsync(None), None);
+
+        // Windows refuses to open a file another process is replacing; .NET gives the same sharing violation on Linux and macOS
+        // for a file another handle opened with FileShare.None, so the reader's retry is exercised on every OS.
+        Task<ScanChanges> reading;
+        using (new FileStream(Path.Combine(repo.Root, ".git", "codemuster", "scanned"), FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            reading = changes.ChangesAsync(None);
+            await Task.Delay(200);
+        }
+
+        Assert.False((await reading).Detected);
     }
 
     [Fact]

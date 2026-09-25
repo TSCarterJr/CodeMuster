@@ -7,7 +7,7 @@ namespace CodeMuster.Infrastructure;
 public sealed class GitChangeTracker(string root, Func<string, bool, bool>? include = null) : IChangeTracker
 {
     private const string Header = "codemuster-snapshot-1";
-    private const int MoveAttempts = 8;
+    private const int Attempts = 8;
 
     public async Task<string> SnapshotAsync(CancellationToken cancellationToken)
     {
@@ -123,7 +123,18 @@ public sealed class GitChangeTracker(string root, Func<string, bool, bool>? incl
     private async Task<string> ReadAsync(string name, CancellationToken cancellationToken)
     {
         var path = await PathAsync(name, cancellationToken);
-        return File.Exists(path) ? await File.ReadAllTextAsync(path, cancellationToken) : "";
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return File.Exists(path) ? await File.ReadAllTextAsync(path, cancellationToken) : "";
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException && attempt < Attempts)
+            {
+                // Windows refuses to open a file that a scan or hook is replacing at that moment.
+                await Task.Delay(10 * attempt, cancellationToken);
+            }
+        }
     }
 
     private static async Task WriteAsync(string path, string value, CancellationToken cancellationToken)
@@ -140,7 +151,7 @@ public sealed class GitChangeTracker(string root, Func<string, bool, bool>? incl
                     File.Move(temporary, path, overwrite: true);
                     return;
                 }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException && attempt < MoveAttempts)
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException && attempt < Attempts)
                 {
                     // Windows refuses to replace a file that another process is replacing or reading at that moment.
                     await Task.Delay(10 * attempt, cancellationToken);
