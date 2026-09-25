@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "parameters": "--vulnerable --include-transitive",
+  "problems": [
+    {
+      "project": "/src/app/App.csproj",
+      "level": "error",
+      "text": "No assets file was found for `/src/app/App.csproj`. Run restore before running this command."
+    }
+  ],
+  "sources": [
+    "https://api.nuget.org/v3/index.json",
+    "C:/Program Files (x86)/Microsoft SDKs/NuGetPackages/"
+  ],
+  "projects": [
+    {
+      "path": "/src/app/App.csproj"
+    }
+  ]
+}

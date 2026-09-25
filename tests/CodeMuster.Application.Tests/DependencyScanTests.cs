@@ -88,12 +88,18 @@ public class DependencyScanTests
     {
         Vulnerable(FakeDependencyAuditor.Package("next", Severity.Critical));
         await ScanAsync();
+        var before = Assert.Single(FindingsAsync(), f => f.UnitId == "dependency:web/package.json");
+        var analyses = ledger.Analyses.Count;
 
         auditor.Manifests = [];
         auditor.Diagnostics = ["web/package.json: npm could not run (offline); install npm or exclude that folder"];
         var result = await ScanAsync();
 
-        Assert.Single(FindingsAsync(), f => f.UnitId == "dependency:web/package.json");
+        var after = Assert.Single(FindingsAsync(), f => f.UnitId == "dependency:web/package.json");
+        Assert.Equal(before.Id, after.Id);
+        Assert.Equal(analyses, ledger.Analyses.Count);
+        Assert.Equal(UnitStatus.Done, ledger.Units.Single(u => u.Id == "dependency:web/package.json").Status);
+        Assert.Equal(1, (await new Status(ledger, Config.Default).RunAsync(CancellationToken.None)).VulnerablePackages![Severity.Critical]);
         Assert.Equal(["web/package.json: npm could not run (offline); install npm or exclude that folder"], result.Vulnerabilities!.Diagnostics);
     }
 

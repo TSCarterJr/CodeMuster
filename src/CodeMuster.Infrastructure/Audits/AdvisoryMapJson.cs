@@ -1,18 +1,30 @@
 using System.Text.Json;
 using CodeMuster.Domain;
+using static CodeMuster.Infrastructure.Audits.AuditOutput;
 
 namespace CodeMuster.Infrastructure.Audits;
 
 /// <summary>Reads the older advisory format that pnpm and yarn still speak: advisories keyed by id, each naming its module and patched range.</summary>
 public static class AdvisoryMapJson
 {
-    /// <summary>Every advisory in a <c>pnpm audit --json</c> or <c>yarn npm audit --json</c> report.</summary>
+    /// <summary>Every advisory in a <c>pnpm audit --json</c> or Yarn 3 <c>yarn npm audit --json</c> report. Throws <see cref="InvalidOperationException"/> for an error envelope or any output without <c>advisories</c>.</summary>
     public static IReadOnlyList<VulnerablePackage> Parse(string json)
     {
         using var document = JsonDocument.Parse(json);
-        if (!document.RootElement.TryGetProperty("advisories", out var advisories) || advisories.ValueKind != JsonValueKind.Object)
+        return ReadMap(document.RootElement);
+    }
+
+    /// <summary>The advisories of one parsed report object.</summary>
+    internal static IReadOnlyList<VulnerablePackage> ReadMap(JsonElement root)
+    {
+        if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("error", out var error))
         {
-            return [];
+            throw Failed(ErrorText(error));
+        }
+
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("advisories", out var advisories) || advisories.ValueKind != JsonValueKind.Object)
+        {
+            throw NoReport();
         }
 
         return advisories.EnumerateObject().Select(advisory => Read(advisory.Value)).ToList();
@@ -39,14 +51,4 @@ public static class AdvisoryMapJson
 
     private static string? Identifier(string? url) =>
         url is { Length: > 0 } && url.Contains("/advisories/", StringComparison.Ordinal) ? url[(url.LastIndexOf('/') + 1)..] : null;
-
-    private static string? Text(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value)
-            ? value.ValueKind switch
-            {
-                JsonValueKind.String => value.GetString(),
-                JsonValueKind.Number => value.ToString(),
-                _ => null,
-            }
-            : null;
 }

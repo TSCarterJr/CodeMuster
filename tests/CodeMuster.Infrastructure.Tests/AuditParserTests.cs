@@ -85,4 +85,55 @@ public class AuditParserTests
         Assert.Empty(AdvisoryMapJson.Parse("""{"advisories": {}, "metadata": {}}"""));
         Assert.Empty(YarnAuditJson.Parse("{\"type\":\"auditSummary\",\"data\":{}}\n"));
     }
+
+    [Fact]
+    public void Npm_rejects_its_error_envelope_rather_than_reporting_a_clean_manifest()
+    {
+        var offline = Assert.Throws<InvalidOperationException>(() => NpmAuditJson.Parse(Fixture("npm-offline.json")));
+        Assert.Contains("ECONNREFUSED 127.0.0.1:9", offline.Message, StringComparison.Ordinal);
+        var noLockfile = Assert.Throws<InvalidOperationException>(() => NpmAuditJson.Parse(Fixture("npm-enolock.json")));
+        Assert.Contains("requires an existing lockfile", noLockfile.Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => NpmAuditJson.Parse("""{"vulnerabilities": {}}"""));
+    }
+
+    [Fact]
+    public void Pnpm_rejects_its_error_envelope_and_output_without_advisories()
+    {
+        var offline = Assert.Throws<InvalidOperationException>(() => AdvisoryMapJson.Parse(Fixture("pnpm-offline.json")));
+        Assert.Contains("ECONNREFUSED 127.0.0.1:9", offline.Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => AdvisoryMapJson.Parse("""{"metadata": {}}"""));
+    }
+
+    [Fact]
+    public void Dotnet_rejects_error_problems_but_accepts_warnings()
+    {
+        var restore = Assert.Throws<InvalidOperationException>(() => DotnetAuditJson.Parse(Fixture("dotnet-restore-failed.json")));
+        Assert.Contains("Restore failed", restore.Message, StringComparison.Ordinal);
+        var assets = Assert.Throws<InvalidOperationException>(() => DotnetAuditJson.Parse(Fixture("dotnet-no-assets.json")));
+        Assert.Contains("No assets file was found", assets.Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => DotnetAuditJson.Parse("""{"version": 1}"""));
+        Assert.Empty(DotnetAuditJson.Parse(
+            """{"version": 1, "problems": [{"project": "/src/app/App.csproj", "level": "warning", "text": "a warning"}], "projects": [{"path": "/src/app/App.csproj"}]}"""));
+    }
+
+    [Fact]
+    public void Yarn_rejects_output_that_holds_no_audit_report()
+    {
+        Assert.Throws<InvalidOperationException>(() => YarnAuditJson.Parse(Fixture("yarn-offline.json")));
+        var error = Assert.Throws<InvalidOperationException>(() => YarnAuditJson.Parse(
+            "{\"type\":\"error\",\"data\":\"Error: https://registry.yarnpkg.com/-/npm/v1/security/audits: tunneling socket could not be established, cause=connect ECONNREFUSED 127.0.0.1:9\"}\n"
+            + "{\"type\":\"info\",\"data\":\"Visit https://yarnpkg.com/en/docs/cli/audit for documentation about this command.\"}\n"));
+        Assert.Contains("ECONNREFUSED 127.0.0.1:9", error.Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => YarnAuditJson.Parse(
+            "➤ YN0001: RequestError: connect ECONNREFUSED 127.0.0.1:9\n    at ClientRequest.<anonymous> (yarn.js:195:14340)\n\n➤ Errors happened when preparing the environment required to run this command.\n"));
+    }
+
+    [Fact]
+    public void Yarn3_npm_audit_writes_the_advisory_map_and_it_is_read()
+    {
+        var found = YarnAuditJson.Parse(Fixture("yarn3-audit.json"));
+
+        Assert.Equal(["minimist", "minimist"], found.Select(p => p.Package));
+        Assert.Equal("GHSA-xvch-5gv4-984h", Assert.Single(found, p => p.Severity == Severity.Critical).AdvisoryId);
+    }
 }

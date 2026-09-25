@@ -65,7 +65,7 @@ public sealed class DependencyAuditor : IDependencyAuditor
             }
             catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException)
             {
-                diagnostics.Add($"{job.Manifest}: could not read what {job.Tool} wrote ({ex.Message}); run it by hand to see why");
+                diagnostics.Add($"{job.Manifest}: {job.Tool} gave no usable report ({ex.Message}); any earlier findings are kept, run it by hand to see why");
             }
         }
 

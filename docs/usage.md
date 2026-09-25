@@ -85,7 +85,9 @@ text quality and error recovery; technical success alone is insufficient. See
 
 With `vulnerabilities` enabled, scanning also invokes dependency audit tools for supported
 manifests. These tools may need network access. Their diagnostics are printed separately from
-code mapping, and they use no agent calls.
+code mapping, and they use no agent calls. When a tool fails, for example offline, on a registry
+error or on a failed restore, scan prints a warning naming the manifest and keeps that manifest's
+earlier findings; it never records the failure as a clean audit.
 
 `estimate` uses roughly four bytes per input token. It is not a price quote: responses, retries,
 and verification work created by future findings can add to usage.

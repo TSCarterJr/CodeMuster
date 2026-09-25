@@ -1,18 +1,28 @@
 using System.Text.Json;
 using CodeMuster.Domain;
+using static CodeMuster.Infrastructure.Audits.AuditOutput;
 
 namespace CodeMuster.Infrastructure.Audits;
 
 /// <summary>Reads <c>npm audit --json</c> as npm 7 and later write it: a map of package name to what is wrong with it.</summary>
 public static class NpmAuditJson
 {
-    /// <summary>Every advisory the report names, ordered by package then advisory.</summary>
+    /// <summary>Every advisory the report names, ordered by package then advisory. Throws <see cref="InvalidOperationException"/> for npm's error envelope or any output without <c>auditReportVersion</c>.</summary>
     public static IReadOnlyList<VulnerablePackage> Parse(string json)
     {
         using var document = JsonDocument.Parse(json);
-        if (!document.RootElement.TryGetProperty("vulnerabilities", out var packages) || packages.ValueKind != JsonValueKind.Object)
+        var root = document.RootElement;
+        if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("error", out var error))
         {
-            return [];
+            throw Failed(Text(root, "message"), ErrorText(error));
+        }
+
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("auditReportVersion", out _)
+            || !root.TryGetProperty("vulnerabilities", out var packages)
+            || packages.ValueKind != JsonValueKind.Object)
+        {
+            throw NoReport();
         }
 
         var found = new List<VulnerablePackage>();
@@ -62,14 +72,4 @@ public static class NpmAuditJson
         url is { Length: > 0 } && url.Contains("/advisories/", StringComparison.Ordinal)
             ? url[(url.LastIndexOf('/') + 1)..]
             : source ?? "";
-
-    private static string? Text(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value)
-            ? value.ValueKind switch
-            {
-                JsonValueKind.String => value.GetString(),
-                JsonValueKind.Number => value.ToString(),
-                _ => null,
-            }
-            : null;
 }

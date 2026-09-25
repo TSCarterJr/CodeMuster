@@ -1,18 +1,32 @@
 using System.Text.Json;
 using CodeMuster.Domain;
+using static CodeMuster.Infrastructure.Audits.AuditOutput;
 
 namespace CodeMuster.Infrastructure.Audits;
 
 /// <summary>Reads <c>dotnet list package --vulnerable --include-transitive --format json</c>. NuGet's audit names the advisory and its severity but never the version that fixes it.</summary>
 public static class DotnetAuditJson
 {
-    /// <summary>Every advisory, grouped under the project that resolves the package.</summary>
+    /// <summary>Every advisory, grouped under the project that resolves the package. Throws <see cref="InvalidOperationException"/> when a problem has level <c>error</c>, such as a failed restore, or when the output has no <c>projects</c>; warnings are ignored.</summary>
     public static IReadOnlyList<(string Project, VulnerablePackage Package)> Parse(string json)
     {
         using var document = JsonDocument.Parse(json);
-        if (!document.RootElement.TryGetProperty("projects", out var projects) || projects.ValueKind != JsonValueKind.Array)
+        var root = document.RootElement;
+        if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("problems", out var problems) && problems.ValueKind == JsonValueKind.Array)
         {
-            return [];
+            var errors = problems.EnumerateArray()
+                .Where(problem => string.Equals(Text(problem, "level"), "error", StringComparison.OrdinalIgnoreCase))
+                .Select(problem => Text(problem, "text"))
+                .ToArray();
+            if (errors.Length > 0)
+            {
+                throw Failed(errors);
+            }
+        }
+
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("projects", out var projects) || projects.ValueKind != JsonValueKind.Array)
+        {
+            throw NoReport();
         }
 
         var found = new List<(string, VulnerablePackage)>();

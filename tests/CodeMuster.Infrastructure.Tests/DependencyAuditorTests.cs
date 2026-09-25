@@ -103,6 +103,20 @@ public class DependencyAuditorTests
     }
 
     [Fact]
+    public async Task An_error_envelope_becomes_a_diagnostic_rather_than_a_clean_manifest()
+    {
+        _replies["npm"] = (1, Fixture("npm-offline.json"));
+
+        var audit = await Auditor().AuditAsync(Root, ["web/package-lock.json", "web/package.json"], null, CancellationToken.None);
+
+        Assert.Empty(audit.Manifests);
+        var diagnostic = Assert.Single(audit.Diagnostics);
+        Assert.StartsWith("web/package.json: npm audit ", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("ECONNREFUSED 127.0.0.1:9", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("earlier findings are kept", diagnostic, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Without_any_manifest_nothing_runs()
     {
         var audit = await Auditor().AuditAsync(Root, ["src/A.cs", "README.md"], null, CancellationToken.None);
