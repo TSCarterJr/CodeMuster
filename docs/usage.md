@@ -69,7 +69,9 @@ mappers load, and, while the vulnerability audit is on, each `package.json`.
 `scan` acknowledges the content it started with. Read-only commands, staging or committing
 unchanged content, other excluded files (lockfiles, documentation, files marked
 `linguist-generated`), and untracked files (including `report --out audit.md`, nested
-repositories and worktrees) do not count. An edit during a scan remains detectable. Untracked
+repositories and worktrees) do not count. An edit during a scan remains detectable. When git cannot read a changed file (another program
+holds it open, its permissions deny reading, or a required clean filter fails), those commands
+print `warning: could not check for changes since the last scan` and still run. Untracked
 files remain outside scan coverage until tracked. Hooks do not trigger model calls, run scans, or
 automatically close findings.
 

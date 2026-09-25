@@ -139,9 +139,9 @@ public static class Program
         using var ledger = await SqliteLedger.OpenAsync(Path.Combine(repoRoot, ".codemuster", "ledger.db"), cancellationToken);
         var clock = new SystemClock();
         var changes = ChangeTracker(repoRoot, config);
-        if (command.Verb is "status" or "report" or "fix" or "verify" && await changes.ChangesAsync(cancellationToken) is { Detected: true } changed)
+        if (command.Verb is "status" or "report" or "fix" or "verify")
         {
-            Console.Error.WriteLine(ChangeWarning(changed.Paths));
+            await WarnAboutChangesAsync(changes, cancellationToken);
         }
 
         switch (command.Verb)
@@ -333,6 +333,22 @@ public static class Program
 
     private static GitChangeTracker ChangeTracker(string repoRoot, Config config) =>
         new(repoRoot, config.AffectsScan);
+
+    private static async Task WarnAboutChangesAsync(GitChangeTracker changes, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (await changes.ChangesAsync(cancellationToken) is { Detected: true } changed)
+            {
+                Console.Error.WriteLine(ChangeWarning(changed.Paths));
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The warning is advisory: a file git cannot read, or a clean filter that fails, must not stop the command it precedes.
+            Console.Error.WriteLine($"warning: could not check for changes since the last scan: {ex.Message}");
+        }
+    }
 
     private static string ChangeWarning(IReadOnlyList<string> paths)
     {

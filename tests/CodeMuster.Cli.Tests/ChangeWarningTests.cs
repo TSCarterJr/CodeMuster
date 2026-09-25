@@ -90,6 +90,41 @@ public class ChangeWarningTests
         Assert.Equal("src/MixedRepo.Api/MixedRepo.Api.csproj, web/tsconfig.json changed since the last scan; run codemuster scan to refresh coverage", warned.Stderr.Trim());
     }
 
+    [Fact]
+    public async Task A_changed_file_git_cannot_read_turns_the_change_check_into_a_warning_and_status_still_runs()
+    {
+        using var repo = await ScannedAsync();
+        var path = Path.Combine(repo.Root, "web", "lib", "index.ts");
+        File.AppendAllText(path, "\nexport const added = 1;\n");
+
+        CliResult status;
+        if (OperatingSystem.IsWindows())
+        {
+            // Some Windows scanners and editors hold a file with no sharing, so git cannot open it.
+            using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                status = await CliProcess.RunAsync(repo.Root, "status");
+            }
+        }
+        else
+        {
+            var mode = File.GetUnixFileMode(path);
+            File.SetUnixFileMode(path, UnixFileMode.None);
+            try
+            {
+                status = await CliProcess.RunAsync(repo.Root, "status");
+            }
+            finally
+            {
+                File.SetUnixFileMode(path, mode);
+            }
+        }
+
+        Assert.Equal(0, status.ExitCode);
+        Assert.StartsWith("warning: could not check for changes since the last scan: ", status.Stderr);
+        Assert.Contains("analyzed", status.Stdout);
+    }
+
     private static async Task<TempRepo> ScannedAsync(Action<TempRepo>? prepare = null)
     {
         var repo = TempRepo.FromFixture("mixed-repo");
