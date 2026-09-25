@@ -59,6 +59,13 @@ public static class Program
             return 2;
         }
 
+        if (args[0].Equals("hook", StringComparison.OrdinalIgnoreCase))
+        {
+            // A usage error would exit 2, which fails the agent's tool call, so arguments a hand-written hook adds are only named.
+            if (args.Length > 1) Console.Error.WriteLine($"warning: codemuster hook takes no arguments; ignoring {string.Join(' ', args.Skip(1))}");
+            return await HookAsync(new PhysicalFileSystem(), CancellationToken.None);
+        }
+
         Command command;
         try
         {
@@ -124,11 +131,6 @@ public static class Program
         if (command.Verb == "doctor")
         {
             return await DoctorAsync(fileSystem, cancellationToken);
-        }
-
-        if (command.Verb == "hook")
-        {
-            return await HookAsync(fileSystem, cancellationToken);
         }
 
         var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);

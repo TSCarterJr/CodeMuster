@@ -52,6 +52,21 @@ public class ChangeWarningTests
         Assert.DoesNotContain(Directory.GetFiles(Path.Combine(repo.Root, ".git", "codemuster")), path => Path.GetFileName(path).StartsWith("changed.", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("hook", "--event", "PostToolUse")]
+    [InlineData("hook", "extra")]
+    [InlineData("HOOK", "--event=PostToolUse")]
+    public async Task A_hook_given_arguments_still_records_the_change_and_exits_0(params string[] arguments)
+    {
+        using var repo = await ScannedAsync();
+
+        var hook = await CliProcess.RunAsync(repo.Root, arguments);
+
+        Assert.Equal(0, hook.ExitCode);
+        Assert.Equal("{}", hook.Stdout.Trim());
+        Assert.StartsWith("warning: codemuster hook takes no arguments; ignoring ", hook.Stderr);
+    }
+
     [Fact]
     public async Task A_hook_that_cannot_record_the_change_warns_and_still_exits_0()
     {
