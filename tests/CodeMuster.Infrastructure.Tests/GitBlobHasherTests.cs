@@ -6,47 +6,79 @@ namespace CodeMuster.Infrastructure.Tests;
 public class GitBlobHasherTests
 {
     [Fact]
-    public void Hash_matches_git_hash_object_for_known_string()
+    public async Task Hashes_every_path_in_one_call_exactly_as_git_hash_object_does()
     {
         using var repo = new TempRepo();
-        var bytes = Encoding.UTF8.GetBytes("hello world\n");
-        repo.WriteBytes("hello.txt", bytes);
-        var expected = repo.Run("hash-object", "hello.txt").Trim();
+        List<string> paths = ["hello.txt", "empty.txt", "src/a/crlf.cs", "docs/read me.md", "src/c/naïve.cs", "-leading-dash.txt", "#hash.txt"];
+        if (!OperatingSystem.IsWindows())
+        {
+            // Names Windows cannot hold: each would break a plain one-path-per-line list.
+            paths.AddRange(["\"leading-quote.txt", "quote\"d.txt", "new\nline.txt", "back\\slash.txt", "trailing-cr\r"]);
+        }
 
-        Assert.Equal(expected, GitBlobHasher.Hash(bytes));
+        foreach (var path in paths)
+        {
+            repo.WriteBytes(path, Encoding.UTF8.GetBytes(path == "empty.txt" ? "" : $"content of {path}\r\nsecond line\n"));
+        }
+
+        var hashes = await new GitBlobHasher(repo.Root).HashFilesAsync(paths, CancellationToken.None);
+
+        Assert.Equal(paths.Count, hashes.Count);
+        Assert.All(paths, path => Assert.Equal(repo.Run("hash-object", "--", path).Trim(), hashes[path]));
     }
 
     [Fact]
-    public void Hash_of_empty_content_matches_git()
+    public async Task No_paths_returns_nothing_without_running_git()
     {
-        using var repo = new TempRepo();
-        repo.WriteBytes("empty.txt", []);
-        var expected = repo.Run("hash-object", "empty.txt").Trim();
+        var missing = Path.Combine(Path.GetTempPath(), "codemuster-tests", Guid.NewGuid().ToString("N"));
 
-        Assert.Equal(expected, GitBlobHasher.Hash(ReadOnlySpan<byte>.Empty));
+        var hashes = await new GitBlobHasher(missing).HashFilesAsync([], CancellationToken.None);
+
+        Assert.Empty(hashes);
     }
 
     [Fact]
-    public async Task HashFileAsync_matches_git_for_crlf_bytes_without_normalizing()
+    public async Task Dirty_crlf_file_under_autocrlf_keeps_its_hash_when_committed_unchanged()
     {
         using var repo = new TempRepo();
-        var crlf = Encoding.UTF8.GetBytes("line one\r\nline two\r\n");
-        repo.WriteBytes("src/a/crlf.cs", crlf);
-        var expected = repo.Run("hash-object", "src/a/crlf.cs").Trim();
+        repo.Run("config", "core.autocrlf", "true");
+        repo.WriteBytes("src/a.cs", Encoding.UTF8.GetBytes("line one\nline two\n"));
+        repo.Commit("first");
+        repo.WriteBytes("src/a.cs", Encoding.UTF8.GetBytes("line one\r\nline two\r\nline three\r\n"));
+
+        var dirty = await DirtyHashAsync(repo, "src/a.cs");
+        repo.Commit("second");
+
+        Assert.Equal(await CleanHashAsync(repo, "src/a.cs"), dirty);
+    }
+
+    [Fact]
+    public async Task Dirty_file_in_a_sha256_repository_keeps_its_hash_when_committed_unchanged()
+    {
+        using var repo = new TempRepo(objectFormat: "sha256");
+        repo.WriteBytes("src/a.cs", Encoding.UTF8.GetBytes("class A {}\n"));
+        repo.Commit("first");
+        repo.WriteBytes("src/a.cs", Encoding.UTF8.GetBytes("class A { int x; }\n"));
+
+        var dirty = await DirtyHashAsync(repo, "src/a.cs");
+        repo.Commit("second");
+
+        Assert.Equal(64, dirty.Length);
+        Assert.Equal(await CleanHashAsync(repo, "src/a.cs"), dirty);
+    }
+
+    private static async Task<string> DirtyHashAsync(TempRepo repo, string path)
+    {
+        var file = (await new GitSourceTree(repo.Root).ListFilesAsync(CancellationToken.None)).Single(f => f.Path == path);
+        Assert.Null(file.KnownHash);
         IContentHasher hasher = new GitBlobHasher(repo.Root);
-
-        var actual = await hasher.HashFileAsync("src/a/crlf.cs", CancellationToken.None);
-
-        Assert.Equal(expected, actual);
-        Assert.NotEqual(GitBlobHasher.Hash(Encoding.UTF8.GetBytes("line one\nline two\n")), actual);
+        return (await hasher.HashFilesAsync([path], CancellationToken.None))[path];
     }
 
-    [Fact]
-    public void Hash_is_forty_lowercase_hex_characters()
+    private static async Task<string> CleanHashAsync(TempRepo repo, string path)
     {
-        var hash = GitBlobHasher.Hash(Encoding.UTF8.GetBytes("x"));
-
-        Assert.Equal(40, hash.Length);
-        Assert.All(hash, c => Assert.True(char.IsAsciiHexDigitLower(c)));
+        var file = (await new GitSourceTree(repo.Root).ListFilesAsync(CancellationToken.None)).Single(f => f.Path == path);
+        Assert.Equal(repo.Run("rev-parse", "HEAD:" + path).Trim(), file.KnownHash);
+        return file.KnownHash!;
     }
 }

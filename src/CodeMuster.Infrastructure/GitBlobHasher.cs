@@ -1,24 +1,35 @@
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
 
 public sealed class GitBlobHasher(string repoRoot) : IContentHasher
 {
-    public async Task<string> HashFileAsync(string path, CancellationToken cancellationToken)
+    public async Task<IReadOnlyDictionary<string, string>> HashFilesAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken)
     {
-        var content = await File.ReadAllBytesAsync(Path.Combine(repoRoot, path), cancellationToken).ConfigureAwait(false);
-        return Hash(content);
+        var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (paths.Count == 0)
+        {
+            return hashes;
+        }
+
+        var input = string.Concat(paths.Select(path => Quote(path) + "\n"));
+        var output = await GitProcess.RunAsync(repoRoot, ["hash-object", "--stdin-paths"], input, cancellationToken).ConfigureAwait(false);
+        var ids = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        if (ids.Length != paths.Count)
+        {
+            throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture, $"git hash-object returned {ids.Length} ids for {paths.Count} paths"));
+        }
+
+        for (var i = 0; i < paths.Count; i++)
+        {
+            hashes[paths[i]] = ids[i].TrimEnd('\r');
+        }
+
+        return hashes;
     }
 
-    public static string Hash(ReadOnlySpan<byte> content)
-    {
-        var header = Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture, $"blob {content.Length}\0"));
-        using var sha1 = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
-        sha1.AppendData(header);
-        sha1.AppendData(content);
-        return Convert.ToHexStringLower(sha1.GetHashAndReset());
-    }
+    // --stdin-paths reads one path per line and C-unquotes a line that starts with a double quote, so quoting every path carries any name, even one with a newline.
+    private static string Quote(string path) =>
+        "\"" + path.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal).Replace("\r", "\\r", StringComparison.Ordinal) + "\"";
 }

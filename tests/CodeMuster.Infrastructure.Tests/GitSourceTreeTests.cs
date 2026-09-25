@@ -79,7 +79,7 @@ public sealed class GitSourceTreeTests : IDisposable
         var files = await _tree.ListFilesAsync(CancellationToken.None);
 
         var staged = files.Single(f => f.Path == "src/a/staged.cs");
-        Assert.Equal(GitBlobHasher.Hash(Encoding.UTF8.GetBytes(StagedContent)), staged.KnownHash);
+        Assert.Equal(_repo.Run("hash-object", "src/a/staged.cs").Trim(), staged.KnownHash);
         Assert.NotEqual(_repo.Run("rev-parse", "HEAD:src/a/staged.cs").Trim(), staged.KnownHash);
     }
 

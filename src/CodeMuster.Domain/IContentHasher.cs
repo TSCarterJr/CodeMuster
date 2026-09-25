@@ -1,8 +1,8 @@
 namespace CodeMuster.Domain;
 
-/// <summary>Hashes working-tree content with the same scheme git uses for blobs, so the ledger holds one hash scheme (D05).</summary>
+/// <summary>Hashes modified working-tree files to the object id git would record if they were staged now, the same id a clean file carries, so the ledger holds one hash scheme and committing content unchanged keeps its hash (D05).</summary>
 public interface IContentHasher
 {
-    /// <summary>Git blob SHA of the current bytes of a repo-relative path.</summary>
-    Task<string> HashFileAsync(string path, CancellationToken cancellationToken);
+    /// <summary>The object id of each repo-relative path's current content after the repository's clean filters, line-ending rules and object format, all paths in one pass.</summary>
+    Task<IReadOnlyDictionary<string, string>> HashFilesAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken);
 }

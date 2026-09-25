@@ -168,6 +168,22 @@ public class ScanTests
     }
 
     [Fact]
+    public async Task DirtyFiles_AreHashedTogetherInOneCall_AndCleanFilesKeepTheirIndexHash()
+    {
+        tree.AddDirty("src/A.cs", "class A {}");
+        tree.AddDirty("src/B.cs", "class B {}");
+        tree.Add("web/c.ts", "export const c = 1;");
+        var hasher = new FakeContentHasher();
+
+        await ScanAsync(hasher: hasher);
+
+        Assert.Equal(1, hasher.Calls);
+        Assert.Equal("hashed-src/A.cs", ledger.Files["src/A.cs"].ContentHash);
+        Assert.Equal("hashed-src/B.cs", ledger.Files["src/B.cs"].ContentHash);
+        Assert.Equal(tree.Files.Single(f => f.Path == "web/c.ts").KnownHash, ledger.Files["web/c.ts"].ContentHash);
+    }
+
+    [Fact]
     public async Task DirtyFile_WhoseRecordWasWrittenInTheSameSecondAsItsMtime_IsRehashed()
     {
         tree.AddDirty("src/A.cs", "class A {}");

@@ -14,12 +14,8 @@ public static class UxSourceSnapshot
         var files = (await tree.ListFilesAsync(cancellationToken)).Where(f => config.ExcludedReason(f.Path, f.LinguistGenerated) is null).ToList();
         if (!prior.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(files.Select(f => f.Path)))
             throw new JsonException("tracked source inventory changed since scan; scan and inspect the current application again");
-        var current = new List<FileRecord>();
-        foreach (var file in files)
-        {
-            var hash = file.KnownHash ?? await hasher.HashFileAsync(file.Path, cancellationToken);
-            current.Add(prior[file.Path] with { ContentHash = hash });
-        }
+        var hashes = await ContentHashes.CurrentAsync(hasher, files, prior, cancellationToken);
+        var current = files.Select(file => prior[file.Path] with { ContentHash = hashes[file.Path] }).ToList();
         var planned = UxReview.Plan(current, config.UserExperience).SingleOrDefault(p => p.Key == target);
         var unit = await ledger.GetUnitAsync(UnitIds.Ux(target), cancellationToken);
         if (planned is null || unit is null || unit.Status == UnitStatus.Retired || Fingerprints.Compute(planned.Members) != unit.Fingerprint)

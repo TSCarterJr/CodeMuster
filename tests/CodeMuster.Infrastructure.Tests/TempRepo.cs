@@ -5,11 +5,11 @@ namespace CodeMuster.Infrastructure.Tests;
 
 public sealed class TempRepo : IDisposable
 {
-    public TempRepo()
+    public TempRepo(string? objectFormat = null)
     {
         Root = Path.Combine(Path.GetTempPath(), "codemuster-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Root);
-        Run("init", "-q");
+        Run(objectFormat is null ? ["init", "-q"] : ["init", "-q", "--object-format=" + objectFormat]);
         Run("config", "core.autocrlf", "false");
         Run("config", "user.name", "CodeMuster Tests");
         Run("config", "user.email", "tests@codemuster.invalid");

@@ -18,13 +18,8 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         var head = await tree.HeadCommitAsync(cancellationToken);
         var files = await tree.ListFilesAsync(cancellationToken);
         var existing = (await ledger.GetFilesAsync(cancellationToken)).ToDictionary(f => f.Path, StringComparer.Ordinal);
-
-        var current = new List<FileRecord>(files.Count);
-        foreach (var file in files)
-        {
-            existing.TryGetValue(file.Path, out var previous);
-            current.Add(await RefreshAsync(file, previous, now, cancellationToken));
-        }
+        var hashes = await ContentHashes.CurrentAsync(hasher, files, existing, cancellationToken);
+        var current = files.Select(file => Refresh(file, existing.GetValueOrDefault(file.Path), hashes[file.Path], now)).ToList();
 
         var present = current.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
         var deleted = existing.Values
@@ -201,10 +196,8 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             DependencyFindings.Lens);
     }
 
-    private async Task<FileRecord> RefreshAsync(SourceFile file, FileRecord? previous, string now, CancellationToken cancellationToken)
+    private FileRecord Refresh(SourceFile file, FileRecord? previous, string hash, string now)
     {
-        var hash = file.KnownHash
-            ?? (CanReuseHash(file, previous) ? previous!.ContentHash : await hasher.HashFileAsync(file.Path, cancellationToken));
         var unchanged = previous?.ContentHash == hash;
         return new FileRecord(
             file.Path,
@@ -221,14 +214,6 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             unchanged ? previous!.Summary : null,
             unchanged ? previous!.SummaryHash : null);
     }
-
-    private static bool CanReuseHash(SourceFile file, FileRecord? previous) =>
-        previous is not null
-        && previous.Mtime == file.Mtime
-        && previous.Size == file.Size
-        && !SameSecond(previous.LastSeen, previous.Mtime);
-
-    private static bool SameSecond(string a, string b) => string.CompareOrdinal(a, 0, b, 0, 19) == 0;
 
     private static UnitStatus StatusFor(Unit? previous, string fingerprint, string lensHash)
     {
