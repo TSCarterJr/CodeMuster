@@ -220,6 +220,7 @@ public static class HelpText
               --check   Show the available version without installing it
 
             Automatic background checks can be disabled with CI or CODEMUSTER_NO_UPDATE.
+            hook and commands in CodeMuster workers never check.
             """,
         _ => null,
     };

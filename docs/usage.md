@@ -482,7 +482,9 @@ The npm launcher checks update availability on every normal invocation, includin
 `init`, `verify`, `report`, and `--version`. It prints the installed/latest version status to
 stderr so command stdout remains usable. The check has a two-second timeout; offline, timed-out
 or invalid registry responses print that the check was unavailable and let your command continue.
-It never claims you are up to date when the check fails.
+It never claims you are up to date when the check fails. `hook`, which installed agent hooks run
+after every edit, and commands run inside a CodeMuster worker (`CODEMUSTER_WORKER` set) skip the
+check: they make no registry request and print no version line.
 
 Available updates still install in the background at most daily, with package-integrity
 verification, and take effect on a later command. `CI`, `CODEMUSTER_NO_UPDATE`, and exact

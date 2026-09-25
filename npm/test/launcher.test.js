@@ -433,6 +433,30 @@ for (const env of [{ CI: '1' }, { CODEMUSTER_NO_UPDATE: '1' }, { CODEMUSTER_VERS
   });
 }
 
+test('hook runs without an availability check, version line or background update, and normal commands still check', async (t) => {
+  const h = commandHarness(t, '0.2.10');
+  assert.equal(await launcher.main(['hook'], {}), 3);
+  assert.deepEqual(h.calls, []);
+  assert.deepEqual(h.stderr, []);
+  assert.deepEqual(h.stdout, ['{"command":"result"}\n']);
+  assert.deepEqual(h.children.map((c) => c.args), [['hook']]);
+
+  assert.equal(await launcher.main(['scan'], {}), 3);
+  assert.deepEqual(h.calls, [launcher.REGISTRY + '/codemuster']);
+  assert.match(h.stderr.join(''), /0\.2\.10 is available/);
+});
+
+for (const worker of ['1', '']) {
+  test(`commands in a CodeMuster worker (CODEMUSTER_WORKER=${JSON.stringify(worker)}) skip the availability check`, async (t) => {
+    const h = commandHarness(t, '0.2.10');
+    assert.equal(await launcher.main(['next', '--path', 'src'], { CODEMUSTER_WORKER: worker }), 3);
+    assert.deepEqual(h.calls, []);
+    assert.deepEqual(h.stderr, []);
+    assert.deepEqual(h.stdout, ['{"command":"result"}\n']);
+    assert.deepEqual(h.children.map((c) => c.args), [['next', '--path', 'src']]);
+  });
+}
+
 test('available updates still install in the background when the daily interval is due', async (t) => {
   const h = commandHarness(t, '0.2.10');
   assert.equal(await launcher.main(['scan'], {}), 3);

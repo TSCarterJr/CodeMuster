@@ -194,8 +194,9 @@ codemuster --version
 
 These documents describe the repository source; an older installed release may have fewer
 options. The npm launcher checks availability on every normal command and prints the result to
-stderr, with a two-second timeout. Registry failures do not stop your command. Available updates
-still install in the background at most daily and take effect on a later invocation. Set `CI`,
+stderr, with a two-second timeout; `hook` and commands inside CodeMuster workers skip the check.
+Registry failures do not stop your command. Available updates still install in the background
+at most daily and take effect on a later invocation. Set `CI`,
 `CODEMUSTER_NO_UPDATE`, or an exact version pin to disable automatic checks and installation.
 `codemuster update --check` checks availability without installing; `codemuster update` installs
 an available update and displays all intervening entries from the packaged changelog. Version
