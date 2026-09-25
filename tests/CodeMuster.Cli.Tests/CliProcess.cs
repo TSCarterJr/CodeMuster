@@ -26,6 +26,8 @@ public static class CliProcess
             start.ArgumentList.Add(arg);
         }
 
+        // Claude Code's shell sets this, which hides a program in the working directory from Windows' search; a normal terminal does not.
+        start.Environment.Remove("NoDefaultCurrentDirectoryInExePath");
         foreach (var (name, value) in environment ?? new Dictionary<string, string>())
         {
             start.Environment[name] = value;

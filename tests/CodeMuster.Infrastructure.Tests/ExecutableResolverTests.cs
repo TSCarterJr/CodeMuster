@@ -48,7 +48,7 @@ public sealed class ExecutableResolverTests : IDisposable
     public void Unix_semantics_resolve_the_bare_file()
     {
         var bare = Path.Combine(_dir.Root, "codex");
-        File.WriteAllText(bare, "#!/bin/sh\n");
+        WriteExecutable(bare);
         File.WriteAllText(Path.Combine(_dir.Root, "codex.cmd"), "@echo off\r\n");
 
         Assert.Equal(bare, ExecutableResolver.Resolve("codex", [_dir.Root], [], isWindows: false));
@@ -62,10 +62,78 @@ public sealed class ExecutableResolverTests : IDisposable
         Directory.CreateDirectory(first);
         Directory.CreateDirectory(second);
         var expected = Path.Combine(second, "gemini");
-        File.WriteAllText(expected, "#!/bin/sh\n");
-        File.WriteAllText(Path.Combine(_dir.Root, "gemini"), "#!/bin/sh\n");
+        WriteExecutable(expected);
+        WriteExecutable(Path.Combine(_dir.Root, "gemini"));
 
         Assert.Equal(expected, ExecutableResolver.Resolve("gemini", [first, second, _dir.Root], [], isWindows: false));
+    }
+
+    [Fact]
+    public void Path_entries_that_are_not_fully_qualified_are_skipped()
+    {
+        var name = "codemuster-tool-" + Guid.NewGuid().ToString("N");
+        var relative = "codemuster-relative-" + Guid.NewGuid().ToString("N");
+        var fileName = OperatingSystem.IsWindows() ? name + ".exe" : name;
+        var inCurrentDirectory = Path.Combine(Environment.CurrentDirectory, fileName);
+        var inRelativeDirectory = Path.Combine(Environment.CurrentDirectory, relative, fileName);
+        var expected = Path.Combine(_dir.Root, fileName);
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(inRelativeDirectory)!);
+            WriteExecutable(inCurrentDirectory);
+            WriteExecutable(inRelativeDirectory);
+            WriteExecutable(expected);
+
+            var resolved = ExecutableResolver.Resolve(name, [".", relative, "", _dir.Root], [".exe"], OperatingSystem.IsWindows());
+
+            Assert.Equal(expected, resolved);
+        }
+        finally
+        {
+            File.Delete(inCurrentDirectory);
+            Directory.Delete(Path.Combine(Environment.CurrentDirectory, relative), recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Only_relative_path_entries_mean_the_command_is_not_found()
+    {
+        var name = "codemuster-tool-" + Guid.NewGuid().ToString("N");
+        var fileName = OperatingSystem.IsWindows() ? name + ".exe" : name;
+        var inCurrentDirectory = Path.Combine(Environment.CurrentDirectory, fileName);
+        try
+        {
+            WriteExecutable(inCurrentDirectory);
+
+            Assert.Throws<InvalidOperationException>(() => ExecutableResolver.Resolve(name, ["."], [".exe"], OperatingSystem.IsWindows()));
+        }
+        finally
+        {
+            File.Delete(inCurrentDirectory);
+        }
+    }
+
+    [Fact]
+    public void Unix_semantics_skip_a_file_without_the_execute_bit_on_unix()
+    {
+        var first = Path.Combine(_dir.Root, "first");
+        var second = Path.Combine(_dir.Root, "second");
+        Directory.CreateDirectory(first);
+        Directory.CreateDirectory(second);
+        var plain = Path.Combine(first, "git");
+        File.WriteAllText(plain, "#!/bin/sh\n");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(plain, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+        }
+
+        var executable = Path.Combine(second, "git");
+        WriteExecutable(executable);
+
+        var resolved = ExecutableResolver.Resolve("git", [first, second], [], isWindows: false);
+
+        // Windows file systems have no execute bit, so there the first file named git still wins.
+        Assert.Equal(OperatingSystem.IsWindows() ? plain : executable, resolved);
     }
 
     [Fact]
@@ -87,5 +155,24 @@ public sealed class ExecutableResolverTests : IDisposable
         Assert.Equal(OperatingSystem.IsWindows(), Path.GetExtension(git).Length > 0);
     }
 
+    [Theory]
+    [InlineData("git", "git-scm.com")]
+    [InlineData("node", "nodejs.org")]
+    public void Missing_git_or_node_names_where_to_get_it(string name, string hint)
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() => ExecutableResolver.Resolve(name, [_dir.Root], WindowsExtensions, isWindows: true));
+
+        Assert.Contains(hint, ex.Message);
+    }
+
     public void Dispose() => _dir.Dispose();
+
+    private static void WriteExecutable(string path)
+    {
+        File.WriteAllText(path, "#!/bin/sh\n");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
 }

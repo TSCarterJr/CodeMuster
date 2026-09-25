@@ -10,14 +10,10 @@ public sealed class TypeScriptMapper : ICodeMapper
 {
     private const string ProgressPrefix = "progress: ";
 
-    private readonly string _node;
+    private readonly Func<string> _node;
 
-    public TypeScriptMapper()
-        : this("node")
-    {
-    }
-
-    internal TypeScriptMapper(string node)
+    // Resolved only when a tsconfig.json needs mapping, so a machine without Node.js can still map C#.
+    public TypeScriptMapper(Func<string> node)
     {
         _node = node;
     }
@@ -67,7 +63,8 @@ public sealed class TypeScriptMapper : ICodeMapper
     private async Task<string> RunNodeAsync(string script, string request, IProgress<string>? progress, CancellationToken cancellationToken)
     {
         var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-        var startInfo = new ProcessStartInfo(_node)
+        var node = _node();
+        var startInfo = new ProcessStartInfo(node)
         {
             UseShellExecute = false,
             RedirectStandardInput = true,
@@ -79,7 +76,7 @@ public sealed class TypeScriptMapper : ICodeMapper
         };
         startInfo.ArgumentList.Add(script);
 
-        using var process = StartNode(startInfo);
+        using var process = StartNode(node, startInfo);
         try
         {
             var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
@@ -118,15 +115,15 @@ public sealed class TypeScriptMapper : ICodeMapper
         }
     }
 
-    private Process StartNode(ProcessStartInfo startInfo)
+    private static Process StartNode(string node, ProcessStartInfo startInfo)
     {
         try
         {
-            return Process.Start(startInfo) ?? throw new InvalidOperationException($"{_node} did not start.");
+            return Process.Start(startInfo) ?? throw new InvalidOperationException($"{node} did not start.");
         }
         catch (Win32Exception error)
         {
-            throw new InvalidOperationException($"{_node} was not found on PATH; install Node.js 22 or later from https://nodejs.org to map TypeScript.", error);
+            throw new InvalidOperationException($"{node} was not found on PATH; install Node.js 22 or later from https://nodejs.org to map TypeScript.", error);
         }
     }
 

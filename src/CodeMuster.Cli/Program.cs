@@ -303,7 +303,7 @@ public static class Program
         return report.Ready ? 0 : 1;
     }
 
-    private static IReadOnlyList<ICodeMapper> Mappers() => [new RoslynMapper(), new TypeScriptMapper()];
+    private static IReadOnlyList<ICodeMapper> Mappers() => [new RoslynMapper(), new TypeScriptMapper(() => ExecutableResolver.Resolve("node"))];
 
     private static async Task<int> NextAsync(Command command, SqliteLedger ledger, GitSourceTree tree, Config config, CancellationToken cancellationToken)
     {

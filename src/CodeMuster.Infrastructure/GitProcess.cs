@@ -17,7 +17,7 @@ internal static class GitProcess
     public static async Task<(int ExitCode, string Output, string Error)> RunAllowingFailureAsync(string repoRoot, IReadOnlyList<string> arguments, string? standardInput, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? environment = null)
     {
         var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-        var startInfo = new ProcessStartInfo("git")
+        var startInfo = new ProcessStartInfo(ExecutableResolver.Resolve("git"))
         {
             WorkingDirectory = repoRoot,
             UseShellExecute = false,

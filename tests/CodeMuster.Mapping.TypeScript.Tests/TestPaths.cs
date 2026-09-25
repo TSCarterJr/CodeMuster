@@ -6,6 +6,13 @@ internal static class TestPaths
 
     public static string RepoRoot { get; } = FindRepoRoot();
 
+    /// <summary>The node program on PATH, found the way the CLI finds it: fully qualified directories only.</summary>
+    public static Func<string> Node { get; } = () => (Environment.GetEnvironmentVariable("PATH") ?? "")
+        .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+        .Where(Path.IsPathFullyQualified)
+        .Select(directory => Path.Combine(directory, OperatingSystem.IsWindows() ? "node.exe" : "node"))
+        .First(File.Exists);
+
     public static string MixedRepo => Path.Combine(RepoRoot, "fixtures", "mixed-repo");
 
     public static string Golden => Path.Combine(RepoRoot, "tests", "CodeMuster.Mapping.TypeScript.Tests", "golden", "mixed-repo.json");

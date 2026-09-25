@@ -8,7 +8,7 @@ public class TypeScriptMapperProgressTests
         var root = TestPaths.MixedRepoWithTypeScript();
         var progress = new ListProgress();
 
-        await new TypeScriptMapper().MapAsync(root, TestPaths.RepoPaths(root), progress, CancellationToken.None);
+        await new TypeScriptMapper(TestPaths.Node).MapAsync(root, TestPaths.RepoPaths(root), progress, CancellationToken.None);
 
         Assert.Equal("loading web/tsconfig.json", progress.Messages[0]);
         Assert.Matches(@"^mapped (\d+)/\1 files$", progress.Messages[^1]);

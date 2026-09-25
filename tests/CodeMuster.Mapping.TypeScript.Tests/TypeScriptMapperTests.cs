@@ -9,7 +9,7 @@ public class TypeScriptMapperTests
     [Fact]
     public void Language_is_typescript()
     {
-        Assert.Equal(Languages.TypeScript, new TypeScriptMapper().Language);
+        Assert.Equal(Languages.TypeScript, new TypeScriptMapper(TestPaths.Node).Language);
     }
 
     [Fact]
@@ -17,7 +17,7 @@ public class TypeScriptMapperTests
     {
         var root = TestPaths.MixedRepoWithTypeScript();
 
-        var map = await new TypeScriptMapper().MapAsync(root, TestPaths.RepoPaths(root), null, CancellationToken.None);
+        var map = await new TypeScriptMapper(TestPaths.Node).MapAsync(root, TestPaths.RepoPaths(root), null, CancellationToken.None);
 
         GoldenAssert.Matches(map);
     }
@@ -25,7 +25,7 @@ public class TypeScriptMapperTests
     [Fact]
     public async Task Without_a_tsconfig_json_returns_an_empty_map_and_never_starts_node()
     {
-        var map = await new TypeScriptMapper(MissingNode).MapAsync(TestPaths.MixedRepo, ["web/tsconfig.base.json", "web/lib/api.ts"], null, CancellationToken.None);
+        var map = await new TypeScriptMapper(() => throw new InvalidOperationException("node was looked up")).MapAsync(TestPaths.MixedRepo, ["web/tsconfig.base.json", "web/lib/api.ts"], null, CancellationToken.None);
 
         Assert.Empty(map.Symbols);
         Assert.Empty(map.Edges);
@@ -38,7 +38,7 @@ public class TypeScriptMapperTests
     [Fact]
     public async Task Missing_node_throws_saying_what_to_install()
     {
-        var mapper = new TypeScriptMapper(MissingNode);
+        var mapper = new TypeScriptMapper(() => MissingNode);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => mapper.MapAsync(TestPaths.MixedRepo, ["web/tsconfig.json"], null, CancellationToken.None));
 
@@ -52,7 +52,7 @@ public class TypeScriptMapperTests
         using var temp = new TempFolder();
         temp.Copy(Path.Combine(TestPaths.MixedRepo, "web"), "web", "node_modules");
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper().MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None));
 
         Assert.Contains("typescript was not found for web/tsconfig.json", error.Message);
         Assert.Contains("npm ci --prefix web", error.Message);

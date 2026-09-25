@@ -10,7 +10,7 @@ internal static class MapScript
     public static async Task<CodeMap> RunAsync(string repoRoot, IReadOnlyList<string> tsconfigs, IReadOnlyList<string> paths)
     {
         var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-        var startInfo = new ProcessStartInfo("node")
+        var startInfo = new ProcessStartInfo(TestPaths.Node())
         {
             UseShellExecute = false,
             RedirectStandardInput = true,

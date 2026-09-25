@@ -268,6 +268,12 @@ For several checks, put them in a repository script and invoke its interpreter:
 "test_command": ["node", "scripts/validate-fix.mjs"]
 ```
 
+The program is looked up only in absolute `PATH` directories, never in the current directory or a
+relative entry such as `.` or `node_modules/.bin`, and on Linux and macOS it must be executable.
+Git, Node.js, the agents and the audit tools are found the same way, so a program committed to the
+repository never runs in their place. Reach a project-local tool through its package manager, for
+example `["npx", "jest"]`.
+
 Choose a command that terminates, returns nonzero on failure, and covers the affected project.
 Install its dependencies beforehand and ensure it passes on the starting code. A failing command
 rejects the attempt and triggers a retry. Without one, the CLI prints a warning and accepts fixes
