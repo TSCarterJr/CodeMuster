@@ -178,5 +178,28 @@ public class UsageTests
         }
     }
 
+    [Fact]
+    public async Task Done_rejections_go_to_stderr_as_errors_and_a_malformed_file_is_located()
+    {
+        using var repo = TempRepo.FromFixture("minimal-api");
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "init", "--yes", "--for=none")).ExitCode);
+        repo.WithoutVulnerabilityScan();
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file")).ExitCode);
+        var pack = (await CliProcess.RunAsync(repo.Root, "next")).Stdout;
+        var unit = System.Text.RegularExpressions.Regex.Match(pack, @"^- unit: (\S+)\r?$", System.Text.RegularExpressions.RegexOptions.Multiline).Groups[1].Value;
+        var fingerprint = System.Text.RegularExpressions.Regex.Match(pack, @"^- fingerprint: ([0-9a-f]{64})\r?$", System.Text.RegularExpressions.RegexOptions.Multiline).Groups[1].Value;
+        File.WriteAllText(Path.Combine(repo.Root, "bad.json"), "not json\n");
+
+        var stale = await CliProcess.RunAsync(repo.Root, "done", unit, "--fingerprint", new string('0', 64), "--findings", "bad.json");
+        var malformed = await CliProcess.RunAsync(repo.Root, "done", unit, "--fingerprint", fingerprint, "--findings", "bad.json");
+
+        Assert.Equal(1, stale.ExitCode);
+        Assert.Equal("", stale.Stdout);
+        Assert.Equal([$"error: unit {unit} changed since next; run next again"], Lines(stale.Stderr));
+        Assert.Equal(1, malformed.ExitCode);
+        Assert.Equal("", malformed.Stdout);
+        Assert.Equal(["error: --findings bad.json is not valid JSON (line 1, column 2); correct it and run the same done command"], Lines(malformed.Stderr));
+    }
+
     private static string[] Lines(string output) => output.ReplaceLineEndings("\n").TrimEnd('\n').Split('\n');
 }

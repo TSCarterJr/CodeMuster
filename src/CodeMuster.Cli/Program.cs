@@ -171,8 +171,17 @@ public static class Program
             case "done":
                 var response = await ReadOptionFileAsync("findings", command.Options["findings"], cancellationToken);
                 var done = await new Done(ledger, clock, config, fileSystem: fileSystem, repoRoot: repoRoot, tree: tree, hasher: new GitBlobHasher(repoRoot)).RunAsync(command.Positionals[0], command.Options["fingerprint"], response, cancellationToken);
-                Console.WriteLine(done.Message);
-                return done.Outcome == DoneOutcome.Recorded ? 0 : 1;
+                if (done.Outcome == DoneOutcome.Recorded)
+                {
+                    Console.WriteLine(done.Message);
+                    return 0;
+                }
+
+                // The ledger keeps the parser's full text; the console gets where the file stops being JSON, counted from 1.
+                Console.Error.WriteLine("error: " + (done.Outcome == DoneOutcome.InvalidResponse && JsonPosition(response) is { } position
+                    ? $"--findings {command.Options["findings"]} is not valid JSON ({position}); correct it and run the same done command"
+                    : done.Message));
+                return 1;
             case "run":
             case "verify":
                 return await RunAgentAsync(command, repoRoot, ledger, tree, clock, config, cancellationToken);
@@ -517,6 +526,19 @@ public static class Program
             _ => "left .gitignore alone; make sure .codemuster/ledger.db is ignored",
         });
         return 0;
+    }
+
+    private static string? JsonPosition(string text)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(text);
+            return null;
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"line {ex.LineNumber + 1}, column {ex.BytePositionInLine + 1}");
+        }
     }
 
     private static async Task<string> ReadOptionFileAsync(string option, string path, CancellationToken cancellationToken)
