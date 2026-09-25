@@ -70,7 +70,7 @@ public sealed class GitSourceTree(string repoRoot) : ISourceTree
         return !pattern.StartsWith('!') && !Path.IsPathRooted(source) && !source.StartsWith(".git/", StringComparison.Ordinal);
     }
 
-    private static List<(string Path, string Sha)> ParseIndex(string output)
+    internal static List<(string Path, string Sha)> ParseIndex(string output)
     {
         var entries = new List<(string Path, string Sha)>();
         var seen = new HashSet<string>(StringComparer.Ordinal);

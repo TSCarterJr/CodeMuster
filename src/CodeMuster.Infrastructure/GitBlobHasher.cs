@@ -1,4 +1,3 @@
-using System.Globalization;
 using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
@@ -13,23 +12,38 @@ public sealed class GitBlobHasher(string repoRoot) : IContentHasher
             return hashes;
         }
 
-        var input = string.Concat(paths.Select(path => Quote(path) + "\n"));
-        var output = await GitProcess.RunAsync(repoRoot, ["hash-object", "--stdin-paths"], input, cancellationToken).ConfigureAwait(false);
-        var ids = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        if (ids.Length != paths.Count)
+        // Staging into a copy of the index gives the id `git add` would record, including git's rule that a file committed with CRLF
+        // is not converted, which hash-object cannot see. --info-only writes no object, and an unsplit copy writes nothing into .git.
+        var index = Path.Combine(repoRoot, (await GitProcess.RunAsync(repoRoot, ["rev-parse", "--git-path", "index"], null, cancellationToken).ConfigureAwait(false)).Trim());
+        var copy = Path.Combine(Path.GetTempPath(), "codemuster-index-" + Guid.NewGuid().ToString("N"));
+        var environment = new Dictionary<string, string> { ["GIT_INDEX_FILE"] = copy };
+        try
         {
-            throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture, $"git hash-object returned {ids.Length} ids for {paths.Count} paths"));
-        }
+            if (File.Exists(index))
+            {
+                File.Copy(index, copy);
+            }
 
-        for (var i = 0; i < paths.Count; i++)
+            await GitProcess.RunAsync(repoRoot, ["-c", "core.splitIndex=false", "update-index", "--add", "--info-only", "-z", "--stdin"], string.Concat(paths.Select(path => path + "\0")), cancellationToken, environment).ConfigureAwait(false);
+            var staged = GitSourceTree.ParseIndex(await GitProcess.RunAsync(repoRoot, ["ls-files", "-s", "-z"], null, cancellationToken, environment).ConfigureAwait(false))
+                .ToDictionary(entry => entry.Path, entry => entry.Sha, StringComparer.Ordinal);
+            foreach (var path in paths)
+            {
+                hashes[path] = staged.TryGetValue(RepoPath.Normalize(path), out var sha) ? sha : throw new InvalidOperationException($"git update-index recorded no id for {path}");
+            }
+        }
+        finally
         {
-            hashes[paths[i]] = ids[i].TrimEnd('\r');
+            try
+            {
+                File.Delete(copy);
+            }
+            catch (IOException)
+            {
+                // A scanner holding the copy open on Windows must not fail the scan; a leftover temp file is harmless.
+            }
         }
 
         return hashes;
     }
-
-    // --stdin-paths reads one path per line and C-unquotes a line that starts with a double quote, so quoting every path carries any name, even one with a newline.
-    private static string Quote(string path) =>
-        "\"" + path.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal).Replace("\r", "\\r", StringComparison.Ordinal) + "\"";
 }

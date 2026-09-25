@@ -111,6 +111,83 @@ public class RefreshVerificationTests
         Assert.Single(await ledger.GetCurrentFindingsAsync(CancellationToken.None));
     }
 
+    [Fact]
+    public async Task UnchangedSliceFindingKeepsItsCompletedCheckThroughRefreshAndTheNextScan()
+    {
+        var verify = await VerifiedSliceFindingAsync();
+        var members = await ledger.GetMembersAsync([verify.Id], CancellationToken.None);
+
+        await RefreshAsync();
+
+        Assert.Equal((verify.Fingerprint, UnitStatus.Done), Check(verify.Id));
+        Assert.Equal(members, await ledger.GetMembersAsync([verify.Id], CancellationToken.None));
+        Assert.Equal(0, (await SliceScanAsync()).UnitsStale);
+        Assert.Equal((verify.Fingerprint, UnitStatus.Done), Check(verify.Id));
+    }
+
+    [Fact]
+    public async Task FileVerifiedWhileModifiedKeepsItsCheckWhenCommittedUnchanged()
+    {
+        const string path = "src/A.cs";
+        const string content = "class A { int x; }";
+        tree.Add(path, content);
+        hasher.Hashes[path] = tree.Files.Single(f => f.Path == path).KnownHash!;
+        tree.AddDirty(path, content);
+        await new Scan(ledger, tree, hasher, clock, Config.Default).RunAsync(CancellationToken.None);
+        var verify = await VerifiedFindingAsync(UnitIds.File(path), path);
+
+        await RefreshAsync();
+        Assert.Equal((verify.Fingerprint, UnitStatus.Done), Check(verify.Id));
+        tree.Add(path, content);
+        await RefreshAsync();
+
+        Assert.Equal((verify.Fingerprint, UnitStatus.Done), Check(verify.Id));
+        Assert.Equal(0, (await new Scan(ledger, tree, hasher, clock, Config.Default).RunAsync(CancellationToken.None)).UnitsStale);
+    }
+
+    [Fact]
+    public async Task EditingReportedCodeAfterScanReopensItsCheckOverTheWholeCurrentFiles()
+    {
+        var verify = await VerifiedSliceFindingAsync();
+        tree.Add(MixedRepo.ControllerPath, "content of the controller, edited");
+
+        await RefreshAsync();
+
+        var (fingerprint, status) = Check(verify.Id);
+        Assert.Equal(UnitStatus.Pending, status);
+        Assert.NotEqual(verify.Fingerprint, fingerprint);
+        var members = await ledger.GetMembersAsync([verify.Id], CancellationToken.None);
+        Assert.Contains(members, m => m.Path == MixedRepo.ControllerPath && m.MemberHash == tree.Files.Single(f => f.Path == MixedRepo.ControllerPath).KnownHash);
+        Assert.All(members, m => Assert.Null(m.Symbol));
+    }
+
+    private Task RefreshAsync() => new RefreshVerification(ledger, tree, Config.Default, hasher).RunAsync(CancellationToken.None);
+
+    private (string Fingerprint, UnitStatus Status) Check(string id) =>
+        ledger.Units.Where(unit => unit.Id == id).Select(unit => (unit.Fingerprint, unit.Status)).Single();
+
+    private Task<ScanResult> SliceScanAsync() =>
+        new Scan(ledger, tree, hasher, clock, Config.Default, [new FakeCodeMapper(Languages.CSharp, MixedRepo.CSharp()), new FakeCodeMapper(Languages.TypeScript, MixedRepo.TypeScript())], "/repos/mixed-repo")
+            .RunAsync(CancellationToken.None);
+
+    private async Task<Unit> VerifiedSliceFindingAsync()
+    {
+        MixedRepo.AddTo(tree);
+        await SliceScanAsync();
+        return await VerifiedFindingAsync(UnitIds.Slice(MixedRepo.ControllerListQuotes), MixedRepo.ControllerPath);
+    }
+
+    private async Task<Unit> VerifiedFindingAsync(string sourceId, string path)
+    {
+        var source = ledger.Units.Single(unit => unit.Id == sourceId);
+        var done = new Done(ledger, clock, Config.Default);
+        var finding = new Finding(path, 1, 1, Severity.High, "correctness", "claim", "evidence", 0.9, "default");
+        Assert.Equal(DoneOutcome.Recorded, (await done.RunAsync(source.Id, source.Fingerprint, AnalysisResponseJson.Serialize(new AnalysisResponse("summary", [finding])), CancellationToken.None)).Outcome);
+        var verify = ledger.Units.Single(unit => unit.Kind == UnitKind.Verify && unit.Status == UnitStatus.Pending);
+        Assert.Equal(DoneOutcome.Recorded, (await done.RunAsync(verify.Id, verify.Fingerprint, """{"verdict":"confirmed","reason":"The defect is still there."}""", CancellationToken.None)).Outcome);
+        return Assert.Single(ledger.Units, unit => unit.Id == verify.Id && unit.Status == UnitStatus.Done);
+    }
+
     private Task<ScanResult> ScanAsync() => new Scan(ledger, tree, hasher, clock, Enabled).RunAsync(CancellationToken.None);
 
     private async Task<Unit> SeedUxAsync()

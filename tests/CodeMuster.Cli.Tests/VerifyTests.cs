@@ -38,4 +38,43 @@ public class VerifyTests
         Assert.Contains("doubtful claim", full.Stdout);
         Assert.Contains("  refuted: fake verification", full.Stdout);
     }
+
+    [Fact]
+    public async Task Verify_and_scan_redo_no_check_until_the_code_really_changes()
+    {
+        using var repo = TempRepo.FromFixture("mixed-repo");
+        repo.CopyRestoredFromFixture("mixed-repo", Path.Combine("web", "node_modules"), "npm ci --prefix fixtures/mixed-repo/web");
+        repo.Dotnet("restore", "MixedRepo.sln");
+        await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
+        var sample = AnalysisResponseJson.Parse(AnalysisResponseJson.Sample).Findings[0];
+        var template = Path.Combine(repo.Root, "template.json");
+        await File.WriteAllTextAsync(template, AnalysisResponseJson.Serialize(new AnalysisResponse("planted", [sample with { Confidence = 0.9 }])));
+        var environment = new Dictionary<string, string> { ["CODEMUSTER_FAKE_RESPONSE"] = template };
+        Assert.Contains("5 slices, 3 orphans", (await CliProcess.RunAsync(repo.Root, "scan")).Stdout);
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, environment, "run", "--agent", "fake", "-j", "4")).ExitCode);
+        Assert.EndsWith("\ncomplete", await StatusAsync(repo));
+
+        Assert.Equal(0, await VerifiedAsync(repo, environment));
+        Assert.Contains(": 0 new, 0 stale,", (await CliProcess.RunAsync(repo.Root, "scan")).Stdout);
+        Assert.EndsWith("\ncomplete", await StatusAsync(repo));
+        Assert.Equal(0, await VerifiedAsync(repo, environment));
+
+        var quote = Path.Combine(repo.Root, "src", "MixedRepo.Api", "Data", "Quote.cs");
+        await File.AppendAllTextAsync(quote, "// reviewed\n");
+        Assert.NotEqual(0, await VerifiedAsync(repo, environment));
+        Assert.Equal(0, await VerifiedAsync(repo, environment));
+        repo.Git("-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "reviewed", "--", "src/MixedRepo.Api/Data/Quote.cs");
+        Assert.Equal(0, await VerifiedAsync(repo, environment));
+    }
+
+    private static async Task<int> VerifiedAsync(TempRepo repo, IReadOnlyDictionary<string, string> environment)
+    {
+        var verify = await CliProcess.RunAsync(repo.Root, environment, "verify", "--agent", "fake", "-j", "4");
+        Assert.Equal(0, verify.ExitCode);
+        return int.Parse(Regex.Match(verify.Stdout, @"^completed (\d+) unit\(s\), 0 gave up\r?$", RegexOptions.Multiline).Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static async Task<string> StatusAsync(TempRepo repo) =>
+        (await CliProcess.RunAsync(repo.Root, "status")).Stdout.ReplaceLineEndings("\n").TrimEnd();
 }

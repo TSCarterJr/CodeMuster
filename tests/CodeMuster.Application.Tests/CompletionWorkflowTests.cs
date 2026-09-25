@@ -17,7 +17,7 @@ public class CompletionWorkflowTests
             [new Finding("a.cs", 1, 1, Severity.High, "correctness", "old claim", "evidence", 0.9, "default")], CancellationToken.None);
         var verify = source with { Id = UnitIds.Verify(1), Kind = UnitKind.Verify, Status = UnitStatus.Retired };
         ledger.Units.Add(verify);
-        await new RefreshVerification(ledger, tree).RunAsync(CancellationToken.None);
+        await new RefreshVerification(ledger, tree, Config.Default, new FakeContentHasher()).RunAsync(CancellationToken.None);
         var pack = Assert.Single(await new Next(ledger, tree, Config.Default, kind: UnitKind.Verify).RunAsync(1, CancellationToken.None));
         Assert.Contains("int repaired", pack.Markdown);
         Assert.NotEqual("old", pack.Fingerprint);

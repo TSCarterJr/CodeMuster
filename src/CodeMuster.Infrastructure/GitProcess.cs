@@ -5,16 +5,16 @@ namespace CodeMuster.Infrastructure;
 
 internal static class GitProcess
 {
-    public static async Task<string> RunAsync(string repoRoot, IReadOnlyList<string> arguments, string? standardInput, CancellationToken cancellationToken)
+    public static async Task<string> RunAsync(string repoRoot, IReadOnlyList<string> arguments, string? standardInput, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? environment = null)
     {
-        var (exitCode, output, error) = await RunAllowingFailureAsync(repoRoot, arguments, standardInput, cancellationToken).ConfigureAwait(false);
+        var (exitCode, output, error) = await RunAllowingFailureAsync(repoRoot, arguments, standardInput, cancellationToken, environment).ConfigureAwait(false);
         return exitCode == 0 ? output : throw Failure(arguments, exitCode, error);
     }
 
     public static InvalidOperationException Failure(IReadOnlyList<string> arguments, int exitCode, string error) =>
         new($"git {string.Join(' ', arguments)} exited with code {exitCode}: {error.Trim()}");
 
-    public static async Task<(int ExitCode, string Output, string Error)> RunAllowingFailureAsync(string repoRoot, IReadOnlyList<string> arguments, string? standardInput, CancellationToken cancellationToken)
+    public static async Task<(int ExitCode, string Output, string Error)> RunAllowingFailureAsync(string repoRoot, IReadOnlyList<string> arguments, string? standardInput, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? environment = null)
     {
         var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
         var startInfo = new ProcessStartInfo("git")
@@ -35,6 +35,11 @@ internal static class GitProcess
         foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
+        }
+
+        foreach (var (name, value) in environment ?? new Dictionary<string, string>())
+        {
+            startInfo.Environment[name] = value;
         }
 
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("git did not start.");
