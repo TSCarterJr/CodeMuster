@@ -330,3 +330,9 @@ published-smoke.log under TestResults/release-0.2.8/. An initial ETARGET before
 registry propagation is retained; the later fresh install is the reported pass.
 This is not live proactive host-plugin or representative UX repair acceptance.
 Retain the broader plan until those staging/production pilot gates are complete.
+
+## Stage 31: Version 0.3.6 review fixes (2026-09-25)
+**Goal**: Fix the thirteen verified defects Tim chose from `docs/product-value-review.md` (MVP-Checklist rows EXEC1 to USAGE1) and prepare 0.3.6.
+**Success Criteria**: Each defect's reproduction from `TestResults/value-review-2026-09-25/verification.json` no longer reproduces; every task has a regression test that failed first; the full suite passes locally and on the Linux, Windows and macOS runners; the `release.yml` dry run builds all six platforms and passes the installed-package smoke on win-x64, linux-x64 and darwin-arm64.
+**Tests**: Unit and infrastructure regressions per task, CLI end-to-end tests with `--agent fake`, npm launcher tests, three-OS CI, packaged smoke.
+**Status**: In Progress

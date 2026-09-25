@@ -2,6 +2,19 @@
 
 ## Current task status
 
+- 2026-09-25, claude: Product value review of v0.3.5 (cfb0aa9) at Tim's request,
+  in docs/product-value-review.md. It covers bugs, CLI look and feel, setup and
+  configuration, performance, security, product features, and the 30 audit-generated
+  fix commits. 13 reviewers and gap hunts produced 152 distinct bug reports. Each got
+  one reproducer in an isolated worktree plus two skeptics: 143 confirmed (11 high),
+  8 design questions, 1 refuted. The reproducers used the installed 0.3.5 CLI with
+  --agent fake, unit tests against v0.3.5, or node scripts, and no real model was
+  called. About 90 improvement proposals were checked against the code, DECISIONS.md
+  and the checklist. The report ranks a Top 12, lists the D-entries needing agreement,
+  and suggests releases. Raw evidence is in ignored TestResults/value-review-2026-09-25/.
+  Proposals only: no production code, checklist tasks or decisions changed. Local
+  main was fast-forwarded from 213eb14 to origin/main (v0.3.5) first. Both stashes
+  are preserved.
 - 2026-09-21, claude: FIX2 stops a repair run from dying with its workers. An
   integration failure left the tree dirty and rethrew, escaping the loop and
   cancelling the worker token, so every in-flight agent call was lost; Tim's
