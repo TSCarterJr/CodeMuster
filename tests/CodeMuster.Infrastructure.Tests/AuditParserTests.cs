@@ -53,6 +53,21 @@ public class AuditParserTests
     }
 
     [Fact]
+    public void Pnpm_marks_a_package_direct_from_its_resolve_paths_because_it_leaves_findings_paths_empty()
+    {
+        Assert.All(AdvisoryMapJson.Parse(Fixture("pnpm-audit.json")), package => Assert.True(package.Direct));
+
+        var found = AdvisoryMapJson.Parse("""
+            {"actions":[{"action":"review","module":"minimist","resolves":[{"id":1,"path":".>minimist"},{"id":2,"path":".>mkdirp>minimist"}]}],
+             "advisories":{
+               "1":{"id":1,"module_name":"minimist","severity":"high","findings":[{"version":"0.0.8","paths":[]}]},
+               "2":{"id":2,"module_name":"minimist","severity":"high","findings":[{"version":"1.2.0","paths":[]}]}}}
+            """);
+
+        Assert.Equal([true, false], found.Select(package => package.Direct));
+    }
+
+    [Fact]
     public void Yarn_reads_one_object_per_line_and_ignores_the_summary()
     {
         var found = YarnAuditJson.Parse(Fixture("yarn-audit.json"));
