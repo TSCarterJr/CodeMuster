@@ -64,7 +64,9 @@ repository or a relative entry such as `.` is not started in their place. Scanni
 the repository controls: C# mapping evaluates its MSBuild project files, whose targets can run
 commands; TypeScript mapping loads its installed `typescript` package; and the audit runs its
 package manager, which honours settings such as a committed Yarn `yarnPath`. Scan only
-repositories you would build.
+repositories you would build. On Windows, CodeMuster turns off the current-folder search for
+itself and everything it starts, so a script run by `test_command` or an agent names a
+program in the current folder with a path, such as `.\build.cmd`.
 
 ```sh
 npm install -g codemuster

@@ -300,7 +300,10 @@ name (Roslyn's `dotnet` build host, the `node` an npm shim runs) are not looked 
 repository either, so a program committed to the repository is not started in their place. That
 does not make an untrusted repository safe to scan: C# mapping evaluates its MSBuild files,
 TypeScript mapping loads its `typescript` package, and the audit tools honour its settings. Reach a
-project-local tool through its package manager, for example `["npx", "jest"]`.
+project-local tool through its package manager, for example `["npx", "jest"]`. On Windows,
+CodeMuster sets `NoDefaultCurrentDirectoryInExePath` for itself and everything it starts, so a
+script run by `test_command` or by an agent must name a program in the current folder with a path,
+for example `["cmd", "/c", ".\\build.cmd"]` rather than `build.cmd`.
 
 Choose a command that terminates, returns nonzero on failure, and covers the affected project.
 Install its dependencies beforehand. `fix` runs it once on the unmodified tree before any agent
