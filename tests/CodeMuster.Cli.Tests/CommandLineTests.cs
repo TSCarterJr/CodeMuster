@@ -63,6 +63,25 @@ public class CommandLineTests
         Assert.Equal("codemuster run: -j needs a value", Assert.Throws<UsageException>(() => CommandLine.Parse(["run", "-j"])).Message);
     }
 
+    [Theory]
+    [InlineData("-j4")]
+    [InlineData("-j=4")]
+    [InlineData("--jobs=4")]
+    public void Parse_ShortJobsWithItsValueAttached_ReadsLikeJobs4(string jobs)
+    {
+        Assert.Equal("4", CommandLine.Parse(["run", "--agent", "fake", jobs]).Options["jobs"]);
+    }
+
+    [Theory]
+    [InlineData("all")]
+    [InlineData("none")]
+    [InlineData("claude,codex")]
+    [InlineData("gemini")]
+    public void Parse_InitFor_AcceptsAllNoneOrAgentList(string agents)
+    {
+        Assert.Equal(agents, CommandLine.Parse(["init", "--for", agents]).Options["for"]);
+    }
+
     [Fact]
     public void Parse_LaterOptionWins_AndVerbIsLowercased()
     {
@@ -101,6 +120,9 @@ public class CommandLineTests
     [InlineData("scan --mode files", "codemuster scan: --mode must be one of slice, file (got \"files\")")]
     [InlineData("skill install --for gpt5", "codemuster skill: --for must be one of claude, codex, gemini, opencode (got \"gpt5\")")]
     [InlineData("init --no-skills --for claude", "codemuster init: --for cannot be used with --no-skills")]
+    [InlineData("init --for vscode --yes", "codemuster init: --for must be all, none, or a comma-separated list of claude, codex, gemini (got \"vscode\")")]
+    [InlineData("init --for claude,none", "codemuster init: --for must be all, none, or a comma-separated list of claude, codex, gemini (got \"claude,none\")")]
+    [InlineData("run --agent fake -jx", "codemuster run: -j must be a positive whole number (got \"x\")")]
     [InlineData("init extra", "codemuster init: unexpected argument \"extra\"")]
     [InlineData("report --include-refuted extra", "codemuster report: unexpected argument \"extra\"")]
     [InlineData("done", "codemuster done: missing <unit>")]

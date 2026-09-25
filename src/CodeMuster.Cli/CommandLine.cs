@@ -58,12 +58,25 @@ public static class CommandLine
                 continue;
             }
 
-            var equals = args[i].IndexOf('=', StringComparison.Ordinal);
-            var spelled = equals < 0 ? args[i] : args[i][..equals];
+            string spelled;
+            string? attached;
+            if (args[i].StartsWith("-j", StringComparison.Ordinal))
+            {
+                // -j also takes its value attached, as make does: -j4 or -j=4.
+                spelled = "-j";
+                attached = args[i].Length == 2 ? null : args[i][(args[i][2] == '=' ? 3 : 2)..];
+            }
+            else
+            {
+                var equals = args[i].IndexOf('=', StringComparison.Ordinal);
+                spelled = equals < 0 ? args[i] : args[i][..equals];
+                attached = equals < 0 ? null : args[i][(equals + 1)..];
+            }
+
             var name = spelled == "-j" ? "jobs" : spelled[2..];
             if (spec.Flags.Contains(name))
             {
-                if (equals >= 0) throw Mistake(verb, $"{spelled} takes no value");
+                if (attached is not null) throw Mistake(verb, $"{spelled} takes no value");
                 flags.Add(name);
                 continue;
             }
@@ -73,7 +86,7 @@ public static class CommandLine
                 throw Mistake(verb, UnknownOption(verb, spelled, name, spec));
             }
 
-            var value = equals >= 0 ? args[i][(equals + 1)..] : i + 1 < args.Length && !IsOption(args[i + 1]) ? args[++i] : "";
+            var value = attached ?? (i + 1 < args.Length && !IsOption(args[i + 1]) ? args[++i] : "");
             if (value.Length == 0) throw Mistake(verb, $"{spelled} needs a value");
             options[name] = value;
             typed[name] = spelled;
@@ -101,7 +114,7 @@ public static class CommandLine
         return new Command(verb, positionals, options, flags);
     }
 
-    private static bool IsOption(string arg) => arg.StartsWith("--", StringComparison.Ordinal) || arg == "-j";
+    private static bool IsOption(string arg) => arg.StartsWith("--", StringComparison.Ordinal) || arg.StartsWith("-j", StringComparison.Ordinal);
 
     private static void CheckPositionals(string verb, string? expected, List<string> positionals)
     {
@@ -121,6 +134,14 @@ public static class CommandLine
         if (name is "jobs" or "attempts" or "batch")
         {
             return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number > 0 ? null : $"must be a positive whole number (got \"{value}\")";
+        }
+
+        if (verb == "init" && name == "for")
+        {
+            var agents = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return value is "all" or "none" || agents.Length > 0 && agents.All(AgentSetup.Agents.Contains)
+                ? null
+                : $"must be all, none, or a comma-separated list of {string.Join(", ", AgentSetup.Agents)} (got \"{value}\")";
         }
 
         return Choices(verb, name) is { } choices && !choices.Contains(value) ? $"must be one of {string.Join(", ", choices)} (got \"{value}\")" : null;

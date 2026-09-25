@@ -483,7 +483,9 @@ and manage them.
 `--version` prints the version. `--help`, `-h`, and `help` show the overview. Command-specific
 help accepts `codemuster help fix` or `codemuster fix --help`.
 
-Options take `--name value` or `--name=value`; when an option is repeated, the last one wins.
+Options take `--name value` or `--name=value`, and `-j` also takes `-j4` or `-j=4`; when an option
+is repeated, the last one wins. `init --for` takes `all`, `none`, or a comma-separated list of
+`claude`, `codex` and `gemini`.
 Each command accepts only the options listed above, so a mistyped option is rejected rather than
 ignored. A usage mistake prints one line naming it, followed by the command's usage line, and
 exits 2:
