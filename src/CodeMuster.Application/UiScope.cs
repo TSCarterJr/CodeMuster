@@ -6,11 +6,15 @@ namespace CodeMuster.Application;
 public static class UiScope
 {
     /// <summary>True for a supported UI path or an explicit include; explicit excludes take precedence.</summary>
-    public static bool Applies(string path, IReadOnlyList<string>? include = null, IReadOnlyList<string>? exclude = null)
+    public static bool Applies(string path, IReadOnlyList<string>? include = null, IReadOnlyList<string>? exclude = null) =>
+        Applies(path, new GlobList(include ?? []), new GlobList(exclude ?? []));
+
+    /// <summary>True for a supported UI path or an explicit include, with the include and exclude globs already compiled; explicit excludes take precedence.</summary>
+    public static bool Applies(string path, GlobList include, GlobList exclude)
     {
         var normalized = RepoPath.Normalize(path);
-        if (exclude?.Any(glob => Glob.IsMatch(glob, normalized)) == true) return false;
-        if (include?.Any(glob => Glob.IsMatch(glob, normalized)) == true) return true;
+        if (exclude.AnyMatch(normalized)) return false;
+        if (include.AnyMatch(normalized)) return true;
 
         var lower = normalized.ToLowerInvariant();
         if (lower.Split('/').Any(segment => segment is "test" or "tests" or "__tests__")
@@ -23,6 +27,9 @@ public static class UiScope
     }
 
     /// <summary>Returns unique normalized UI paths in ordinal order.</summary>
-    public static IReadOnlyList<string> Paths(IEnumerable<string> paths, IReadOnlyList<string>? include = null, IReadOnlyList<string>? exclude = null) =>
-        paths.Select(RepoPath.Normalize).Where(path => Applies(path, include, exclude)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+    public static IReadOnlyList<string> Paths(IEnumerable<string> paths, IReadOnlyList<string>? include = null, IReadOnlyList<string>? exclude = null)
+    {
+        GlobList includeGlobs = new(include ?? []), excludeGlobs = new(exclude ?? []);
+        return paths.Select(RepoPath.Normalize).Where(path => Applies(path, includeGlobs, excludeGlobs)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+    }
 }

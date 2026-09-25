@@ -9,9 +9,18 @@ namespace CodeMuster.Application;
 /// <param name="Languages">Language codes the lens applies to; empty means every language.</param>
 public sealed record Lens(string Id, string Instructions, IReadOnlyList<string> Globs, IReadOnlyList<string> Languages)
 {
+    private readonly GlobList globs = new(Globs);
+
+    /// <summary>Repo-relative globs the lens applies to; empty means every path.</summary>
+    public IReadOnlyList<string> Globs { get => globs.Patterns; init => globs = new(value); }
+
+    // Declared after Globs because JSON follows declaration order, and config.json lists globs before languages.
+    /// <summary>Language codes the lens applies to; empty means every language.</summary>
+    public IReadOnlyList<string> Languages { get; init; } = Languages;
+
     /// <summary>True when the lens covers a file with this path and language.</summary>
     public bool Applies(string path, string language) =>
-        (Globs.Count == 0 || Globs.Any(glob => Glob.IsMatch(glob, path)))
+        (Globs.Count == 0 || globs.AnyMatch(path))
         && (Languages.Count == 0 || Languages.Contains(language));
 
     /// <summary>Hash over every field, so any edit to the lens changes it.</summary>

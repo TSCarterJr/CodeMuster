@@ -10,8 +10,10 @@ namespace CodeMuster.Application;
 /// <param name="Vulnerabilities">Whether <c>scan</c> runs each ecosystem's audit tool over the repository's manifests (D38); costs no agent calls.</param>
 public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 24000, double ResolutionThreshold = 0.9, bool Verify = true, bool Vulnerabilities = true)
 {
+    private readonly GlobList excludeGlobs = new([]);
+
     /// <summary>Repo-relative globs of files never analyzed, on top of the built-in <see cref="Exclusions"/> (D04). A glob without a slash matches file names, so a folder needs <c>folder/**</c>.</summary>
-    public IReadOnlyList<string> Exclude { get; init; } = [];
+    public IReadOnlyList<string> Exclude { get => excludeGlobs.Patterns; init => excludeGlobs = new(value); }
 
     /// <summary>The repository's own test command as a program and its arguments, such as <c>["dotnet", "test"]</c>. Fix mode runs it after every unit and throws away a fix that fails it (D37).</summary>
     public IReadOnlyList<string> TestCommand { get; init; } = [];
@@ -26,12 +28,12 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     public UserExperienceSettings UserExperience { get; init; } = new();
 
     /// <summary>True when this repository's own <see cref="Exclude"/> globs cover the path, whatever the built-in rules say about it.</summary>
-    public bool ExcludedHere(string path) => Exclude.Any(glob => Glob.IsMatch(glob, path));
+    public bool ExcludedHere(string path) => excludeGlobs.AnyMatch(path);
 
     /// <summary>Why a file is not analyzed: the built-in reason first, then <c>exclude:&lt;glob&gt;</c> for the first exclude glob it matches; null when it is analyzed.</summary>
     public string? ExcludedReason(string path, bool linguistGenerated) =>
         Exclusions.Reason(path, linguistGenerated)
-        ?? Exclude.Where(glob => Glob.IsMatch(glob, path)).Select(glob => "exclude:" + glob).FirstOrDefault();
+        ?? (excludeGlobs.FirstMatch(path) is { } glob ? "exclude:" + glob : null);
 
     internal bool IsMappingInput(string path, string? excludedReason) =>
         excludedReason is null || excludedReason == "data" && !ExcludedHere(path)

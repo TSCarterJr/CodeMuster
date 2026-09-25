@@ -41,13 +41,15 @@ public sealed class IntelligentConfig(ISourceTree tree, IFileSystem fileSystem, 
                     {
                         ValidatePattern(pattern);
                         if (exclusions.Contains(pattern, StringComparer.Ordinal)) continue;
-                        var matches = files.Count(f => Glob.IsMatch(pattern, f.Path));
+                        var glob = new Glob(pattern);
+                        var matches = files.Count(f => glob.IsMatch(f.Path));
                         if (matches == 0) throw new JsonException($"exclude pattern matches no tracked files: {pattern}");
                         exclusions.Add(pattern);
                         descriptions.Add(string.Create(CultureInfo.InvariantCulture, $"exclude {pattern} ({matches} tracked files): {reason}"));
                     }
                     var source = files.Where(f => config.ExcludedReason(f.Path, f.LinguistGenerated) is null).ToArray();
-                    if (source.Length > 0 && source.All(f => exclusions.Any(p => Glob.IsMatch(p, f.Path))))
+                    var excluded = new GlobList(exclusions);
+                    if (source.Length > 0 && source.All(f => excluded.AnyMatch(f.Path)))
                         throw new JsonException("recommended exclusions would remove all remaining source files");
                     if (exclusions.Count != config.Exclude.Count) updated["exclude"] = JsonSerializer.SerializeToNode(exclusions, DomainJson.Options);
                     break;

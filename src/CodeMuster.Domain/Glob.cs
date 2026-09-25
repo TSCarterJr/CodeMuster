@@ -3,20 +3,37 @@ using System.Text.RegularExpressions;
 
 namespace CodeMuster.Domain;
 
-/// <summary>Minimal gitignore-style glob matching over normalized repo-relative paths.</summary>
-public static class Glob
+/// <summary>A gitignore-style glob compiled once for matching many normalized repo-relative paths.</summary>
+public sealed class Glob
 {
-    /// <summary>Returns true when the path matches the pattern: "**" spans whole segments, "*" and "?" stay within one segment, and a pattern without a slash is matched against the file name only.</summary>
-    public static bool IsMatch(string pattern, string path)
+    private readonly Regex regex;
+    private readonly bool fileNameOnly;
+
+    /// <summary>Compiles the pattern: "**" spans whole segments, "*" and "?" stay within one segment, and a pattern without a slash is matched against the file name only.</summary>
+    public Glob(string pattern)
     {
         var normalizedPattern = RepoPath.Normalize(pattern);
-        var normalizedPath = RepoPath.Normalize(path);
-        var subject = normalizedPattern.Contains('/')
-            ? normalizedPath
-            : normalizedPath[(normalizedPath.LastIndexOf('/') + 1)..];
-
-        return new Regex(ToRegex(normalizedPattern), RegexOptions.CultureInvariant | RegexOptions.NonBacktracking).IsMatch(subject);
+        Pattern = pattern;
+        fileNameOnly = !normalizedPattern.Contains('/');
+        regex = new Regex(ToRegex(normalizedPattern), RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
     }
+
+    /// <summary>The pattern as written.</summary>
+    public string Pattern { get; }
+
+    /// <summary>Returns true when the path matches this glob.</summary>
+    public bool IsMatch(string path)
+    {
+        var normalizedPath = RepoPath.Normalize(path);
+        var subject = fileNameOnly
+            ? normalizedPath[(normalizedPath.LastIndexOf('/') + 1)..]
+            : normalizedPath;
+
+        return regex.IsMatch(subject);
+    }
+
+    /// <summary>Compiles the pattern and matches one path; hold a <see cref="Glob"/> or <see cref="GlobList"/> to match many.</summary>
+    public static bool IsMatch(string pattern, string path) => new Glob(pattern).IsMatch(path);
 
     private static string ToRegex(string pattern)
     {

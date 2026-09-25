@@ -152,6 +152,119 @@ public class ConfigTests
     }
 
     [Fact]
+    public void ExcludedReason_MatchesGlobstarDotSlashQuestionMarkAndCaseAsBefore()
+    {
+        var config = Config.Default with { Exclude = ["./web/**", "**/fixtures/**", "*.Gen.cs", "src/?/*.sql"] };
+
+        Assert.Equal("exclude:./web/**", config.ExcludedReason("web/app/page.tsx", linguistGenerated: false));
+        Assert.Equal("exclude:./web/**", config.ExcludedReason(@"web\lib\api.ts", linguistGenerated: false));
+        Assert.Null(config.ExcludedReason("Web/lib/api.ts", linguistGenerated: false));
+        Assert.Null(config.ExcludedReason("webapp/lib/api.ts", linguistGenerated: false));
+        Assert.Equal("exclude:**/fixtures/**", config.ExcludedReason("fixtures/a.cs", linguistGenerated: false));
+        Assert.Equal("exclude:**/fixtures/**", config.ExcludedReason("tests/fixtures/deep/a.cs", linguistGenerated: false));
+        Assert.Equal("exclude:*.Gen.cs", config.ExcludedReason("src/Api/Quote.Gen.cs", linguistGenerated: false));
+        Assert.Null(config.ExcludedReason("src/Api/Quote.gen.cs", linguistGenerated: false));
+        Assert.Equal("exclude:src/?/*.sql", config.ExcludedReason("./src/a/init.sql", linguistGenerated: false));
+        Assert.Null(config.ExcludedReason("src/ab/init.sql", linguistGenerated: false));
+        Assert.True(config.ExcludedHere("web/package.json"));
+        Assert.False(config.ExcludedHere("src/package.json"));
+    }
+
+    [Fact]
+    public void WithExpressions_MatchTheNewGlobs_AndKeepValueEquality()
+    {
+        var config = Config.Default with { Exclude = ["web/**"] };
+        Assert.Equal("exclude:web/**", config.ExcludedReason("web/a.ts", linguistGenerated: false));
+
+        var changed = config with { Exclude = ["src/**"] };
+        Assert.Null(changed.ExcludedReason("web/a.ts", linguistGenerated: false));
+        Assert.Equal("exclude:src/**", changed.ExcludedReason("src/a.cs", linguistGenerated: false));
+        Assert.False(changed.ExcludedHere("web/a.ts"));
+        Assert.Equal(changed, changed with { Exclude = changed.Exclude });
+
+        Assert.True(Tenancy.Applies("src/A.cs", Languages.CSharp));
+        var web = Tenancy with { Globs = ["web/**"] };
+        Assert.False(web.Applies("src/A.cs", Languages.CSharp));
+        Assert.True(web.Applies("web/A.cs", Languages.CSharp));
+        Assert.Equal(Tenancy, Tenancy with { Globs = Tenancy.Globs });
+        Assert.NotEqual(Tenancy, web);
+
+        var ux = new UserExperienceSettings { Enabled = true, Include = ["web/legacy/**"] };
+        Assert.True(ux.Applies("web/legacy/render.js"));
+        var narrowed = ux with { Include = [], Exclude = ["web/**"] };
+        Assert.False(narrowed.Applies("web/legacy/render.js"));
+        Assert.False(narrowed.Applies("web/Invoice.tsx"));
+        Assert.True(ux.Applies("web/Invoice.tsx"));
+        Assert.Equal(narrowed, narrowed with { Exclude = narrowed.Exclude });
+    }
+
+    [Fact]
+    public void Json_KeepsLensAndUserExperienceFieldOrder()
+    {
+        var config = new Config([Tenancy])
+        {
+            Exclude = ["web/**"],
+            UserExperience = new UserExperienceSettings { Enabled = true, Include = ["ui/**"], Exclude = ["ui/legacy/**"], BaseUrl = "http://localhost:3000" },
+        };
+
+        var json = ConfigJson.Serialize(config);
+        var ux = JsonSerializer.Serialize(config.UserExperience, DomainJson.Options);
+
+        Assert.Equal(
+            ["\"id\"", "\"instructions\"", "\"globs\"", "\"languages\""],
+            new[] { "\"id\"", "\"instructions\"", "\"globs\"", "\"languages\"" }.OrderBy(key => json.IndexOf(key, StringComparison.Ordinal)));
+        Assert.Equal(
+            """
+            {
+              "enabled": true,
+              "include": [
+                "ui/**"
+              ],
+              "exclude": [
+                "ui/legacy/**"
+              ],
+              "base_url": "http://localhost:3000"
+            }
+            """.ReplaceLineEndings("\n"),
+            ux);
+        Assert.Contains("\"exclude\": [\n    \"web/**\"\n  ]", json);
+    }
+
+    [Theory]
+    [InlineData("exclude")]
+    [InlineData("lens")]
+    [InlineData("ux")]
+    public void Globs_AreCompiledOncePerConfig_NotOnEveryMatch(string holder)
+    {
+        string[] globs = ["tests/**", "demo/**", "src/lib/i18n/**", "mobile/**", "edge/**", "ui/**", "docs/**", "scripts/**", "tools/**", "samples/**"];
+        var config = Config.Default with
+        {
+            Exclude = globs,
+            Lenses = [new Lens("scoped", "Check.", globs, [])],
+            UserExperience = new UserExperienceSettings { Enabled = true, Include = globs, Exclude = globs },
+        };
+        Func<string, bool> matches = holder switch
+        {
+            "exclude" => path => config.ExcludedReason(path, linguistGenerated: false) is not null,
+            "lens" => path => config.Lenses[0].Applies(path, Languages.Python),
+            _ => path => config.UserExperience.Applies(path),
+        };
+        var paths = Enumerable.Range(1, 30).SelectMany(folder => Enumerable.Range(1, 100).Select(file => $"pkg{folder}/m{file}.py")).ToArray();
+        Assert.False(matches("warm/up.py"));
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var matched = paths.Count(matches);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        watch.Stop();
+
+        Assert.Equal(0, matched);
+        Assert.True(allocated < 32L * 1024 * 1024,
+            $"matching {paths.Length} paths against {globs.Length} {holder} globs allocated {allocated / (1024 * 1024)} MB in {watch.ElapsedMilliseconds} ms; "
+            + "each glob should be compiled once per config, not rebuilt as a regex on every match");
+    }
+
+    [Fact]
     public async Task Loader_ThrowsNotInitialized_WhenNoConfigFile()
     {
         var loader = new ConfigLoader(new FakeFileSystem());
