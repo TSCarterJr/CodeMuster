@@ -24,7 +24,7 @@ function run(executable, args, env = {}) {
   assert.equal(result.status, 0, `${executable} ${args.join(' ')}\n${result.error || ''}\n${result.stdout}\n${result.stderr}`);
   return result;
 }
-const cli = (...args) => run(process.execPath, [launcher, ...args], { CODEMUSTER_FAKE_RESPONSE: path.join(root, 'response.json') });
+const cli = (...args) => run(process.execPath, [launcher, ...args], { CODEMUSTER_FAKE_RESPONSE: path.join(root, 'response.json'), CODEMUSTER_TEST_AGENT: '1' });
 
 try {
   run('git', ['init', '-q']);

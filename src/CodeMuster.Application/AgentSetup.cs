@@ -58,7 +58,7 @@ public sealed class AgentSetup(IFileSystem files)
                 if (Handlers(entry).All(IsCodeMuster))
                 {
                     entry["matcher"] = matcher;
-                    foreach (var handler in Handlers(entry)) handler["timeout"] = timeout;
+                    foreach (var handler in Handlers(entry)) handler["timeout"] = Math.Max(timeout, handler["timeout"] is JsonValue value && value.TryGetValue<int>(out var existing) ? existing : 0);
                 }
                 else
                 {

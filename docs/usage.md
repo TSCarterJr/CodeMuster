@@ -62,7 +62,8 @@ Reload the agent and complete its hook trust/approval prompt when required. They
 This records a change marker in worktree-specific Git metadata, without writing the
 ledger or adding files to a worker patch. A hook that cannot record it prints a warning and still
 exits 0, so it never fails the agent's tool call. Rerunning `init` updates an existing CodeMuster
-hook's matcher and timeout in place and leaves other hooks alone. Adding or repairing a hook
+hook's matcher in place, raises its timeout to the default if it is lower (a larger timeout you set
+is kept), and leaves other hooks alone. Adding or repairing a hook
 rewrites that settings file as plain JSON, so its comments and trailing commas are not kept; `init`
 names each settings file it changed and says when a skill and hook were already current.
 
@@ -111,7 +112,9 @@ With `vulnerabilities` enabled, scanning also invokes dependency audit tools for
 manifests. These tools may need network access. Their diagnostics are printed separately from
 code mapping, and they use no agent calls. When a tool fails, for example offline, on a registry
 error or on a failed restore, scan prints a warning naming the manifest and keeps that manifest's
-earlier findings; it never records the failure as a clean audit. Each `package.json` folder is
+earlier findings; it never records the failure as a clean audit. For a .NET solution, one
+project that cannot restore makes the whole `dotnet list package` report count as failed, so
+restore every project (or exclude the one that cannot restore) to audit the rest. Each `package.json` folder is
 audited once. When it holds lockfiles for more than one tool, the tool named by `packageManager`
 in `package.json` is used if its lockfile is there, otherwise pnpm, then Yarn, then npm; a tool
 that is not installed is passed over for the next one, and scan prints a warning naming the

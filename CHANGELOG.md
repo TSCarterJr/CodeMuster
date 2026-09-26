@@ -23,7 +23,9 @@ Fixes chosen from a review of 0.3.5 (`docs/product-value-review.md`).
   no longer fires for untracked or excluded files, including `report --out
   audit.md`, or for staging unchanged content. `codemuster hook` always exits 0, so
   it never fails an agent's tool call. `init` adds PowerShell to the Claude hook
-  matcher and repairs an existing CodeMuster matcher.
+  matcher and repairs an existing CodeMuster matcher, keeping a timeout you raised.
+  A repair rewrites that settings file as plain JSON, so its comments and trailing
+  commas are not kept.
 - Committing content that was analyzed while modified no longer marks it stale
   under `core.autocrlf=true` (the Git for Windows default) or in a SHA-256
   repository.
@@ -48,6 +50,10 @@ Fixes chosen from a review of 0.3.5 (`docs/product-value-review.md`).
   `-j4` work. `next`, `status`, `done` and `skill` reject options they do not read,
   so `next --pth web` no longer reviews the whole repository. Errors start with
   `error:` and no longer end in `(Parameter 'name')`.
+- `--agent fake` is refused unless `CODEMUSTER_TEST_AGENT=1` is set. It is for
+  CodeMuster's own tests, and in `fix` it commits placeholder edits.
+- A .NET solution with one project that cannot restore is reported as a failed
+  audit, keeping its earlier findings; restore or exclude that project.
 - Scans with `exclude`, lens or `user_experience` globs no longer slow down with the
   number of files: 3,000 files and 10 globs went from about 10 s to 1.5 s. The npm
   launcher skips its update check for `codemuster hook` and inside CodeMuster

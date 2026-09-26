@@ -11,6 +11,19 @@ public class UsageTests
         Assert.Contains("usage: codemuster", result.Stderr);
     }
 
+    [Theory]
+    [InlineData("fix")]
+    [InlineData("run")]
+    public async Task FakeAgent_IsRefused_OutsideTests(string verb)
+    {
+        var environment = new Dictionary<string, string> { ["CODEMUSTER_TEST_AGENT"] = "" };
+
+        var result = await CliProcess.RunAsync(Path.GetTempPath(), environment, verb, "--agent", "fake");
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("error: unknown agent 'fake'; choose one of claude, codex, gemini, opencode", result.Stderr);
+    }
+
     [Fact]
     public async Task Version_PrintsTheBareVersion_OutsideARepository_AndExits0()
     {

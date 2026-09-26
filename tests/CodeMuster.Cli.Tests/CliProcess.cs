@@ -43,6 +43,7 @@ public static class CliProcess
 
         // Claude Code's shell sets this, which hides a program in the working directory from Windows' search; a normal terminal does not.
         start.Environment.Remove("NoDefaultCurrentDirectoryInExePath");
+        start.Environment["CODEMUSTER_TEST_AGENT"] = "1";
         foreach (var (name, value) in environment ?? new Dictionary<string, string>())
         {
             start.Environment[name] = value;

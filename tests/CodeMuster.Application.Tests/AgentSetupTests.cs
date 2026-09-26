@@ -46,6 +46,22 @@ public class AgentSetupTests
     }
 
     [Fact]
+    public async Task A_rerun_keeps_a_codemuster_timeout_the_user_raised()
+    {
+        fileSystem.Files[Path.Combine(Root, ".claude", "settings.json")] = $$$"""
+            {"hooks":{"PostToolUse":[
+              {"matcher":"{{{OldMatcher}}}","hooks":[{"type":"command","command":"codemuster hook","timeout":30}]}
+            ]}}
+            """;
+
+        await InstallAsync("claude");
+
+        var entries = Entries("claude");
+        Assert.Contains("PowerShell", entries[0]["matcher"]!.GetValue<string>());
+        Assert.Equal(30, entries[0]["hooks"]![0]!["timeout"]!.GetValue<int>());
+    }
+
+    [Fact]
     public async Task A_codemuster_handler_sharing_an_entry_moves_out_so_the_other_handler_keeps_its_matcher()
     {
         fileSystem.Files[Path.Combine(Root, ".claude", "settings.json")] = $$$"""

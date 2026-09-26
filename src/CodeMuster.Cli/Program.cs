@@ -78,6 +78,13 @@ public static class Program
             return 2;
         }
 
+        // The fake agent commits placeholder edits in fix mode, so only the test suite and the package smoke may use it.
+        if (command.Options.TryGetValue("agent", out var agent) && agent == "fake" && Environment.GetEnvironmentVariable("CODEMUSTER_TEST_AGENT") != "1")
+        {
+            Console.Error.WriteLine($"error: unknown agent 'fake'; choose one of {string.Join(", ", AgentAdapters.Names)}");
+            return 2;
+        }
+
         using var cancellation = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) =>
         {

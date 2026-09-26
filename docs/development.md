@@ -35,7 +35,9 @@ dotnet /path/to/CodeMuster/src/CodeMuster.Cli/bin/Debug/net10.0/codemuster.dll -
 ```
 
 CLI tests use `--agent fake`, temporary Git repositories, and fixture responses. They do not
-spend LLM calls. Infrastructure tests exercise real Git and SQLite; application tests use Domain
+spend LLM calls. The CLI accepts `--agent fake` only when `CODEMUSTER_TEST_AGENT=1` is set, because
+the fake agent commits placeholder edits in `fix`; the CLI tests and `scripts/smoke-package.js` set
+it. Set it yourself to try the fake agent by hand in a throwaway repository. Infrastructure tests exercise real Git and SQLite; application tests use Domain
 interface fakes. Keep cross-platform paths normalized in assertions.
 
 ## Layout and boundaries

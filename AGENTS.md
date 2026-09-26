@@ -2,6 +2,12 @@
 
 ## Current task status
 
+- 2026-09-25, claude: Tim's 0.3.6 decisions (D59): D58 agreed; `--agent fake` is
+  refused unless CODEMUSTER_TEST_AGENT=1 (CLI tests and the package smoke set it);
+  a dotnet report with one unrestorable project stays a failed audit, documented in
+  docs/usage.md; init keeps a hook timeout the user raised. Both regressions failed
+  first; 1,550 .NET and 72 npm tests pass locally. Tim authorized pushing main and
+  tagging v0.3.6.
 - 2026-09-25, claude: REL036 prepares 0.3.6: the thirteen review fixes, the 33
   follow-ups below, CHANGELOG 0.3.6 and plugin manifests at 0.3.6. Branch
   release/0.3.6 passed the test workflow on Linux, Windows and macOS (run
