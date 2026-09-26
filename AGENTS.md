@@ -2,6 +2,14 @@
 
 ## Current task status
 
+- 2026-09-25, claude: Released 0.3.6 at Tim's request. main fast-forwarded
+  cfb0aa9..11a91fd after release/0.3.6 passed the three-OS test workflow and a
+  second dry run (0.3.6-dev.2). Tag v0.3.6 ran release 36211987569: validation on
+  Linux, Windows and macOS, six builds, three installed-package smokes, npm
+  publication of all seven packages and the GitHub release (9 assets). All six
+  platform packages reached the registry within about four minutes. A fresh
+  npm install -g codemuster@0.3.6 here reports 0.3.6, replacing the 0.2.8
+  launcher. release/0.3.6 is deleted.
 - 2026-09-25, claude: Tim's 0.3.6 decisions (D59): D58 agreed; `--agent fake` is
   refused unless CODEMUSTER_TEST_AGENT=1 (CLI tests and the package smoke set it);
   a dotnet report with one unrestorable project stays a failed audit, documented in
