@@ -7,7 +7,7 @@ public static class CompositeMapper
 {
     private const int MaxUnresolvedNames = 20;
 
-    /// <summary>Runs, in order, each mapper with at least one of the <paramref name="included"/> files in one of its languages, handing it every included path. Each of its languages that has an included file is reported mapped, or failed when it throws; a mapper that throws also adds the diagnostic <c>&lt;language&gt; mapper failed: &lt;message&gt;</c> under its main language; cancellation propagates. Each mapper's progress reaches <paramref name="progress"/> as <c>&lt;language&gt;: &lt;step&gt;</c>.</summary>
+    /// <summary>Runs, in order, each mapper with at least one of the <paramref name="included"/> files in one of its languages, handing it every included path. Each of its languages that has an included file is reported mapped, or failed when it throws, except a language the mapper returns as skipped, which is neither and whose note goes to <paramref name="progress"/>; a mapper that throws also adds the diagnostic <c>&lt;language&gt; mapper failed: &lt;message&gt;</c> under its main language; cancellation propagates. Each mapper's progress reaches <paramref name="progress"/> as <c>&lt;language&gt;: &lt;step&gt;</c>.</summary>
     public static async Task<CompositeMap> MapAsync(IReadOnlyList<ICodeMapper> mappers, string repoRoot, IReadOnlyList<FileRecord> included, IProgress<string>? progress, CancellationToken cancellationToken)
     {
         var paths = included.Select(f => f.Path).ToList();
@@ -27,7 +27,8 @@ public static class CompositeMapper
             {
                 var map = await mapper.MapAsync(repoRoot, paths, PrefixedProgress.For(progress, mapper.Language), cancellationToken);
                 maps.Add(map);
-                mapped.AddRange(present);
+                mapped.AddRange(present.Where(language => !map.SkippedLanguages.Any(skipped => skipped.Language == language)));
+                map.SkippedLanguages.ToList().ForEach(skipped => progress?.Report(skipped.Note));
                 diagnostics.AddRange(map.Diagnostics);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)

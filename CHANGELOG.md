@@ -36,6 +36,14 @@ start with 0.2.8.
   so a page's flow continues through the API to the database code. Calls that match no
   endpoint and endpoints the UI never calls are listed by `map`. Units, coverage and
   fingerprints are unchanged.
+- JavaScript is mapped as well as TypeScript: `jsconfig.json` is read like `tsconfig.json`, and
+  a repository with neither gets one default program over its scripts, so a JavaScript React or
+  Express project gets slices and entry points instead of whole-file units only. Express, Koa and
+  Fastify routes become `http` entry points (with their `app.use` prefixes), and `map` links UI
+  calls to them. Mapping JavaScript needs Node.js and a `typescript` package
+  (`npm i -D typescript`). Loose scripts with no config, no TypeScript files and no `typescript`
+  package, such as an ASP.NET `wwwroot/js/site.js`, stay whole-file units with a note instead of
+  failing the map or `doctor`.
 
 ## 0.3.6 - 2026-09-25
 

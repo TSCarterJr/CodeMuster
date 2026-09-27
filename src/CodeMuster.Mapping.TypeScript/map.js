@@ -13,6 +13,19 @@ process.stdin.on('end', () => {
     const programs = [];
     for (const tsconfig of request.tsconfigs.length === 0 ? [null] : request.tsconfigs) {
       const loaded = loadTypeScript(request.repo_root, tsconfig, request.paths);
+      // Loose JavaScript with no config asked for no mapping, so a missing compiler leaves it whole-file instead of failing the map.
+      if (loaded.missing && tsconfig === null && !request.paths.some((file) => TYPESCRIPT.test(file))) {
+        process.stdout.write(JSON.stringify({
+          symbols: [],
+          edges: [],
+          entry_points: [],
+          resolution: { resolved: 0, unresolved: 0, top_unresolved_names: [] },
+          diagnostics: [],
+          skipped_languages: [{ language: 'javascript', note: LOOSE_NOTE }],
+        }));
+        return;
+      }
+
       if (loaded.error !== undefined) {
         fail(loaded.error);
         return;
@@ -71,6 +84,7 @@ function loadTypeScript(repoRoot, tsconfig, paths) {
     .filter((candidate) => candidate.file !== undefined);
   if (candidates.length === 0) {
     return {
+      missing: true,
       error: tsconfig === null
         ? `typescript was not found for ${subject}; ${hint('npm i -D typescript', `add typescript as a dev dependency of ${folder === '.' ? 'the repository' : folder} with its package manager`)}`
         : `typescript was not found for ${tsconfig}; ${hint('npm ci', `install the dependencies of ${folder} with its package manager`)}`,
@@ -124,6 +138,8 @@ function resolvePackage(name, paths) {
 }
 
 const SCRIPT = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
+const TYPESCRIPT = /\.(ts|tsx|mts|cts)$/i;
+const LOOSE_NOTE = 'javascript: not mapped (no tsconfig, jsconfig or typescript package); files are reviewed whole. Add typescript as a dev dependency to map them';
 
 // D64: with no tsconfig.json or jsconfig.json, one program over every included script, reading JavaScript without type-checking it.
 function createProgram(ts, repoRoot, tsconfig, included, parse) {

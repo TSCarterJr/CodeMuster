@@ -53,13 +53,17 @@ The same mapper maps JavaScript (D64). Each `tsconfig.json` or `jsconfig.json` i
 over its included `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts` and `.tsx` files that reads JavaScript
 without type-checking it. JavaScript functions, function-valued top-level consts, class methods and
 pages (`pages/` and `app/**/page.jsx`) become symbols and entry points exactly as in TypeScript.
-A JavaScript-only repository still needs Node.js and a `typescript` package, because the mapper
-uses the repository's own compiler (D08): without one, mapping fails, its JavaScript files stay
-whole-file units at low fidelity, and `doctor` prints the fix, `run npm i -D typescript` when the
-repository root (or else the nearest folder above a script with a `package.json`) has a `package-lock.json`, otherwise
-`add typescript as a dev dependency of <folder> with its package manager`. This also applies to a
-C# repository with a few scripts such as `wwwroot/js/site.js`; exclude them in `"exclude"` if you
-do not want them mapped.
+Mapping JavaScript needs Node.js and a `typescript` package, because the mapper uses the
+repository's own compiler (D08). Loose scripts that nothing asks to map, such as an ASP.NET site's
+`wwwroot/js/site.js` (JavaScript with no `tsconfig.json`, no `jsconfig.json` and no TypeScript
+files), are simply not mapped when either is missing: scan and `doctor` print
+`javascript: not mapped (no tsconfig, jsconfig or typescript package); files are reviewed whole. Add typescript as a dev dependency to map them`
+(or name the missing Node.js), the files stay whole-file units, the map is not partial and
+`doctor` stays ready. Once a `tsconfig.json` or `jsconfig.json` or a TypeScript file exists,
+mapping was asked for, so a missing compiler fails the map and `doctor` prints the fix:
+`run npm i -D typescript` when the repository root (or else the nearest folder above a script
+with a `package.json`) has a `package-lock.json`, otherwise
+`add typescript as a dev dependency of <folder> with its package manager`.
 
 Express, Koa and Fastify routes become `http` entry points in either language:
 `app.get("/users", handler)`, `router.post(...)`, `.put`, `.patch`, `.delete`, `.all` and `.use`

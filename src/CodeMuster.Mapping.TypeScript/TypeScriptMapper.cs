@@ -31,6 +31,9 @@ public sealed class TypeScriptMapper : ICodeMapper
             return new CodeMap([], [], [], new ResolutionStats(0, 0, []), []);
         }
 
+        // Loose scripts, such as an ASP.NET site's wwwroot/js, asked for no mapping: without node they stay whole-file units instead of failing the map.
+        var loose = tsconfigs.Count == 0 && !normalized.Any(path => Domain.Languages.FromPath(path) == Domain.Languages.TypeScript);
+
         var folder = Directory.CreateTempSubdirectory("codemuster-ts-");
         try
         {
@@ -38,6 +41,12 @@ public sealed class TypeScriptMapper : ICodeMapper
             await ExtractScriptAsync(script, cancellationToken).ConfigureAwait(false);
             var request = JsonSerializer.Serialize(new MapRequest(Path.GetFullPath(repoRoot), tsconfigs, normalized), DomainJson.Options);
             return CodeMapJson.Parse(await RunNodeAsync(script, request, progress, cancellationToken).ConfigureAwait(false));
+        }
+        catch (NodeNotFoundException error)
+        {
+            return loose
+                ? new CodeMap([], [], [], new ResolutionStats(0, 0, []), []) { SkippedLanguages = [new SkippedLanguage(Domain.Languages.JavaScript, NodeMissingNote)] }
+                : throw new InvalidOperationException(error.Message, error.InnerException);
         }
         finally
         {
@@ -65,7 +74,16 @@ public sealed class TypeScriptMapper : ICodeMapper
     private async Task<string> RunNodeAsync(string script, string request, IProgress<string>? progress, CancellationToken cancellationToken)
     {
         var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-        var node = _node();
+        string node;
+        try
+        {
+            node = _node();
+        }
+        catch (InvalidOperationException error)
+        {
+            throw new NodeNotFoundException(error.Message, error);
+        }
+
         var startInfo = new ProcessStartInfo(node)
         {
             UseShellExecute = false,
@@ -125,9 +143,14 @@ public sealed class TypeScriptMapper : ICodeMapper
         }
         catch (Win32Exception error)
         {
-            throw new InvalidOperationException($"{node} was not found on PATH; install Node.js 22 or later from https://nodejs.org to map TypeScript.", error);
+            throw new NodeNotFoundException($"{node} was not found on PATH; install Node.js 22 or later from https://nodejs.org to map TypeScript.", error);
         }
     }
+
+    private const string NodeMissingNote =
+        "javascript: not mapped (node was not found on PATH); files are reviewed whole. Install Node.js 22 or later and add typescript as a dev dependency to map them";
+
+    private sealed class NodeNotFoundException(string message, Exception inner) : InvalidOperationException(message, inner);
 
     private sealed record MapRequest(string RepoRoot, IReadOnlyList<string> Tsconfigs, IReadOnlyList<string> Paths);
 }

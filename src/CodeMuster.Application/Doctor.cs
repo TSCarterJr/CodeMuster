@@ -37,6 +37,11 @@ public sealed class Doctor(ISourceTree tree, IReadOnlyList<ICodeMapper> mappers,
         {
             var map = await mapper.MapAsync(repoRoot, paths, PrefixedProgress.For(progress, mapper.Language), cancellationToken);
             var elapsed = clock.UtcNow - started;
+            if (map.SkippedLanguages.Count > 0 && map.Symbols.Count == 0 && map.Diagnostics.Count == 0)
+            {
+                return new DoctorProbe(map.SkippedLanguages[0].Language, ProbeState.NotMapped, elapsed, 0, [.. map.SkippedLanguages.Select(skipped => skipped.Note)]);
+            }
+
             return map.Diagnostics.Count > 0 ? new DoctorProbe(mapper.Language, ProbeState.Failed, elapsed, map.Symbols.Count, map.Diagnostics)
                 : map.Symbols.Count == 0 ? new DoctorProbe(mapper.Language, ProbeState.LoadedButEmpty, elapsed, 0, [EmptyHint(mapper.Language)])
                 : new DoctorProbe(mapper.Language, ProbeState.Working, elapsed, map.Symbols.Count, []);

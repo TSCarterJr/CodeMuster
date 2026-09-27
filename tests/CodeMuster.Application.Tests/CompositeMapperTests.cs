@@ -117,6 +117,25 @@ public class CompositeMapperTests
     }
 
     [Fact]
+    public async Task ALanguageTheMapperSkipped_IsNeitherMappedNorFailed_AndItsNoteIsReported()
+    {
+        const string note = "javascript: not mapped (no typescript package); files are reviewed whole";
+        var typescript = new FakeCodeMapper(Languages.TypeScript, new CodeMap([], [], [], new ResolutionStats(0, 0, []), []) { SkippedLanguages = [new SkippedLanguage(Languages.JavaScript, note)] })
+        {
+            Languages = [Languages.TypeScript, Languages.JavaScript],
+        };
+        FileRecord[] files = [.. MixedRepo.Included().Take(1).Select(file => file with { Path = "wwwroot/js/site.js", Language = Languages.JavaScript })];
+        var progress = new ListProgress();
+
+        var mapped = await CompositeMapper.MapAsync([typescript], Root, files, progress, CancellationToken.None);
+
+        Assert.Empty(mapped.MappedLanguages);
+        Assert.Empty(mapped.FailedLanguages);
+        Assert.Empty(mapped.Map.Diagnostics);
+        Assert.Equal([note], progress.Messages);
+    }
+
+    [Fact]
     public async Task ThrowingMapper_AddsADiagnostic_AndMarksOnlyItsLanguageFailed()
     {
         var csharp = new FakeCodeMapper(Languages.CSharp, MixedRepo.CSharp()) { Throws = new InvalidOperationException("no .NET SDK found") };

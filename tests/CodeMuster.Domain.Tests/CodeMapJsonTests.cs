@@ -92,6 +92,19 @@ public class CodeMapJsonTests
     }
 
     [Fact]
+    public void Skipped_languages_round_trip_and_are_left_out_when_there_are_none()
+    {
+        var map = SmallMap() with { SkippedLanguages = [new SkippedLanguage("javascript", "javascript: not mapped (why); files are reviewed whole")] };
+
+        var json = CodeMapJson.Serialize(map);
+
+        Assert.Contains("\"skipped_languages\"", json);
+        Assert.Equal(map.SkippedLanguages, CodeMapJson.Parse(json).SkippedLanguages);
+        Assert.DoesNotContain("skipped_languages", CodeMapJson.Serialize(SmallMap()));
+        Assert.Empty(CodeMapJson.Parse(CodeMapJson.Serialize(SmallMap())).SkippedLanguages);
+    }
+
+    [Fact]
     public void Round_trips_http_calls_including_one_built_at_runtime()
     {
         var map = SmallMap() with

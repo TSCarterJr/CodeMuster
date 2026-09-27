@@ -152,12 +152,58 @@ public class TypeScriptMapperTests
         Assert.DoesNotContain('\n', error.Message);
     }
 
+    private const string LooseNote = "javascript: not mapped (no tsconfig, jsconfig or typescript package); files are reviewed whole. Add typescript as a dev dependency to map them";
+
     [Fact]
-    public async Task A_javascript_repository_without_a_typescript_package_names_the_npm_command_that_adds_it()
+    public async Task Loose_javascript_without_a_config_or_a_typescript_package_is_skipped_with_a_note_instead_of_failing()
+    {
+        using var temp = new TempFolder();
+        temp.Write("Web.csproj", "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />\n");
+        temp.Write("wwwroot/js/site.js", "function toggle() {\n  return 1;\n}\n");
+
+        var map = await new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, ["Web.csproj", "wwwroot/js/site.js"], null, CancellationToken.None);
+
+        Assert.Empty(map.Symbols);
+        Assert.Empty(map.Diagnostics);
+        Assert.Equal([new SkippedLanguage(Languages.JavaScript, LooseNote)], map.SkippedLanguages);
+    }
+
+    [Fact]
+    public async Task Loose_javascript_is_skipped_with_a_note_when_node_is_missing()
+    {
+        var map = await new TypeScriptMapper(() => MissingNode).MapAsync(TestPaths.MixedRepo, ["wwwroot/js/site.js"], null, CancellationToken.None);
+
+        Assert.Empty(map.Symbols);
+        Assert.Equal([new SkippedLanguage(Languages.JavaScript, "javascript: not mapped (node was not found on PATH); files are reviewed whole. Install Node.js 22 or later and add typescript as a dev dependency to map them")], map.SkippedLanguages);
+    }
+
+    [Fact]
+    public async Task A_jsconfig_without_a_typescript_package_still_fails_because_mapping_was_asked_for()
+    {
+        using var temp = new TempFolder();
+        temp.Write("jsconfig.json", "{}");
+        temp.Write("src/app.js", "function main() {\n  return 1;\n}\n");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, ["jsconfig.json", "src/app.js"], null, CancellationToken.None));
+
+        Assert.Contains("typescript was not found for jsconfig.json", error.Message);
+    }
+
+    [Fact]
+    public async Task A_jsconfig_without_node_still_fails()
+    {
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper(() => MissingNode).MapAsync(TestPaths.MixedRepo, ["jsconfig.json", "src/app.js"], null, CancellationToken.None));
+
+        Assert.Contains($"{MissingNode} was not found on PATH", error.Message);
+    }
+
+    [Fact]
+    public async Task Typescript_files_without_a_config_or_a_typescript_package_fail_naming_the_npm_command_that_adds_it()
     {
         using var temp = new TempFolder();
         temp.Copy(Path.Combine(TestPaths.RepoRoot, "fixtures", "express-js"), ".", "node_modules");
         temp.Write("package-lock.json", """{ "name": "express-js", "lockfileVersion": 3, "packages": {} }""");
+        temp.Write("web/lib/format.ts", "export function format(value: number) {\n  return value.toFixed(2);\n}\n");
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None));
 
@@ -165,14 +211,14 @@ public class TypeScriptMapperTests
     }
 
     [Fact]
-    public async Task A_javascript_folder_without_a_lockfile_is_told_to_add_typescript_with_its_package_manager()
+    public async Task A_typescript_folder_without_a_lockfile_is_told_to_add_typescript_with_its_package_manager()
     {
         using var temp = new TempFolder();
         temp.Write("site/package.json", """{ "name": "site", "private": true }""");
-        temp.Write("site/app.js", "function main() {\n  return 1;\n}\n");
+        temp.Write("site/app.ts", "function main() {\n  return 1;\n}\n");
 
         // Scan excludes package.json as data, so the mapper finds it on disk.
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, ["site/app.js"], null, CancellationToken.None));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, ["site/app.ts"], null, CancellationToken.None));
 
         Assert.Equal("TypeScript mapping failed: typescript was not found for the JavaScript and TypeScript files; add typescript as a dev dependency of site with its package manager", error.Message);
     }

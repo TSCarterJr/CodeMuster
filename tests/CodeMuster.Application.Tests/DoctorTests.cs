@@ -95,6 +95,23 @@ public class DoctorTests
     }
 
     [Fact]
+    public async Task ALanguageTheMapperSkipped_IsReportedWithItsNote_AndDoesNotStopReady()
+    {
+        const string note = "javascript: not mapped (no typescript package); files are reviewed whole";
+        var scripts = new FakeCodeMapper(Languages.TypeScript, new CodeMap([], [], [], new ResolutionStats(0, 0, []), []) { SkippedLanguages = [new SkippedLanguage(Languages.JavaScript, note)] })
+        {
+            Languages = [Languages.TypeScript, Languages.JavaScript],
+        };
+        tree.Files.RemoveAll(f => f.Path.StartsWith("web/", StringComparison.Ordinal));
+        tree.Add("wwwroot/js/site.js", "const a = 1;");
+
+        var report = await new Doctor(tree, [csharp, scripts], clock, RepoRoot).RunAsync(CancellationToken.None);
+
+        Assert.True(report.Ready);
+        Assert.Equal($"git: working\ncsharp: working in 9.8 s, 2 symbol(s)\n{note}\nready", report.Render());
+    }
+
+    [Fact]
     public async Task OnlyLanguagesWithIncludedFiles_AreProbed()
     {
         tree.Files.RemoveAll(f => f.Path.StartsWith("web/", StringComparison.Ordinal));

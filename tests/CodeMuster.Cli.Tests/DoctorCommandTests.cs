@@ -41,6 +41,36 @@ public class DoctorCommandTests
     }
 
     [Fact]
+    public async Task Doctor_AndScan_LeaveLooseJavaScriptWholeFile_WithANote_WhenNoTypescriptPackageIsInstalled()
+    {
+        const string note = "javascript: not mapped (no tsconfig, jsconfig or typescript package); files are reviewed whole. Add typescript as a dev dependency to map them";
+        using var repo = TempRepo.FromFixture("minimal-api");
+        File.WriteAllText(Path.Combine(repo.Root, "src", "MinimalApi", "site.js"), "function toggle() {\n  return 1;\n}\n");
+        repo.Git("add", "-A");
+        repo.Git("-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "script");
+        repo.Dotnet("restore", "MinimalApi.sln");
+
+        var doctor = await CliProcess.RunAsync(repo.Root, "doctor");
+
+        Assert.Equal(0, doctor.ExitCode);
+        var lines = doctor.Stdout.ReplaceLineEndings("\n").TrimEnd().Split('\n');
+        Assert.Equal(["git: working", note, "ready"], lines.Where(line => !line.StartsWith("csharp: working", StringComparison.Ordinal)));
+
+        await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
+        var scan = await CliProcess.RunAsync(repo.Root, "scan");
+
+        Assert.Equal(0, scan.ExitCode);
+        Assert.Contains(note, scan.Stderr);
+        Assert.DoesNotContain("warning:", scan.Stderr);
+        using var ledger = await CodeMuster.Infrastructure.SqliteLedger.OpenAsync(Path.Combine(repo.Root, ".codemuster", "ledger.db"), CancellationToken.None);
+        var stored = (await ledger.GetCodeMapAsync(CancellationToken.None))!;
+        Assert.False(stored.IsPartial, string.Join("\n", stored.Map.Diagnostics));
+        Assert.Equal(["csharp"], stored.MappedLanguages);
+        Assert.Empty(stored.FailedLanguages);
+    }
+
+    [Fact]
     public async Task Doctor_OutsideAGitRepository_SaysGitFailed_AndExits1()
     {
         var folder = Directory.CreateTempSubdirectory("codemuster-doctor-");

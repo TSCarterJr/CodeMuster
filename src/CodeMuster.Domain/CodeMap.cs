@@ -70,6 +70,19 @@ public sealed record CodeMap(IReadOnlyList<Symbol> Symbols, IReadOnlyList<Edge> 
     [JsonIgnore]
     public IReadOnlyList<UiElement> UiElements { get; init; } = [];
 
+    /// <summary>Languages the mapper chose not to map because nothing asked for mapping and a tool it needs is missing, each with the note to show; their files stay whole-file units and count as neither mapped nor failed.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<SkippedLanguage> SkippedLanguages { get; init; } = [];
+
+    [JsonInclude]
+    [JsonPropertyName("skipped_languages")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    private IReadOnlyList<SkippedLanguage>? SerializedSkippedLanguages
+    {
+        get => SkippedLanguages.Count == 0 ? null : SkippedLanguages;
+        init => SkippedLanguages = value ?? [];
+    }
+
     // Written only when there is at least one element, so a map without UI reads and writes as before.
     [JsonInclude]
     [JsonPropertyName("ui_elements")]
@@ -80,6 +93,11 @@ public sealed record CodeMap(IReadOnlyList<Symbol> Symbols, IReadOnlyList<Edge> 
         init => UiElements = value ?? [];
     }
 }
+
+/// <summary>A language a mapper left unmapped on purpose, such as loose JavaScript with no config and no compiler to read it.</summary>
+/// <param name="Language">One of the <see cref="Languages"/> constants.</param>
+/// <param name="Note">One line to show the user, starting with the language, saying why and how to have it mapped.</param>
+public sealed record SkippedLanguage(string Language, string Note);
 
 /// <summary>One piece of the UI's structure, read from markup by a mapper (D69).</summary>
 /// <param name="Kind">One of "route" (a page), "nav" (a navigation or menu entry), "heading" (a section heading) or "control" (a form control or setting).</param>

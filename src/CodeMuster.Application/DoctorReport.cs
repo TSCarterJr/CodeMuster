@@ -13,6 +13,9 @@ public enum ProbeState
 
     /// <summary>The probe threw or the mapper reported diagnostics.</summary>
     Failed,
+
+    /// <summary>The mapper left a language unmapped on purpose, such as loose JavaScript with no compiler to read it; its files are reviewed whole and the repository is still ready.</summary>
+    NotMapped,
 }
 
 /// <summary>One probe's outcome.</summary>
@@ -27,18 +30,24 @@ public sealed record DoctorProbe(string Name, ProbeState State, TimeSpan? Elapse
 /// <param name="Probes">Git first, then each mapper that ran.</param>
 public sealed record DoctorReport(IReadOnlyList<DoctorProbe> Probes)
 {
-    /// <summary>True when every probe is working.</summary>
-    public bool Ready => Probes.All(p => p.State == ProbeState.Working);
+    /// <summary>True when every probe is working or left its language unmapped on purpose.</summary>
+    public bool Ready => Probes.All(p => p.State is ProbeState.Working or ProbeState.NotMapped);
 
     /// <summary>The report for a repository git could not open.</summary>
     public static DoctorReport GitFailed(string message) => new([new DoctorProbe("git", ProbeState.Failed, null, 0, [message])]);
 
-    /// <summary>One line per probe with its problems indented under it, then <c>ready</c> or <c>not ready</c>; lines joined with LF and no trailing newline.</summary>
+    /// <summary>One line per probe with its problems indented under it (a probe that left its language unmapped is its note alone), then <c>ready</c> or <c>not ready</c>; lines joined with LF and no trailing newline.</summary>
     public string Render()
     {
         var lines = new List<string>();
         foreach (var probe in Probes)
         {
+            if (probe.State == ProbeState.NotMapped)
+            {
+                lines.AddRange(probe.Problems);
+                continue;
+            }
+
             var state = probe.State switch
             {
                 ProbeState.Working => "working",
