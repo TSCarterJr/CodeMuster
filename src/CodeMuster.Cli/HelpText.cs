@@ -99,11 +99,16 @@ public static class HelpText
             Next: codemuster doctor, then codemuster scan.
             """,
         "doctor" => """
-            usage: codemuster doctor
+            usage: codemuster doctor [--fix [--yes]]
 
             Check Git and the C# and TypeScript mappers needed by this repository.
-            Prints readiness, diagnostics, and suggested setup commands; installs nothing.
-            Works before init. Exit 0 means ready; exit 1 means a check failed.
+            Prints readiness, diagnostics, and suggested setup commands.
+            Works before init, and outside a Git repository. Exit 0 means ready; exit 1 means a check failed.
+              --fix   Offer to run the setup commands doctor knows (git init and a first commit,
+                      dotnet restore, the package manager's install), asking before each one;
+                      then check again. Redirected or CI runs only print them.
+              --yes   With --fix, run them all without asking
+            A missing .NET SDK is named with its download link; doctor never installs it.
             """,
         "scan" => """
             usage: codemuster scan [--mode slice|file]

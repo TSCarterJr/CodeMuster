@@ -137,7 +137,7 @@ public static class Program
 
         if (command.Verb == "doctor")
         {
-            return await DoctorAsync(fileSystem, cancellationToken);
+            return await DoctorAsync(command, fileSystem, cancellationToken);
         }
 
         var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
@@ -331,23 +331,62 @@ public static class Program
         return result.GaveUp.Count > 0 ? 1 : 0;
     }
 
-    private static async Task<int> DoctorAsync(PhysicalFileSystem fileSystem, CancellationToken cancellationToken)
+    private static async Task<int> DoctorAsync(Command command, PhysicalFileSystem fileSystem, CancellationToken cancellationToken)
+    {
+        var fix = command.Flags.Contains("fix");
+        var commands = new ProcessCommandRunner();
+        var (root, report) = await DiagnoseAsync(fileSystem, commands, cancellationToken);
+        Console.WriteLine(report.Render());
+        if (!fix || report.Fixes.Count == 0)
+        {
+            return report.Ready ? 0 : 1;
+        }
+
+        var mode = command.Flags.Contains("yes") ? DoctorFixMode.All
+            : !Console.IsInputRedirected && !Console.IsOutputRedirected && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI")) ? DoctorFixMode.Ask
+            : DoctorFixMode.PrintOnly;
+        var output = new LineWriter(Console.Out);
+        var started = await new DoctorFixer(commands, root, output).ApplyAsync(report.Fixes, mode, candidate =>
+        {
+            Console.Write($"run {candidate.Render()}? [y/N] ");
+            return Console.ReadLine()?.Trim() is { } answer && (answer.Equals("y", StringComparison.OrdinalIgnoreCase) || answer.Equals("yes", StringComparison.OrdinalIgnoreCase));
+        }, cancellationToken);
+        if (started == 0)
+        {
+            return report.Ready ? 0 : 1;
+        }
+
+        Console.WriteLine("checking again:");
+        (_, report) = await DiagnoseAsync(fileSystem, commands, cancellationToken);
+        Console.WriteLine(report.Render());
+        return report.Ready ? 0 : 1;
+    }
+
+    // A folder outside any repository is its own root, so doctor --fix can make it one there.
+    private static async Task<(string Root, DoctorReport Report)> DiagnoseAsync(PhysicalFileSystem fileSystem, ProcessCommandRunner commands, CancellationToken cancellationToken)
     {
         string repoRoot;
         try
         {
             repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
         }
+        catch (NotARepositoryException ex)
+        {
+            return (Directory.GetCurrentDirectory(), DoctorReport.NotARepository(ex.Message));
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            Console.WriteLine(DoctorReport.GitFailed(ex.Message).Render());
-            return 1;
+            return (Directory.GetCurrentDirectory(), DoctorReport.GitFailed(ex.Message));
         }
 
         var config = File.Exists(ConfigLoader.PathFor(repoRoot)) ? await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken) : null;
-        var report = await new Doctor(new GitSourceTree(repoRoot), Mappers(), new SystemClock(), repoRoot, config, new ProgressWriter(Console.Error)).RunAsync(cancellationToken);
-        Console.WriteLine(report.Render());
-        return report.Ready ? 0 : 1;
+        var report = await new Doctor(new GitSourceTree(repoRoot), Mappers(), new SystemClock(), repoRoot, config, new ProgressWriter(Console.Error), commands).RunAsync(cancellationToken);
+        return (repoRoot, report);
+    }
+
+    private sealed class LineWriter(TextWriter writer) : IProgress<string>
+    {
+        public void Report(string value) => writer.WriteLine(value);
     }
 
     private static async Task<int> HookAsync(PhysicalFileSystem fileSystem, CancellationToken cancellationToken)

@@ -2,6 +2,8 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
 
+public sealed class NotARepositoryException(string message) : InvalidOperationException(message);
+
 public sealed class GitSourceTree(string repoRoot) : ISourceTree
 {
     public static async Task<string> FindTopLevelAsync(string directory, CancellationToken cancellationToken)
@@ -11,7 +13,7 @@ public sealed class GitSourceTree(string repoRoot) : ISourceTree
         var (exitCode, output, error) = await GitProcess.RunAllowingFailureAsync(directory, arguments, null, cancellationToken, new Dictionary<string, string> { ["LC_ALL"] = "C" }).ConfigureAwait(false);
         return exitCode == 0 ? Path.GetFullPath(output.Trim())
             : error.Contains("not a git repository", StringComparison.Ordinal)
-                ? throw new InvalidOperationException($"{directory} is not a git repository or inside one; run codemuster from a repository, or create one with git init")
+                ? throw new NotARepositoryException($"{directory} is not a git repository or inside one; run codemuster from a repository, or create one with git init")
                 : throw GitProcess.Failure(arguments, exitCode, error);
     }
 

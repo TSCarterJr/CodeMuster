@@ -24,7 +24,7 @@ public sealed class GitTopLevelTests : IDisposable
         Directory.CreateDirectory(outside);
         try
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() => GitSourceTree.FindTopLevelAsync(outside, CancellationToken.None));
+            await Assert.ThrowsAsync<NotARepositoryException>(() => GitSourceTree.FindTopLevelAsync(outside, CancellationToken.None));
         }
         finally
         {

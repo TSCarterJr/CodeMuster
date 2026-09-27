@@ -120,6 +120,7 @@ public class CommandLineTests
     [InlineData("scan --mode files", "codemuster scan: --mode must be one of slice, file (got \"files\")")]
     [InlineData("skill install --for gpt5", "codemuster skill: --for must be one of claude, codex, gemini, opencode (got \"gpt5\")")]
     [InlineData("init --no-skills --for claude", "codemuster init: --for cannot be used with --no-skills")]
+    [InlineData("doctor --yes", "codemuster doctor: --yes only applies with --fix")]
     [InlineData("init --for vscode --yes", "codemuster init: --for must be all, none, or a comma-separated list of claude, codex, gemini (got \"vscode\")")]
     [InlineData("init --for claude,none", "codemuster init: --for must be all, none, or a comma-separated list of claude, codex, gemini (got \"claude,none\")")]
     [InlineData("run --agent fake -jx", "codemuster run: -j must be a positive whole number (got \"x\")")]
@@ -152,7 +153,8 @@ public class CommandLineTests
     [InlineData("verify --agent fake --kind file", "codemuster verify: unknown option --kind (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --force)")]
     [InlineData("run --agnet=fake", "codemuster run: unknown option --agnet; did you mean --agent? (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --kind, --force)")]
     [InlineData("scan --yes", "codemuster scan: unknown option --yes (options: --mode)")]
-    [InlineData("doctor --fix now", "codemuster doctor: unknown option --fix (doctor takes no options)")]
+    [InlineData("doctor --fix --force", "codemuster doctor: unknown option --force (options: --fix, --yes)")]
+    [InlineData("validate --fix", "codemuster validate: unknown option --fix (validate takes no options)")]
     public void Parse_UnknownOption_IsNamed_WithTheValidOnes(string arguments, string expected)
     {
         var error = Assert.Throws<UsageException>(() => CommandLine.Parse(arguments.Split(' ')));
@@ -208,6 +210,7 @@ public class CommandLineTests
     [InlineData("fix --agent fake --stash --retry-declined --allow-failing-tests --include-related a.cs --path b.cs -j 1 --attempts 2 --model m --effort e")]
     [InlineData("report --out a.md --include-refuted")]
     [InlineData("doctor")]
+    [InlineData("doctor --fix --yes")]
     [InlineData("validate")]
     [InlineData("hook")]
     [InlineData("map")]

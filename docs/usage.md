@@ -37,7 +37,15 @@ keep the ledger local. `--no-gitignore` leaves `.gitignore` unchanged if you man
 
 Install and authenticate the agent you intend to use: Claude Code, Codex, Gemini CLI, or
 OpenCode. `doctor` checks Git and the code mappers, not your provider account. Follow its
-suggested restore or dependency-install commands if mapping is not ready.
+suggested restore or dependency-install commands if mapping is not ready, or let
+`codemuster doctor --fix` run them: `git init` with a first commit (`git add -A`, then
+`git commit -m "Initial commit"`) when the folder is not a repository or has no commit yet,
+`dotnet restore` for each unrestored solution or project, and the package manager's install
+(`npm ci` with a `package-lock.json`, `pnpm install` or `yarn install` with their lockfile when
+the tool is on PATH, otherwise `npm install`) where the `typescript` package is missing. On a
+terminal it shows each command and asks before running it; `--yes` runs them all; redirected
+or CI runs only print them. It then checks again and prints the new result. Without the .NET SDK,
+`doctor` says so and links to https://dotnet.microsoft.com/download; it never installs the SDK.
 
 TypeScript mapping uses the compiler API from the `typescript` package installed next to each
 `tsconfig.json`. TypeScript 7 has no JavaScript compiler API, so with it, or with no `typescript`
@@ -609,7 +617,7 @@ and manage them.
 | Command | Options |
 |---|---|
 | `init` | `--for claude,codex,gemini` (or `all`/`none`), `--yes`, `--no-gitignore`, `--no-hooks`, `--no-skills` |
-| `doctor` | No options |
+| `doctor` | `--fix` to offer the setup commands it found, `--yes` to run them without asking |
 | `scan` | `--mode slice` (default), `--mode file` |
 | `status` | No options |
 | `estimate` | `--path <path>` |

@@ -21,7 +21,7 @@ public static class CommandLine
     {
         ["init"] = new(["for"], ["yes", "no-gitignore", "no-hooks", "no-skills"]),
         ["intelligent-config"] = new(["agent", "model", "effort"], []),
-        ["doctor"] = new([], []),
+        ["doctor"] = new([], ["fix", "yes"]),
         ["scan"] = new(["mode"], []),
         ["status"] = new([], []),
         ["estimate"] = new(["path"], []),
@@ -125,6 +125,7 @@ public static class CommandLine
         }
 
         if (flags.Contains("no-skills") && options.ContainsKey("for")) throw Mistake(verb, "--for cannot be used with --no-skills");
+        if (verb == "doctor" && flags.Contains("yes") && !flags.Contains("fix")) throw Mistake(verb, "--yes only applies with --fix");
         return new Command(verb, positionals, options, flags);
     }
 

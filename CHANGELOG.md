@@ -44,6 +44,11 @@ start with 0.2.8.
   (`npm i -D typescript`). Loose scripts with no config, no TypeScript files and no `typescript`
   package, such as an ASP.NET `wwwroot/js/site.js`, stay whole-file units with a note instead of
   failing the map or `doctor`.
+- `doctor --fix` offers to run the setup commands `doctor` finds: `git init` and a first
+  commit, `dotnet restore`, and the package manager's install where `typescript` is missing. It
+  asks before each one on a terminal, `--yes` runs them all, and redirected or CI runs only print
+  them; it then checks again. Without the .NET SDK, `doctor` now says so and links to the download
+  page instead of showing a raw error. It never installs the .NET SDK, Node.js or Git.
 
 ## 0.3.6 - 2026-09-25
 

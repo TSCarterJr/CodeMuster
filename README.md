@@ -84,7 +84,9 @@ codemuster doctor
 ```
 
 Commit `.codemuster/config.json`. Keep `.codemuster/ledger.db` local and ignored.
-`doctor` checks the mappers and suggests setup commands; it does not install dependencies.
+`doctor` checks the mappers and suggests setup commands; `doctor --fix` offers to run them
+(`git init` and a first commit, `dotnet restore`, the package install), asking before each, and
+`--yes` runs them all. It never installs the .NET SDK, Node.js or Git.
 `init` installs project skills and change hooks for your selected agents. Choose a comma-separated
 `--for claude,codex,gemini`, or choose interactively with plain `init`. `--yes` selects all unless
 `--for` or `--no-skills` is given. Use `--no-gitignore`, `--no-hooks`, or `--no-skills` to opt out.

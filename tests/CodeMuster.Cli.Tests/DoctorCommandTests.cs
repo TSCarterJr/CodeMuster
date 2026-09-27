@@ -91,4 +91,70 @@ public class DoctorCommandTests
             folder.Delete(recursive: true);
         }
     }
+
+    private static Dictionary<string, string> PlainFolderEnvironment(DirectoryInfo folder) => new()
+    {
+        ["GIT_CEILING_DIRECTORIES"] = folder.Parent!.FullName,
+        ["GIT_AUTHOR_NAME"] = "t",
+        ["GIT_AUTHOR_EMAIL"] = "t@example.com",
+        ["GIT_COMMITTER_NAME"] = "t",
+        ["GIT_COMMITTER_EMAIL"] = "t@example.com",
+        ["GIT_CONFIG_COUNT"] = "1",
+        ["GIT_CONFIG_KEY_0"] = "commit.gpgsign",
+        ["GIT_CONFIG_VALUE_0"] = "false",
+    };
+
+    [Fact]
+    public async Task DoctorFixYes_InAPlainFolder_CreatesTheRepositoryWithAFirstCommit_AndThenReportsGitWorking()
+    {
+        var folder = Directory.CreateTempSubdirectory("codemuster-doctor-fix-");
+        try
+        {
+            File.WriteAllText(Path.Combine(folder.FullName, "notes.txt"), "hello\n");
+
+            var result = await CliProcess.RunAsync(folder.FullName, PlainFolderEnvironment(folder), "doctor", "--fix", "--yes");
+
+            var output = result.Stdout.ReplaceLineEndings("\n");
+            Assert.True(result.ExitCode == 0, output + result.Stderr);
+            Assert.StartsWith("git: failed\n  ", output);
+            Assert.Contains("running: git init && git add -A && git commit -m \"Initial commit\"\n", output);
+            Assert.EndsWith("\ngit: working\nready", output.TrimEnd());
+            Assert.True(Directory.Exists(Path.Combine(folder.FullName, ".git")));
+        }
+        finally
+        {
+            DeleteFolder(folder);
+        }
+    }
+
+    [Fact]
+    public async Task DoctorFix_WhenNotATerminal_OnlyPrintsTheCommands_AndChangesNothing()
+    {
+        var folder = Directory.CreateTempSubdirectory("codemuster-doctor-fix-");
+        try
+        {
+            var result = await CliProcess.RunAsync(folder.FullName, PlainFolderEnvironment(folder), "doctor", "--fix");
+
+            Assert.Equal(1, result.ExitCode);
+            var output = result.Stdout.ReplaceLineEndings("\n");
+            Assert.Contains("would run: git init && git add -A && git commit -m \"Initial commit\"\n", output);
+            Assert.Contains("nothing was run because this is not an interactive terminal", output);
+            Assert.False(Directory.Exists(Path.Combine(folder.FullName, ".git")));
+        }
+        finally
+        {
+            DeleteFolder(folder);
+        }
+    }
+
+    // git marks its object files read-only, which Directory.Delete refuses on Windows.
+    private static void DeleteFolder(DirectoryInfo folder)
+    {
+        foreach (var file in folder.EnumerateFiles("*", SearchOption.AllDirectories))
+        {
+            file.Attributes = FileAttributes.Normal;
+        }
+
+        folder.Delete(recursive: true);
+    }
 }
