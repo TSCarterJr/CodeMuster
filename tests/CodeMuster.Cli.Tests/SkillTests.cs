@@ -108,6 +108,18 @@ public class SkillTests
     }
 
     [Fact]
+    public void Skill_TeachesTheCodeMapDoctorFixSpendAndSimplificationFindings()
+    {
+        Assert.Contains("`codemuster doctor --fix`", SkillText);
+        Assert.Contains("`codemuster map`", SkillText);
+        Assert.Contains("`map flow \"GET /quotes\"`", SkillText);
+        Assert.Contains("`map callers <symbol>`", SkillText);
+        Assert.Contains("`map callees <symbol>`", SkillText);
+        Assert.Contains("`--include simplification`", SkillText);
+        Assert.Contains("spend", SkillText);
+    }
+
+    [Fact]
     public void Skill_ContainsTheExactResponseSample()
     {
         Assert.Contains("```json\n" + AnalysisResponseJson.Sample + "\n```", SkillText.ReplaceLineEndings("\n"));
