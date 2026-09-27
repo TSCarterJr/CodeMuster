@@ -127,6 +127,13 @@ public static class MixedRepo
         new ResolutionStats(11, 0, []),
         []);
 
+    /// <summary>The HTTP calls the TypeScript mapper reads from web/lib/api.ts (its golden).</summary>
+    public static IReadOnlyList<HttpCall> HttpCalls() =>
+    [
+        new HttpCall(FetchQuotes, "GET", "/quotes", "`/quotes?tenantId=${tenantId}`", ApiPath, 9),
+        new HttpCall(FetchCustomers, "GET", "/customers", "\"/customers\"", ApiPath, 14),
+    ];
+
     public static CodeMap Map()
     {
         var csharp = CSharp();

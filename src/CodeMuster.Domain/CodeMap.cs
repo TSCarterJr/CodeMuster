@@ -28,6 +28,9 @@ public enum EdgeKind
 
     /// <summary>A call to a virtual or abstract member; one edge per override.</summary>
     Overrides,
+
+    /// <summary>A static HTTP call in UI code matched by method and route to the C# <c>http</c> entry point that serves it (D61).</summary>
+    Http,
 }
 
 /// <summary>A directed edge from the symbol that contains a call site to a symbol that call can reach.</summary>
@@ -54,4 +57,21 @@ public sealed record ResolutionStats(int Resolved, int Unresolved, IReadOnlyList
 /// <param name="EntryPoints">Every external entry into the codebase.</param>
 /// <param name="Resolution">Call-site resolution statistics.</param>
 /// <param name="Diagnostics">Why the map may be incomplete, such as a missing restore; empty when nothing went wrong.</param>
-public sealed record CodeMap(IReadOnlyList<Symbol> Symbols, IReadOnlyList<Edge> Edges, IReadOnlyList<EntryPoint> EntryPoints, ResolutionStats Resolution, IReadOnlyList<string> Diagnostics);
+public sealed record CodeMap(IReadOnlyList<Symbol> Symbols, IReadOnlyList<Edge> Edges, IReadOnlyList<EntryPoint> EntryPoints, ResolutionStats Resolution, IReadOnlyList<string> Diagnostics)
+{
+    /// <summary>Every outgoing HTTP call the mapper read statically (D61); empty when the mapper records none. Scan joins them to entry points as <see cref="EdgeKind.Http"/> edges and the ledger does not store them.</summary>
+    public IReadOnlyList<HttpCall> HttpCalls { get; init; } = [];
+}
+
+/// <summary>An outgoing HTTP request that UI code makes, read statically by a mapper (D61).</summary>
+/// <param name="From">Id of the symbol whose body contains the call.</param>
+/// <param name="Method">Upper-case HTTP method: the literal the call names, GET when it names none, or ANY when it is chosen at runtime.</param>
+/// <param name="Url">Path template with the origin, query string and fragment removed and each runtime part written as a <c>{name}</c> parameter; null when the URL is built at runtime.</param>
+/// <param name="Text">Source text of the URL argument, whitespace collapsed.</param>
+/// <param name="Path">Repo-relative path of the file containing the call.</param>
+/// <param name="Line">1-based line of the call.</param>
+public sealed record HttpCall(string From, string Method, string? Url, string Text, string Path, int Line)
+{
+    /// <summary>Starts every map diagnostic the UI-to-API join records, so a reader can tell them from mapper diagnostics.</summary>
+    public const string DiagnosticPrefix = "http: ";
+}

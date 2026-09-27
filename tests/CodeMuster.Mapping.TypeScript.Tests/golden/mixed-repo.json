@@ -60,5 +60,9 @@
     { "symbol_id": "web/app/customers/page.tsx#CustomersPage", "kind": "page", "display": "/customers" }
   ],
   "resolution": { "resolved": 16, "unresolved": 0, "top_unresolved_names": [] },
-  "diagnostics": []
+  "diagnostics": [],
+  "http_calls": [
+    { "from": "web/lib/api.ts#fetchQuotes", "method": "GET", "url": "/quotes", "text": "`/quotes?tenantId=${tenantId}`", "path": "web/lib/api.ts", "line": 9 },
+    { "from": "web/lib/api.ts#fetchCustomers", "method": "GET", "url": "/customers", "text": "\"/customers\"", "path": "web/lib/api.ts", "line": 14 }
+  ]
 }

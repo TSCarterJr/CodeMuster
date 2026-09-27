@@ -78,6 +78,42 @@ public class CodeMapScanTests
     }
 
     [Fact]
+    public async Task Scan_StoresUiToApiLinks_WithoutChangingUnitsOrItsResult()
+    {
+        typescript.Map = TypeScript() with { HttpCalls = HttpCalls() };
+        var progress = new List<string>();
+
+        var result = await new Scan(ledger, tree, new FakeContentHasher(), clock, Config.Default, [csharp, typescript], Root, new ListProgress(progress)).RunAsync(CancellationToken.None);
+
+        Assert.Equal(UnitsBeforeTheMapWasStored, Digest());
+        Assert.Empty(result.SliceMode!.Diagnostics);
+        var stored = ledger.CodeMap!;
+        Assert.Equal([.. CSharp().Edges, .. TypeScript().Edges, new Edge(FetchQuotes, ControllerListQuotes, EdgeKind.Http)], stored.Map.Edges);
+        Assert.Equal(
+            [
+                "http: web/lib/api.ts:14 GET /customers matches no endpoint",
+                "http: GET /quotes/{id} is not called from the mapped UI",
+            ],
+            stored.Map.Diagnostics);
+        Assert.False(stored.IsPartial);
+        Assert.Single(progress, message => message.StartsWith("linked ", StringComparison.Ordinal));
+        Assert.Contains("linked 1 UI call to an endpoint; 1 call and 1 endpoint unmatched", progress);
+        Assert.True(progress.IndexOf("linked 1 UI call to an endpoint; 1 call and 1 endpoint unmatched") > progress.IndexOf("planning units"));
+    }
+
+    [Fact]
+    public async Task Scan_WithoutHttpCalls_ReportsNoLinksAndNoUncalledEndpoints()
+    {
+        var progress = new List<string>();
+
+        await new Scan(ledger, tree, new FakeContentHasher(), clock, Config.Default, [csharp, typescript], Root, new ListProgress(progress)).RunAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(ledger.CodeMap!.Map.Edges, edge => edge.Kind == EdgeKind.Http);
+        Assert.Empty(ledger.CodeMap.Map.Diagnostics);
+        Assert.DoesNotContain(progress, message => message.StartsWith("linked ", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Rescan_ReplacesTheStoredMap_AndLeavesUnitsAsBefore()
     {
         await ScanAsync();

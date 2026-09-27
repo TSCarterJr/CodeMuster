@@ -16,6 +16,9 @@ public class GoldenTests
         Assert.All(golden.Edges, edge => Assert.Contains(edge.From, ids));
         Assert.All(golden.Edges, edge => Assert.Contains(edge.To, ids));
         Assert.All(golden.EntryPoints, entry => Assert.Contains(entry.SymbolId, ids));
+        Assert.NotEmpty(golden.HttpCalls);
+        Assert.All(golden.HttpCalls, call => Assert.Contains(call.From, ids));
+        Assert.All(golden.HttpCalls, call => Assert.StartsWith(call.Path + "#", call.From, StringComparison.Ordinal));
         Assert.Empty(golden.Diagnostics);
     }
 }

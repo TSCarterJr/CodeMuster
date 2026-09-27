@@ -49,6 +49,53 @@ public class CodeMapJsonTests
     }
 
     [Fact]
+    public void Round_trips_http_calls_including_one_built_at_runtime()
+    {
+        var map = SmallMap() with
+        {
+            HttpCalls =
+            [
+                new HttpCall("web/lib/api.ts#fetchQuotes", "GET", "/quotes/{id}", "`/quotes/${id}`", "web/lib/api.ts", 9),
+                new HttpCall("web/lib/api.ts#save", "ANY", null, "endpoint", "web/lib/api.ts", 14),
+            ],
+        };
+
+        var json = CodeMapJson.Serialize(map);
+        var parsed = CodeMapJson.Parse(json);
+
+        Assert.Contains("\"http_calls\"", json);
+        Assert.Contains("\"url\": null", json);
+        Assert.Equal(map.HttpCalls, parsed.HttpCalls);
+    }
+
+    [Fact]
+    public void A_map_without_http_calls_parses_with_none()
+    {
+        const string json = """
+            {
+              "symbols": [],
+              "edges": [],
+              "entry_points": [],
+              "resolution": { "resolved": 0, "unresolved": 0, "top_unresolved_names": [] },
+              "diagnostics": []
+            }
+            """;
+
+        Assert.Empty(CodeMapJson.Parse(json).HttpCalls);
+    }
+
+    [Fact]
+    public void Http_edges_serialize_as_lowercase_http()
+    {
+        var map = SmallMap() with { Edges = [new Edge("web/lib/api.ts#fetchQuotes", "M:Api.QuotesController.Get(System.Int32)", EdgeKind.Http)] };
+
+        var json = CodeMapJson.Serialize(map);
+
+        Assert.Contains("\"kind\": \"http\"", json);
+        Assert.Equal(map.Edges, CodeMapJson.Parse(json).Edges);
+    }
+
+    [Fact]
     public void Missing_required_field_throws()
     {
         const string json = """

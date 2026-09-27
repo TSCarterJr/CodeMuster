@@ -706,6 +706,18 @@ its rows kept; older CLI versions then ask for an update rather than opening it.
 (see [Code map](#code-map)). An edge kind a newer build stored and this one does not know is
 skipped when the map is read, with a diagnostic, so the map reads as partial instead of failing.
 
+The stored map also links the UI to the API (D61). The TypeScript mapper reads each `fetch`,
+`axios` verb helper, `axios(config)` / `axios.request(config)` and `axios.create({ baseURL })`
+instance call whose URL it can fold from literals, templates, `+` and constants: the method
+comes from the call (GET when none is given, ANY when it is chosen at runtime), each `${...}`
+becomes a parameter segment, and the origin, query string and fragment are dropped. Scan matches
+each call to a C# `http` entry point by method and route, segment by segment, and stores an edge
+of kind `http` from the calling function to the action. Calls that match no endpoint, URLs built
+at runtime, and (when any call was found) endpoints no call reaches are stored as map diagnostics
+starting with `http: `; they are not findings and do not make the map partial. Scan prints one
+progress line on stderr such as `linked 1 UI call to an endpoint; 1 call and 1 endpoint
+unmatched`; its stdout, units, slices and fingerprints do not change.
+
 Yarn Classic uses `yarn audit --json`; Yarn 2+ uses `yarn npm audit --all --recursive --json`.
 Yarn 4.9.0's real JSON output and command behavior have been exercised. Dependency repairs
 that change a manifest and lockfile require both files in the explicit allowed scope.

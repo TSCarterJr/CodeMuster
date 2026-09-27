@@ -43,7 +43,10 @@ public static class CompositeMapper
             maps.SelectMany(m => m.Edges).ToList(),
             maps.SelectMany(m => m.EntryPoints).ToList(),
             new ResolutionStats(maps.Sum(m => m.Resolution.Resolved), maps.Sum(m => m.Resolution.Unresolved), names),
-            diagnostics);
+            diagnostics)
+        {
+            HttpCalls = maps.SelectMany(m => m.HttpCalls).ToList(),
+        };
         return new CompositeMap(merged, failed, mapped);
     }
 }

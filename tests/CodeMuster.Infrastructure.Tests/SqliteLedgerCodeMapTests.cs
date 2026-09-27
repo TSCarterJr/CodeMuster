@@ -98,6 +98,34 @@ public class SqliteLedgerCodeMapTests
     }
 
     [Fact]
+    public async Task ReplaceCodeMap_RoundTripsHttpEdgesAsLowercaseText_AndTheJoinDiagnostics_WithoutMakingTheMapPartial()
+    {
+        using var temp = new TempDirectory();
+        var map = First() with
+        {
+            FailedLanguages = [],
+            Map = First().Map with
+            {
+                Edges = [new Edge(FetchQuotes, ListQuotes, EdgeKind.Http), new Edge(StoreLoad, FetchQuotes, EdgeKind.Call)],
+                Diagnostics = ["http: web/src/api.ts:14 GET /customers matches no endpoint", "http: GET /quotes/{id} is not called from the mapped UI"],
+                HttpCalls = [new HttpCall(FetchQuotes, "GET", "/quotes", "\"/quotes\"", "web/src/api.ts", 2)],
+            },
+        };
+        using (var writer = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None))
+        {
+            await writer.ReplaceCodeMapAsync(map, CancellationToken.None);
+        }
+
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+        var stored = await ledger.GetCodeMapAsync(CancellationToken.None);
+
+        AssertSame(map, stored);
+        Assert.False(stored!.IsPartial);
+        Assert.Empty(stored.Map.HttpCalls);
+        Assert.Equal(["http", "call"], await RawSqlite.StringsAsync(temp.DatabasePath, "SELECT kind FROM code_edges ORDER BY rowid"));
+    }
+
+    [Fact]
     public async Task ReplaceCodeMap_StoresEachSymbolsContainer_AndNoSourceText()
     {
         using var temp = new TempDirectory();

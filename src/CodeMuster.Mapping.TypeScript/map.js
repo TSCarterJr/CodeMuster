@@ -105,6 +105,7 @@ function mapRepo(request, compilers) {
   const entryPoints = new Map();
   const unresolvedNames = new Map();
   const diagnostics = new Set();
+  const httpCalls = [];
   let resolved = 0;
   let unresolved = 0;
 
@@ -148,6 +149,7 @@ function mapRepo(request, compilers) {
         unresolved += calls.unresolved.length;
         calls.unresolved.forEach((name) => unresolvedNames.set(name, (unresolvedNames.get(name) || 0) + 1));
         calls.targets.forEach((to) => edges.set(`${declaration.id}\n${to}`, { from: declaration.id, to, kind: 'call' }));
+        calls.http.forEach((call) => httpCalls.push({ from: declaration.id, ...call, path: file }));
       }
 
       const route = pageRoute(file);
@@ -170,6 +172,7 @@ function mapRepo(request, compilers) {
         .map(([name]) => name),
     },
     diagnostics: [...diagnostics].sort(ordinal),
+    http_calls: httpCalls.sort((a, b) => ordinal(a.path, b.path) || a.line - b.line || ordinal(a.from, b.from)),
   };
 }
 
@@ -218,7 +221,7 @@ function createMapper(ts, checker, repoRoot) {
   }
 
   function callSites(declaration) {
-    const calls = { resolved: 0, unresolved: [], targets: new Set() };
+    const calls = { resolved: 0, unresolved: [], targets: new Set(), http: [] };
     const site = (callee) => {
       const name = ts.isPropertyAccessExpression(callee) ? callee.name : callee;
       const target = aliased(checker.getSymbolAtLocation(name));
@@ -232,6 +235,11 @@ function createMapper(ts, checker, repoRoot) {
     const visit = (node) => {
       if (ts.isCallExpression(node)) {
         site(node.expression);
+        const http = httpCall(node);
+        if (http !== undefined) {
+          calls.http.push(http);
+        }
+
         node.arguments
           .filter((argument) => ts.isIdentifier(argument))
           .forEach((argument) => targetIds(checker.getSymbolAtLocation(argument)).forEach((id) => calls.targets.add(id)));
@@ -245,6 +253,203 @@ function createMapper(ts, checker, repoRoot) {
     };
     visit(declaration.fn);
     return calls;
+  }
+
+  // D61: only what the call's own text says is recorded; a URL that cannot be folded from literals and constants is kept unresolved, never guessed.
+  function httpCall(node) {
+    const callee = node.expression;
+    const [first, second] = node.arguments;
+    if (first === undefined) {
+      return undefined;
+    }
+
+    if (isFetch(callee)) {
+      return request(node, first, second === undefined ? 'GET' : methodOf(second), '');
+    }
+
+    if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.name)) {
+      const base = clientBase(callee.expression);
+      const verb = callee.name.text;
+      if (base !== undefined && AXIOS_VERBS.has(verb)) {
+        return request(node, first, verb.toUpperCase(), base);
+      }
+
+      if (base !== undefined && verb === 'request') {
+        return configured(node, first, base);
+      }
+    }
+
+    const base = clientBase(callee);
+    if (base === undefined) {
+      return undefined;
+    }
+
+    return ts.isObjectLiteralExpression(unwrap(first)) || (second === undefined && fold(first, 0) === undefined)
+      ? configured(node, first, base)
+      : request(node, first, second === undefined ? 'GET' : methodOf(second), base);
+  }
+
+  function request(node, urlExpression, method, base) {
+    const raw = fold(urlExpression, 0);
+    return {
+      method,
+      url: raw === undefined ? null : normalizeUrl(raw, base),
+      text: collapse(urlExpression.getText()),
+      line: line(node.getSourceFile(), node.getStart()),
+    };
+  }
+
+  function configured(node, config, base) {
+    const object = unwrap(config);
+    if (!ts.isObjectLiteralExpression(object)) {
+      return { method: 'ANY', url: null, text: collapse(config.getText()), line: line(node.getSourceFile(), node.getStart()) };
+    }
+
+    const baseUrl = property(object, 'baseURL');
+    const url = property(object, 'url');
+    const call = request(node, url === undefined ? object : url, methodOf(object), baseUrl === undefined ? base : fold(baseUrl, 0) ?? parameter(baseUrl));
+    return url === undefined ? { ...call, url: null } : call;
+  }
+
+  function methodOf(init) {
+    const object = unwrap(init);
+    if (!ts.isObjectLiteralExpression(object)) {
+      return 'ANY';
+    }
+
+    const method = property(object, 'method');
+    if (method === undefined) {
+      return object.properties.some((member) => ts.isSpreadAssignment(member)) ? 'ANY' : 'GET';
+    }
+
+    const value = unwrap(method);
+    return ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value) ? value.text.toUpperCase() : 'ANY';
+  }
+
+  function property(object, name) {
+    for (const member of object.properties) {
+      const key = member.name && (ts.isIdentifier(member.name) || ts.isStringLiteral(member.name)) ? member.name.text : undefined;
+      if (key !== name) {
+        continue;
+      }
+
+      if (ts.isPropertyAssignment(member)) {
+        return member.initializer;
+      }
+
+      if (ts.isShorthandPropertyAssignment(member)) {
+        return member.name;
+      }
+    }
+
+    return undefined;
+  }
+
+  // Folds string literals, templates, + concatenations and const initializers into a path; each runtime part becomes a {name} parameter.
+  function fold(expression, depth) {
+    const node = unwrap(expression);
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+      return node.text;
+    }
+
+    if (ts.isTemplateExpression(node)) {
+      return node.head.text + node.templateSpans.map((span) => (fold(span.expression, depth) ?? parameter(span.expression)) + span.literal.text).join('');
+    }
+
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+      const left = fold(node.left, depth);
+      const right = fold(node.right, depth);
+      return left === undefined && right === undefined ? undefined : (left ?? parameter(node.left)) + (right ?? parameter(node.right));
+    }
+
+    if (ts.isIdentifier(node) && depth < 5) {
+      const declaration = constDeclaration(aliased(checker.getSymbolAtLocation(node)));
+      return declaration === undefined ? undefined : fold(declaration.initializer, depth + 1);
+    }
+
+    return undefined;
+  }
+
+  function parameter(expression) {
+    const text = collapse(expression.getText());
+    return /^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/.test(text) ? `{${text}}` : '{param}';
+  }
+
+  function constDeclaration(symbol) {
+    const declaration = symbol && symbol.declarations && symbol.declarations[0];
+    return declaration && ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined
+      && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+      ? declaration
+      : undefined;
+  }
+
+  function isFetch(callee) {
+    const name = ts.isIdentifier(callee)
+      ? callee
+      : ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression) && ['window', 'globalThis', 'self'].includes(callee.expression.text)
+        ? callee.name
+        : undefined;
+    return name !== undefined && name.text === 'fetch' && isExternal(aliased(checker.getSymbolAtLocation(name)));
+  }
+
+  // The base path an axios client puts before every relative URL: '' for axios itself, an axios.create instance's baseURL, undefined for anything else.
+  function clientBase(expression) {
+    const node = unwrap(expression);
+    if (!ts.isIdentifier(node)) {
+      return undefined;
+    }
+
+    if (isAxios(node)) {
+      return '';
+    }
+
+    const declaration = constDeclaration(aliased(checker.getSymbolAtLocation(node)));
+    const create = declaration && unwrap(declaration.initializer);
+    if (create === undefined || !ts.isCallExpression(create) || !ts.isPropertyAccessExpression(create.expression)
+      || create.expression.name.text !== 'create' || !ts.isIdentifier(create.expression.expression) || !isAxios(create.expression.expression)) {
+      return undefined;
+    }
+
+    const config = create.arguments[0] && unwrap(create.arguments[0]);
+    const baseUrl = config && ts.isObjectLiteralExpression(config) ? property(config, 'baseURL') : undefined;
+    return baseUrl === undefined ? '' : fold(baseUrl, 0) ?? parameter(baseUrl);
+  }
+
+  function isAxios(identifier) {
+    const symbol = checker.getSymbolAtLocation(identifier);
+    if (symbol === undefined) {
+      return identifier.text === 'axios';
+    }
+
+    return (symbol.declarations || []).some((declaration) => moduleOf(declaration) === 'axios');
+  }
+
+  function moduleOf(declaration) {
+    const specifier = ts.isImportClause(declaration) ? declaration.parent.moduleSpecifier
+      : ts.isNamespaceImport(declaration) ? declaration.parent.parent.moduleSpecifier
+        : ts.isImportSpecifier(declaration) && (declaration.propertyName || declaration.name).text === 'default' ? declaration.parent.parent.parent.moduleSpecifier
+          : isRequire(declaration) ? declaration.initializer.arguments[0]
+            : undefined;
+    return specifier !== undefined && ts.isStringLiteral(specifier) ? specifier.text : undefined;
+  }
+
+  function isRequire(declaration) {
+    return ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined && ts.isCallExpression(declaration.initializer)
+      && ts.isIdentifier(declaration.initializer.expression) && declaration.initializer.expression.text === 'require';
+  }
+
+  function isExternal(symbol) {
+    return !symbol || !symbol.declarations || symbol.declarations.every((declaration) => declaration.getSourceFile().isDeclarationFile);
+  }
+
+  function unwrap(node) {
+    let current = node;
+    while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current) || ts.isNonNullExpression(current)
+      || (typeof ts.isSatisfiesExpression === 'function' && ts.isSatisfiesExpression(current))) {
+      current = current.expression;
+    }
+
+    return current;
   }
 
   function defaultExportIds(sourceFile) {
@@ -323,6 +528,24 @@ function createMapper(ts, checker, repoRoot) {
   }
 
   return { repoPath, declarations, symbol, callSites, defaultExportIds };
+}
+
+const AXIOS_VERBS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options']);
+
+// Drops the query string, fragment and origin; a relative URL gets the client's base path in front, as axios does.
+function normalizeUrl(raw, base) {
+  const url = stripUrl(raw);
+  if (url.absolute || base === '') {
+    return url.path;
+  }
+
+  return `${stripUrl(base).path.replace(/\/+$/, '')}/${url.path.replace(/^\/+/, '')}`;
+}
+
+function stripUrl(url) {
+  const path = url.split(/[?#]/)[0];
+  const origin = /^([a-z][a-z0-9+.-]*:)?\/\/[^/]*/i.exec(path);
+  return origin === null ? { path, absolute: false } : { path: path.slice(origin[0].length) || '/', absolute: true };
 }
 
 function pageRoute(file) {

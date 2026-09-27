@@ -45,6 +45,18 @@ public class CompositeMapperTests
     }
 
     [Fact]
+    public async Task HttpCalls_OfEveryMapper_AreMergedInMapperOrder()
+    {
+        HttpCall[] csharpCalls = [new(MixedRepo.ControllerListQuotes, "GET", "/health", "\"/health\"", MixedRepo.ControllerPath, 11)];
+        var csharp = new FakeCodeMapper(Languages.CSharp, MixedRepo.CSharp() with { HttpCalls = csharpCalls });
+        var typescript = new FakeCodeMapper(Languages.TypeScript, MixedRepo.TypeScript() with { HttpCalls = MixedRepo.HttpCalls() });
+
+        var mapped = await MapAsync(csharp, typescript);
+
+        Assert.Equal(csharpCalls.Concat(MixedRepo.HttpCalls()), mapped.Map.HttpCalls);
+    }
+
+    [Fact]
     public async Task MapperWhoseLanguageHasNoIncludedFile_IsNotRun()
     {
         var go = new FakeCodeMapper(Languages.Go, MixedRepo.CSharp());
