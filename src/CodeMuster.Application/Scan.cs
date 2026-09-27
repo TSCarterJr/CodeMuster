@@ -36,38 +36,29 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         progress?.Report($"listed {current.Count} files, {excluded} excluded");
         IReadOnlyList<ICodeMapper> active = mappers ?? [];
         var mappingInputs = current.Where(f => config.IsMappingInput(f.Path, f.ExcludedReason)).ToList();
-        var mapped = await CompositeMapper.MapAsync(active, repoRoot, mappingInputs, progress, cancellationToken);
-        progress?.Report("planning units");
-        var linked = HttpLinks.Join(mapped.Map);
-        if (linked.Summary is { } summary)
-        {
-            progress?.Report(summary);
-        }
-
-        var planned = SliceBuilder.Build(mapped, included);
-        planned = [.. planned, .. UxReview.Plan(included, config.UserExperience)];
-        DeadCodeScan? deadCode = null;
-        if (config.DeadCode)
-        {
-            var sources = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var file in included)
-            {
-                try { sources[file.Path] = await tree.ReadFileAsync(file.Path, cancellationToken); }
-                catch (IOException ex) { progress?.Report($"dead-code source unavailable for {file.Path}: {ex.Message}"); }
-            }
-            deadCode = DeadCodeScan.Build(mapped, included, sources);
-            planned = [.. planned, .. deadCode.Plans];
-        }
-        if (config.Verify)
-        {
-            planned = [.. planned, .. await PlanVerifyUnitsAsync(planned, cancellationToken)];
-        }
-
-        var auditPaths = AuditPaths(current).ToHashSet(StringComparer.Ordinal);
-        var auditFiles = current.Where(f => auditPaths.Contains(f.Path)).ToList();
-        var audit = config.Vulnerabilities && auditor is not null
-            ? Merged(await auditor.AuditAsync(repoRoot, AuditPaths(current), progress, cancellationToken))
+        var auditPaths = AuditPaths(current);
+        var auditSet = auditPaths.ToHashSet(StringComparer.Ordinal);
+        var auditFiles = current.Where(f => auditSet.Contains(f.Path)).ToList();
+        // The audit tools and the mappers are separate processes, so the audit runs while mapping does (D66); it is awaited before its units are planned.
+        using var auditCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var auditing = config.Vulnerabilities && auditor is not null
+            ? auditor.AuditAsync(repoRoot, auditPaths, progress, auditCancellation.Token)
             : null;
+        (CompositeMap Mapped, HttpLinkResult Linked, List<PlannedUnit> Planned, DeadCodeScan? DeadCode) mapping;
+        try
+        {
+            mapping = await MapAndPlanAsync(active, mappingInputs, included, cancellationToken);
+        }
+        catch when (auditing is not null)
+        {
+            // Stop the audit's processes before this failure leaves the scan; it is the one to report.
+            await auditCancellation.CancelAsync();
+            await auditing.ContinueWith(_ => { }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            throw;
+        }
+
+        var (mapped, linked, planned, deadCode) = mapping;
+        var audit = auditing is null ? null : Merged(await auditing);
         if (audit is not null)
         {
             planned = [.. planned, .. PlanDependencyUnitsAsync(audit, auditFiles)];
@@ -147,6 +138,39 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
     }
 
     /// <summary>Files the audit may look at: everything not excluded, plus data manifests and lockfiles, which are excluded as code but are exactly what the audit tools read (D38).</summary>
+    /// <summary>Maps the repository and plans every unit except the dependency units, which wait for the audit.</summary>
+    private async Task<(CompositeMap Mapped, HttpLinkResult Linked, List<PlannedUnit> Planned, DeadCodeScan? DeadCode)> MapAndPlanAsync(
+        IReadOnlyList<ICodeMapper> active, IReadOnlyList<FileRecord> mappingInputs, IReadOnlyList<FileRecord> included, CancellationToken cancellationToken)
+    {
+        var mapped = await CompositeMapper.MapAsync(active, repoRoot, mappingInputs, progress, cancellationToken);
+        progress?.Report("planning units");
+        var linked = HttpLinks.Join(mapped.Map);
+        if (linked.Summary is { } summary)
+        {
+            progress?.Report(summary);
+        }
+
+        List<PlannedUnit> planned = [.. SliceBuilder.Build(mapped, included), .. UxReview.Plan(included, config.UserExperience)];
+        DeadCodeScan? deadCode = null;
+        if (config.DeadCode)
+        {
+            var sources = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var file in included)
+            {
+                try { sources[file.Path] = await tree.ReadFileAsync(file.Path, cancellationToken); }
+                catch (IOException ex) { progress?.Report($"dead-code source unavailable for {file.Path}: {ex.Message}"); }
+            }
+            deadCode = DeadCodeScan.Build(mapped, included, sources);
+            planned = [.. planned, .. deadCode.Plans];
+        }
+        if (config.Verify)
+        {
+            planned = [.. planned, .. await PlanVerifyUnitsAsync(planned, cancellationToken)];
+        }
+
+        return (mapped, linked, planned, deadCode);
+    }
+
     private IReadOnlyList<string> AuditPaths(IReadOnlyList<FileRecord> current) =>
         current
             .Where(f => f.DeletedAt is null)

@@ -36,78 +36,115 @@ public sealed class DependencyAuditor : IDependencyAuditor
         _run = run;
     }
 
+    /// <summary>How many npm, pnpm and yarn audits run at once; each is a network-bound process.</summary>
+    private const int NodeAuditsAtOnce = 4;
+
     public async Task<DependencyAudit> AuditAsync(string repoRoot, IReadOnlyList<string> paths, IProgress<string>? progress, CancellationToken cancellationToken)
     {
-        var manifests = new List<ManifestVulnerabilities>();
-        var diagnostics = new List<string>();
+        // Node audits run alongside each other, but every dotnet audit waits for the one before it, because parallel implicit restores
+        // race on obj/. Results are collected in the planned order, so output never depends on which audit finishes first.
+        using var nodeSlots = new SemaphoreSlim(NodeAuditsAtOnce);
+        var dotnetChain = Task.CompletedTask;
+        var audits = new List<Task<(ManifestVulnerabilities? Manifest, IReadOnlyList<string> Diagnostics)>>();
         foreach (var choice in Jobs(repoRoot, paths))
         {
-            // A folder with several lockfiles tries its tools in preference order, so a preferred tool that is not installed still leaves an audit.
-            Job? job = null;
-            var result = new ProcessResult(0, "", "");
-            var failures = new List<(string Tool, string Reason)>();
-            foreach (var candidate in choice.Candidates)
+            if (choice.Candidates[0].Executable == "dotnet")
             {
-                progress?.Report($"auditing {candidate.Manifest} with {candidate.Executable}");
-                var directory = Path.GetFullPath(Path.Combine(repoRoot, candidate.WorkingDirectory));
-                try
-                {
-                    var attempt = candidate;
-                    if (attempt.Executable == "yarn")
-                    {
-                        var version = await _run("yarn", ["--version"], directory, cancellationToken);
-                        if (version.ExitCode != 0 || !Version.TryParse(version.Output.Trim(), out var parsed))
-                            throw new InvalidOperationException("could not determine Yarn version: " + version.Output + version.Error);
-                        if (parsed.Major >= 2) attempt = attempt with { Tool = "yarn npm audit", Arguments = ["npm", "audit", "--all", "--recursive", "--json"] };
-                    }
-                    result = await _run(attempt.Executable, attempt.Arguments, directory, cancellationToken).ConfigureAwait(false);
-                    job = attempt;
-                    break;
-                }
-                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-                {
-                    failures.Add((candidate.Executable, ex.Message));
-                }
+                var audit = AfterAsync(dotnetChain, () => AuditOneAsync(repoRoot, choice, progress, cancellationToken));
+                dotnetChain = audit;
+                audits.Add(audit);
             }
-
-            if (choice.Warning(job?.Executable, failures) is { } warning)
+            else
             {
-                diagnostics.Add(warning);
-            }
-
-            if (job is null)
-            {
-                continue;
-            }
-
-            if (result.Output.Trim().Length == 0 && result.ExitCode == 0 && job.Tool == "yarn npm audit")
-            {
-                // Yarn 2 and later report a clean audit only as an info line, which --json leaves out; its errors are JSON lines on stdout.
-                manifests.Add(new ManifestVulnerabilities(job.Manifest, job.Tool, []));
-                continue;
-            }
-
-            if (result.Output.Length == 0)
-            {
-                diagnostics.Add($"{job.Manifest}: {job.Tool} wrote nothing (exit {result.ExitCode}); {Hint(job, result)}");
-                continue;
-            }
-
-            try
-            {
-                manifests.Add(new ManifestVulnerabilities(job.Manifest, job.Tool, job.Parse(result.Output)));
-            }
-            catch (Exception ex) when (ex is JsonException or InvalidOperationException)
-            {
-                // The tool's own words beat the parser's: text on stdout (dotnet with an unreachable source) or an error on stderr (yarn classic offline).
-                var reason = ex is JsonException ? AuditOutput.FirstLine(result.Output)
-                    : ex.Message == AuditOutput.NoReportMessage ? AuditOutput.StderrReason(result.Error)
-                    : null;
-                diagnostics.Add($"{job.Manifest}: {job.Tool} gave no usable report ({reason ?? ex.Message}); any earlier findings are kept, run it by hand to see why");
+                audits.Add(InSlotAsync(nodeSlots, () => AuditOneAsync(repoRoot, choice, progress, cancellationToken), cancellationToken));
             }
         }
 
-        return new DependencyAudit(manifests, diagnostics);
+        var results = await Task.WhenAll(audits).ConfigureAwait(false);
+        return new DependencyAudit(
+            results.Select(result => result.Manifest).OfType<ManifestVulnerabilities>().ToList(),
+            results.SelectMany(result => result.Diagnostics).ToList());
+    }
+
+    private static async Task<T> AfterAsync<T>(Task previous, Func<Task<T>> next)
+    {
+        await previous.ConfigureAwait(false);
+        return await next().ConfigureAwait(false);
+    }
+
+    private static async Task<T> InSlotAsync<T>(SemaphoreSlim slots, Func<Task<T>> run, CancellationToken cancellationToken)
+    {
+        await slots.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await run().ConfigureAwait(false);
+        }
+        finally
+        {
+            slots.Release();
+        }
+    }
+
+    /// <summary>Audits one manifest; returns what it found, if anything, and its warnings in the order they arose.</summary>
+    private async Task<(ManifestVulnerabilities? Manifest, IReadOnlyList<string> Diagnostics)> AuditOneAsync(string repoRoot, Choice choice, IProgress<string>? progress, CancellationToken cancellationToken)
+    {
+        // A folder with several lockfiles tries its tools in preference order, so a preferred tool that is not installed still leaves an audit.
+        Job? job = null;
+        var result = new ProcessResult(0, "", "");
+        var failures = new List<(string Tool, string Reason)>();
+        foreach (var candidate in choice.Candidates)
+        {
+            progress?.Report($"auditing {candidate.Manifest} with {candidate.Executable}");
+            var directory = Path.GetFullPath(Path.Combine(repoRoot, candidate.WorkingDirectory));
+            try
+            {
+                var attempt = candidate;
+                if (attempt.Executable == "yarn")
+                {
+                    var version = await _run("yarn", ["--version"], directory, cancellationToken);
+                    if (version.ExitCode != 0 || !Version.TryParse(version.Output.Trim(), out var parsed))
+                        throw new InvalidOperationException("could not determine Yarn version: " + version.Output + version.Error);
+                    if (parsed.Major >= 2) attempt = attempt with { Tool = "yarn npm audit", Arguments = ["npm", "audit", "--all", "--recursive", "--json"] };
+                }
+                result = await _run(attempt.Executable, attempt.Arguments, directory, cancellationToken).ConfigureAwait(false);
+                job = attempt;
+                break;
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                failures.Add((candidate.Executable, ex.Message));
+            }
+        }
+
+        List<string> diagnostics = choice.Warning(job?.Executable, failures) is { } warning ? [warning] : [];
+        if (job is null)
+        {
+            return (null, diagnostics);
+        }
+
+        if (result.Output.Trim().Length == 0 && result.ExitCode == 0 && job.Tool == "yarn npm audit")
+        {
+            // Yarn 2 and later report a clean audit only as an info line, which --json leaves out; its errors are JSON lines on stdout.
+            return (new ManifestVulnerabilities(job.Manifest, job.Tool, []), diagnostics);
+        }
+
+        if (result.Output.Length == 0)
+        {
+            return (null, [.. diagnostics, $"{job.Manifest}: {job.Tool} wrote nothing (exit {result.ExitCode}); {Hint(job, result)}"]);
+        }
+
+        try
+        {
+            return (new ManifestVulnerabilities(job.Manifest, job.Tool, job.Parse(result.Output)), diagnostics);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            // The tool's own words beat the parser's: text on stdout (dotnet with an unreachable source) or an error on stderr (yarn classic offline).
+            var reason = ex is JsonException ? AuditOutput.FirstLine(result.Output)
+                : ex.Message == AuditOutput.NoReportMessage ? AuditOutput.StderrReason(result.Error)
+                : null;
+            return (null, [.. diagnostics, $"{job.Manifest}: {job.Tool} gave no usable report ({reason ?? ex.Message}); any earlier findings are kept, run it by hand to see why"]);
+        }
     }
 
     private static string Hint(Job job, ProcessResult result) =>

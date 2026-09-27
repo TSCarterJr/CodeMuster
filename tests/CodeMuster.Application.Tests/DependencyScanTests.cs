@@ -28,6 +28,57 @@ public class DependencyScanTests
         auditor.Manifests = [new ManifestVulnerabilities("web/package.json", "npm audit", packages)];
 
     [Fact]
+    public async Task TheAudit_RunsWhileTheMappersMap_AndItsUnitsArePlannedAsBefore()
+    {
+        var mapping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var auditing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var auditSeenWhileMapping = false;
+        var mapper = new GatedMapper(async () =>
+        {
+            mapping.TrySetResult();
+            // An audit that only starts after mapping never arrives here; the timeout keeps that failure from hanging the suite.
+            await auditing.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            auditSeenWhileMapping = true;
+        });
+        var gatedAuditor = new GatedAuditor(async () =>
+        {
+            auditing.TrySetResult();
+            await mapping.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        }, new DependencyAudit([new ManifestVulnerabilities("web/package.json", "npm audit", [FakeDependencyAuditor.Package("next", Severity.High)])], []));
+
+        var result = await new Scan(ledger, tree, new FakeContentHasher(), clock, Config.Default, [mapper], "/repo", null, gatedAuditor)
+            .RunAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
+
+        Assert.True(auditSeenWhileMapping);
+        Assert.Equal(1, mapper.Calls);
+        Assert.Single(ledger.Units, u => u.Kind == UnitKind.Dependency && u.Key == "web/package.json");
+        Assert.Equal(1, result.Vulnerabilities!.Packages);
+    }
+
+    private sealed class GatedMapper(Func<Task> gate) : ICodeMapper
+    {
+        public int Calls { get; private set; }
+
+        public string Language => Languages.CSharp;
+
+        public async Task<CodeMap> MapAsync(string repoRoot, IReadOnlyList<string> paths, IProgress<string>? progress, CancellationToken cancellationToken)
+        {
+            Calls++;
+            await gate();
+            return new CodeMap([], [], [], new ResolutionStats(0, 0, []), []);
+        }
+    }
+
+    private sealed class GatedAuditor(Func<Task> gate, DependencyAudit audit) : IDependencyAuditor
+    {
+        public async Task<DependencyAudit> AuditAsync(string repoRoot, IReadOnlyList<string> paths, IProgress<string>? progress, CancellationToken cancellationToken)
+        {
+            await gate();
+            return audit;
+        }
+    }
+
+    [Fact]
     public async Task DataManifests_AreExcludedFromSourceReview_ButStillAudited()
     {
         Vulnerable(FakeDependencyAuditor.Package("next", Severity.High));
