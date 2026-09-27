@@ -1,3 +1,6 @@
+using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.Linq;
 using CodeMuster.Domain;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
@@ -6,6 +9,8 @@ namespace CodeMuster.Mapping.CSharp;
 
 public sealed class RoslynMapper : ICodeMapper
 {
+    private static readonly Regex SlnProject = new("""^Project\("[^"]*"\)\s*=\s*"[^"]*"\s*,\s*"([^"]*)""", RegexOptions.CultureInvariant);
+
     public string Language => Languages.CSharp;
 
     public async Task<CodeMap> MapAsync(string repoRoot, IReadOnlyList<string> paths, IProgress<string>? progress, CancellationToken cancellationToken)
@@ -43,6 +48,12 @@ public sealed class RoslynMapper : ICodeMapper
         {
             foreach (var file in files)
             {
+                if (SolutionProjects(Path.Combine(repoRoot, file)) is { Count: > 0 } listed && listed.All(loadedProjects.Contains))
+                {
+                    progress?.Report($"skipping {file}, its projects are already loaded");
+                    continue;
+                }
+
                 progress?.Report($"loading {file}");
                 using var workspace = MSBuildWorkspace.Create();
                 var solution = await workspace.OpenSolutionAsync(Path.Combine(repoRoot, file), loads, cancellationToken);
@@ -84,6 +95,24 @@ public sealed class RoslynMapper : ICodeMapper
             : paths.Where(path => path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).ToList();
     }
 
+    private static IReadOnlyList<string>? SolutionProjects(string solution)
+    {
+        try
+        {
+            var paths = solution.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase)
+                ? XDocument.Load(solution).Descendants("Project").Select(project => (string?)project.Attribute("Path")).OfType<string>()
+                : File.ReadLines(solution).Select(line => SlnProject.Match(line.Trim())).Where(match => match.Success).Select(match => match.Groups[1].Value);
+            var directory = Path.GetDirectoryName(solution)!;
+            return paths.Where(path => path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+                .Select(path => Path.GetFullPath(Path.Combine(directory, path.Replace('\\', Path.DirectorySeparatorChar))))
+                .ToList();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or XmlException)
+        {
+            return null;
+        }
+    }
+
     private static IEnumerable<string> Diagnostics(MSBuildWorkspace workspace, string repoRoot, string? restoreTarget)
     {
         var failures = workspace.Diagnostics.Where(diagnostic => diagnostic.Kind == WorkspaceDiagnosticKind.Failure).Select(diagnostic => diagnostic.Message);
@@ -100,7 +129,7 @@ public sealed class RoslynMapper : ICodeMapper
     private static bool IsSolution(string path) =>
         path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase);
 
-    private static StringComparer ProjectPathComparer =>
+    internal static StringComparer ProjectPathComparer =>
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
     private sealed class LoadProgress(IProgress<string> progress, string repoRoot) : IProgress<ProjectLoadProgress>

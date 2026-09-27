@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using CodeMuster.Domain;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
@@ -6,17 +7,10 @@ namespace CodeMuster.Mapping.CSharp;
 
 internal sealed class Dispatcher(Solution solution, IReadOnlyDictionary<string, List<INamedTypeSymbol>> bindings)
 {
-    private readonly Dictionary<string, IReadOnlyList<(string To, EdgeKind Kind)>> cache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Task<IReadOnlyList<(string To, EdgeKind Kind)>>> cache = new(StringComparer.Ordinal);
 
-    public async Task<IReadOnlyList<(string To, EdgeKind Kind)>> TargetsAsync(IMethodSymbol callee, string calleeId, CancellationToken cancellationToken)
-    {
-        if (!cache.TryGetValue(calleeId, out var targets))
-        {
-            cache[calleeId] = targets = await FindAsync(callee.OriginalDefinition, calleeId, cancellationToken);
-        }
-
-        return targets;
-    }
+    public Task<IReadOnlyList<(string To, EdgeKind Kind)>> TargetsAsync(IMethodSymbol callee, string calleeId, CancellationToken cancellationToken) =>
+        cache.GetOrAdd(calleeId, _ => FindAsync(callee.OriginalDefinition, calleeId, cancellationToken));
 
     private async Task<IReadOnlyList<(string To, EdgeKind Kind)>> FindAsync(IMethodSymbol method, string methodId, CancellationToken cancellationToken)
     {

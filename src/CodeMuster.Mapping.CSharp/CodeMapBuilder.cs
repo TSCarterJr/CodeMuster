@@ -9,53 +9,88 @@ namespace CodeMuster.Mapping.CSharp;
 internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> paths)
 {
     private readonly HashSet<string> included = paths.Select(RepoPath.Normalize).ToHashSet(StringComparer.Ordinal);
-    private readonly HashSet<DocumentId> seen = [];
+    private readonly HashSet<string> mappedProjects = new(RoslynMapper.ProjectPathComparer);
     private readonly Dictionary<string, Symbol> symbols = new(StringComparer.Ordinal);
     private readonly HashSet<Edge> edges = [];
     private readonly HashSet<EntryPoint> entryPoints = [];
     private readonly Dictionary<string, int> unresolved = new(StringComparer.Ordinal);
     private int resolved;
 
+    // A project loaded again by a later workspace (another solution, or a project outside it that references it) keeps its
+    // file path and its name, which carries the target framework, so each target framework is still mapped once.
     public async Task AddAsync(Solution solution, IProgress<string>? progress, CancellationToken cancellationToken)
     {
         progress?.Report("finding dependency injection bindings");
         var dispatcher = new Dispatcher(solution, await Bindings.FindAsync(solution, cancellationToken));
         var documents = solution.Projects
+            .Where(project => mappedProjects.Add((project.FilePath ?? project.Id.Id.ToString()) + "|" + project.Name))
+            .ToList()
             .SelectMany(project => project.Documents)
             .Where(document => document.FilePath is not null)
             .Select(document => (Document: document, Path: RepoPath.Normalize(Path.GetRelativePath(repoRoot, document.FilePath!))))
-            .Where(item => included.Contains(item.Path) && !seen.Contains(item.Document.Id))
+            .Where(item => included.Contains(item.Path))
             .ToList();
         var perProject = documents.GroupBy(item => item.Document.Project.Id).ToDictionary(group => group.Key, group => group.Count());
+        var results = new DocumentMap?[documents.Count];
+        var merged = 0;
         ProjectId? project = null;
-        var done = 0;
-        foreach (var (document, path) in documents)
-        {
-            if (document.Project.Id != project)
-            {
-                project = document.Project.Id;
-                progress?.Report($"reading {document.Project.Name}, {perProject[project]} files");
-            }
+        var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = cancellationToken };
 
-            seen.Add(document.Id);
-            await AddDocumentAsync(document, path, dispatcher, cancellationToken);
-            done++;
-            if (done * 10 / documents.Count > (done - 1) * 10 / documents.Count)
+        // Documents are bound in parallel but merged strictly in list order, so the first definition of a shared id and the
+        // progress lines are the same as a sequential walk.
+        await Parallel.ForEachAsync(Enumerable.Range(0, documents.Count), options, async (index, token) =>
+        {
+            var result = await MapDocumentAsync(documents[index].Document, documents[index].Path, dispatcher, token);
+            lock (results)
             {
-                progress?.Report($"mapped {done}/{documents.Count} files");
+                results[index] = result;
+                while (merged < documents.Count && results[merged] is { } ready)
+                {
+                    results[merged] = null;
+                    var document = documents[merged].Document;
+                    if (document.Project.Id != project)
+                    {
+                        project = document.Project.Id;
+                        progress?.Report($"reading {document.Project.Name}, {perProject[project]} files");
+                    }
+
+                    Merge(ready);
+                    merged++;
+                    if (merged * 10 / documents.Count > (merged - 1) * 10 / documents.Count)
+                    {
+                        progress?.Report($"mapped {merged}/{documents.Count} files");
+                    }
+                }
             }
+        });
+    }
+
+    private void Merge(DocumentMap document)
+    {
+        foreach (var symbol in document.Symbols)
+        {
+            symbols.TryAdd(symbol.Id, symbol);
+        }
+
+        edges.UnionWith(document.Edges);
+        entryPoints.UnionWith(document.EntryPoints);
+        resolved += document.Resolved;
+        foreach (var (name, count) in document.Unresolved)
+        {
+            unresolved[name] = unresolved.GetValueOrDefault(name) + count;
         }
     }
 
-    private async Task AddDocumentAsync(Document document, string path, Dispatcher dispatcher, CancellationToken cancellationToken)
+    private static async Task<DocumentMap> MapDocumentAsync(Document document, string path, Dispatcher dispatcher, CancellationToken cancellationToken)
     {
+        var map = new DocumentMap();
         if (await document.GetSemanticModelAsync(cancellationToken) is not { } model)
         {
-            return;
+            return map;
         }
 
         var root = await model.SyntaxTree.GetRootAsync(cancellationToken);
-        entryPoints.UnionWith(EntryPoints.Find(root, model, cancellationToken));
+        map.EntryPoints.AddRange(EntryPoints.Find(root, model, cancellationToken));
         foreach (var node in root.DescendantNodes())
         {
             if (DeclaredMethod(node, model, cancellationToken) is not { } method || Id(method) is not { } from)
@@ -63,8 +98,8 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
                 continue;
             }
 
-            symbols.TryAdd(from, new Symbol(from, path, Lines(node), KindOf(node), Signature(node), BodyHash(node)));
-            CountCallSites(node, model, cancellationToken);
+            map.Symbols.Add(new Symbol(from, path, Lines(node), KindOf(node), Signature(node), BodyHash(node)));
+            CountCallSites(node, model, map, cancellationToken);
             foreach (var callee in Callees(node, model, cancellationToken))
             {
                 if (Id(callee) is not { } to)
@@ -72,13 +107,15 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
                     continue;
                 }
 
-                edges.Add(new Edge(from, to, EdgeKind.Call));
+                map.Edges.Add(new Edge(from, to, EdgeKind.Call));
                 foreach (var (target, kind) in await dispatcher.TargetsAsync(callee, to, cancellationToken))
                 {
-                    edges.Add(new Edge(from, target, kind));
+                    map.Edges.Add(new Edge(from, target, kind));
                 }
             }
         }
+
+        return map;
     }
 
     public CodeMap Build()
@@ -103,7 +140,7 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
             []);
     }
 
-    private void CountCallSites(SyntaxNode declaration, SemanticModel model, CancellationToken cancellationToken)
+    private static void CountCallSites(SyntaxNode declaration, SemanticModel model, DocumentMap map, CancellationToken cancellationToken)
     {
         foreach (var node in declaration.DescendantNodes(child => !IsNameOf(child)))
         {
@@ -123,11 +160,11 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
 
             if (model.GetSymbolInfo(node, cancellationToken).Symbol is null)
             {
-                unresolved[name] = unresolved.GetValueOrDefault(name) + 1;
+                map.Unresolved[name] = map.Unresolved.GetValueOrDefault(name) + 1;
             }
             else
             {
-                resolved++;
+                map.Resolved++;
             }
         }
     }
@@ -291,5 +328,18 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
         }
 
         return text.ToString();
+    }
+
+    private sealed class DocumentMap
+    {
+        public List<Symbol> Symbols { get; } = [];
+
+        public List<Edge> Edges { get; } = [];
+
+        public List<EntryPoint> EntryPoints { get; } = [];
+
+        public Dictionary<string, int> Unresolved { get; } = new(StringComparer.Ordinal);
+
+        public int Resolved { get; set; }
     }
 }
