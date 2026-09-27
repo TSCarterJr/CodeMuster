@@ -51,6 +51,7 @@ public class SqliteLedgerCodeMapTests
         Assert.Equal(expected.Map.Diagnostics, actual.Map.Diagnostics);
         Assert.Equal(expected.MappedLanguages, actual.MappedLanguages);
         Assert.Equal(expected.FailedLanguages, actual.FailedLanguages);
+        Assert.Equal(expected.Map.UiElements, actual.Map.UiElements);
     }
 
     [Fact]
@@ -123,6 +124,30 @@ public class SqliteLedgerCodeMapTests
         Assert.False(stored!.IsPartial);
         Assert.Empty(stored.Map.HttpCalls);
         Assert.Equal(["http", "call"], await RawSqlite.StringsAsync(temp.DatabasePath, "SELECT kind FROM code_edges ORDER BY rowid"));
+    }
+
+    [Fact]
+    public async Task ReplaceCodeMap_RoundTripsTheUiElements_InOrder_AndReplacesThem()
+    {
+        using var temp = new TempDirectory();
+        UiElement[] elements =
+        [
+            new("route", "/settings", "web/app/settings/page.tsx", 3, Route: "/settings"),
+            new("control", "Auto charge customer", "web/app/settings/page.tsx", 11, Control: "Switch", Section: "General", Route: "/settings"),
+            new("nav", "Settings", "web/components/Sidebar.jsx", 5, Target: "/settings"),
+            new("control", "", "web/components/Search.tsx", 2, Control: "text"),
+        ];
+        var map = First() with { Map = First().Map with { UiElements = elements } };
+        using (var writer = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None))
+        {
+            await writer.ReplaceCodeMapAsync(map, CancellationToken.None);
+        }
+
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+        AssertSame(map, await ledger.GetCodeMapAsync(CancellationToken.None));
+
+        await ledger.ReplaceCodeMapAsync(First(), CancellationToken.None);
+        Assert.Empty((await ledger.GetCodeMapAsync(CancellationToken.None))!.Map.UiElements);
     }
 
     [Fact]

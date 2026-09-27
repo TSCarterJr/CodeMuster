@@ -32,6 +32,12 @@ public static class UnitIds
     /// <summary>Id of the duplicate unit for a normalized body hash (D68); the language is added only when the hash has copies in more than one language.</summary>
     public static string Duplicate(string normalizedHash, string? language = null) => "duplicate:" + normalizedHash + (language is null ? "" : ":" + language);
 
+    /// <summary>Id of the one architecture unit over the UI's structure (D69).</summary>
+    public const string ArchitectureUi = "architecture:ui";
+
+    /// <summary>Id of the one api unit over the endpoint map (D69).</summary>
+    public const string ArchitectureApi = "architecture:api";
+
     /// <summary>Id of the slice unit that starts at an entry point's symbol.</summary>
     public static string Slice(string entrySymbolId) => "slice:" + entrySymbolId;
 }

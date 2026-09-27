@@ -163,7 +163,8 @@ pages, and the callees, and asks whether anything now breaks. `codemuster impact
 units and what each change reaches; `codemuster impact --since main` does the same for the
 symbols in files committed since a ref, without a model call. Each scan also groups methods and
 functions whose bodies are the same apart from names and literals into `duplicate` units that ask
-whether and where to consolidate them.
+whether and where to consolidate them, and one `architecture` unit over the UI's pages, sections and
+settings and one `api` unit over the endpoints review the design as a whole.
 
 ## Fix confirmed findings
 

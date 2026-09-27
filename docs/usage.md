@@ -179,7 +179,8 @@ pass, use `codemuster verify --agent codex -j 4`.
 own defaults. Gemini does not support the effort option. CodeMuster records the requested agent,
 model, and effort as provenance; it cannot prove a provider did not fall back to another model.
 
-`--kind file`, `slice`, `orphan`, or `verify` limits `run` to that kind. `--force` on `run` or
+`--kind file`, `slice`, `orphan`, `verify`, `impact`, `duplicate`, `architecture`, or `api` limits
+`run` to that kind. `--force` on `run` or
 `verify` re-runs completed units in the selected scope. Use it deliberately: it spends calls on
 work already recorded.
 
@@ -297,6 +298,7 @@ Edit the existing `.codemuster/config.json`; keep lenses that are already useful
 | `dead_code` | `false` | Record conservative static usage assessments and report-only unused candidates during scan. |
 | `impact` | `true` | Plan an `impact` unit for each symbol whose body or signature changed since the previous scan. See [Impact review](#impact-review). |
 | `duplicates` | `true` | Plan a `duplicate` unit for each group of repeated code. See [Duplicate review](#duplicate-review). |
+| `architecture_review` | `true` | Plan one `architecture` unit over the UI's structure and one `api` unit over the HTTP endpoints. See [UI and API design review](#ui-and-api-design-review). |
 | `user_experience` | Disabled | UI-only browser review settings: `enabled`, optional HTTP(S) `base_url`, and `include`/`exclude` globs. See [application reviews](application-reviews.md). |
 | `exclude` | `[]` | Additional repo-relative exclusion globs. |
 | `test_command` | `[]` | Program and arguments to run once before fixing and after each fix attempt; empty means no configured validation. |
@@ -560,6 +562,35 @@ reruns when a copy it holds changes or its set of copies changes, and is retired
 disappears. `"duplicates": false` turns duplicate units off; run only them with
 `codemuster run --agent <name> --kind duplicate`.
 
+## UI and API design review
+
+Some design problems only show across screens or across endpoints, where a per-screen browser
+review (D48) or a per-slice audit cannot see them (D69). Each `scan` plans at most two units for
+that, one agent call each:
+
+- `architecture` (id `architecture:ui`), when the TypeScript mapper read any UI structure from an
+  included file: every page route, navigation or menu entry, section heading, and form control or
+  setting with its label. The pack shows that structure as a tree, one group per page route and
+  one per file without a route, each element nested under the heading it sits in and followed by
+  its `path:line`; it shows no code. The agent looks for misplaced or duplicated settings and
+  actions (such as an "Auto charge customer" switch under General while a Payments section
+  exists), inconsistent names, orphan pages no navigation reaches, buried features, and
+  destructive actions next to safe ones.
+- `api` (id `architecture:api`), when there is at least one `http` entry point in an included
+  file: every endpoint's method and route, handler, and signature with its attributes (such as
+  `[Authorize]` and `[AllowAnonymous]` on the class or the action), grouped by the first segment
+  of the route, each with its `path:line`. The agent looks for inconsistent naming or
+  pluralization, verbs that do not match what the handler does, inconsistent error shapes or
+  pagination, missing authorization within a group, and duplicate endpoints.
+
+Their members are the files that define the elements or endpoints, and each file's member hash
+also covers the structure read from it, so a unit reruns only when one of those files or its
+structure changes. Findings cite the file and line of the control or endpoint (categories
+`architecture` and `api`), get verify units, and can be fixed like any other. The ledger stores
+the UI structure with the code map so the pack can be built after the scan.
+`"architecture_review": false` turns both off; run only them with
+`codemuster run --agent <name> --kind architecture` or `--kind api`.
+
 ## Retries, cancellation, and recovery
 
 ### A worker fails
@@ -692,7 +723,7 @@ and manage them.
 | `scan` | `--mode slice` (default), `--mode file` |
 | `status` | No options |
 | `estimate` | `--path <path>` |
-| `run --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--kind file\|slice\|orphan\|verify\|ux\|impact\|duplicate`, `--force` |
+| `run --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--kind file\|slice\|orphan\|verify\|ux\|impact\|duplicate\|architecture\|api`, `--force` |
 | `verify --agent <name>` | Same as `run`, without `--kind` |
 | `fix --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--stash`, `--retry-declined`, `--allow-failing-tests`, `--include-related <files>`, `--include simplification` |
 | `validate` | No options; runs configured final build/tests |
@@ -700,7 +731,7 @@ and manage them.
 | `report` | `--out <file>`, `--include-refuted` |
 | `map` | `callers <symbol>`, `callees <symbol>` or `flow <entry point>`; `--depth N`, `--format text\|mermaid\|json`, `--out <file>` (`.html` writes an interactive page) |
 | `impact` | `--since <ref>`, `--format text\|json` |
-| `next` | `--batch N`, `--out <file>`, `--path <path>`, `--kind file\|slice\|orphan\|verify\|ux\|impact\|duplicate` |
+| `next` | `--batch N`, `--out <file>`, `--path <path>`, `--kind file\|slice\|orphan\|verify\|ux\|impact\|duplicate\|architecture\|api` |
 | `done <unit>` | Required `--fingerprint <fp>` and `--findings <json-file>` |
 | `skill install` | Required `--for claude\|codex\|gemini\|opencode`, optional `--global` |
 | `update` | `--check` to check without installing; handled by the npm launcher |

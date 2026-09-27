@@ -8,7 +8,7 @@ public class SqliteLedgerSchemaTests
     private const string Tables = "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name";
 
     private static readonly List<string> AllTables =
-        ["agent_calls", "analyses", "code_edges", "code_entry_points", "code_map", "code_symbols", "files", "findings", "runs", "unit_members", "units"];
+        ["agent_calls", "analyses", "code_edges", "code_entry_points", "code_map", "code_symbols", "code_ui_elements", "files", "findings", "runs", "unit_members", "units"];
 
     [Fact]
     public async Task VersionSixUpgradesWithoutChangingRows_BeforeSkippedStatusIsWritten()

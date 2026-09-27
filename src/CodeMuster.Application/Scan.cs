@@ -169,6 +169,11 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             planned = [.. planned, .. DuplicateReview.Plan(mapped.Map, included)];
         }
 
+        if (config.ArchitectureReview && active.Count > 0)
+        {
+            planned = [.. planned, .. ArchitectureReview.PlanUi(linked.Map, included), .. ArchitectureReview.PlanApi(linked.Map, included)];
+        }
+
         DeadCodeScan? deadCode = null;
         if (config.DeadCode)
         {

@@ -31,6 +31,9 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     /// <summary>Whether scan plans a <c>duplicate</c> unit for each group of symbols with the same normalized body hash (D68).</summary>
     public bool Duplicates { get; init; } = true;
 
+    /// <summary>Whether scan plans the <c>architecture</c> unit over the UI's structure and the <c>api</c> unit over the endpoint map (D69).</summary>
+    public bool ArchitectureReview { get; init; } = true;
+
     /// <summary>Per-model prices that override or extend the bundled price table (D63); null when the repository sets none.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<ModelPrice>? Prices { get; init; }

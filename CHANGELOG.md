@@ -76,6 +76,15 @@ start with 0.2.8.
   whether and where to consolidate them and reports `simplification` findings, which `report`
   lists under Simplifications and `fix` repairs only with `--include simplification`. On by
   default; `"duplicates": false` turns it off.
+- UI and API design review: each `scan` plans one `architecture` unit over the UI's structure (page
+  routes, navigation, section headings, and form controls or settings with their labels, shown
+  as a tree without code) that asks about misplaced or duplicated settings and actions,
+  inconsistent names, orphan pages and buried features, and one `api` unit over every HTTP
+  endpoint (method, route, handler, signature and attributes such as `[Authorize]`) that asks
+  about inconsistent naming, verbs, error shapes, pagination and missing authorization. Each costs
+  one agent call and reruns only when its files or their structure change. On by default;
+  `"architecture_review": false` turns both off. The ledger now also stores the UI structure
+  with the code map (a new table in the still unreleased schema 8).
 
 ## 0.3.6 - 2026-09-25
 

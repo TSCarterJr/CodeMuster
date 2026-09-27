@@ -66,7 +66,7 @@ public sealed record CodeMap(IReadOnlyList<Symbol> Symbols, IReadOnlyList<Edge> 
     /// <summary>Every outgoing HTTP call the mapper read statically (D61); empty when the mapper records none. Scan joins them to entry points as <see cref="EdgeKind.Http"/> edges and the ledger does not store them.</summary>
     public IReadOnlyList<HttpCall> HttpCalls { get; init; } = [];
 
-    /// <summary>The UI's structure the mapper read from markup (D69): page routes, navigation entries, section headings and form controls; empty when it read none. Kept in memory for scan only: the ledger does not store it.</summary>
+    /// <summary>The UI's structure the mapper read from markup (D69): page routes, navigation entries, section headings and form controls; empty when it read none. The ledger stores it with the map, so the architecture pack can render it after the scan.</summary>
     [JsonIgnore]
     public IReadOnlyList<UiElement> UiElements { get; init; } = [];
 

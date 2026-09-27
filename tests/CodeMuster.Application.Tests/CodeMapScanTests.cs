@@ -14,6 +14,9 @@ public class CodeMapScanTests
     // SHA-256 of Digest() after scanning the MixedRepo fake, taken on the build before the code map was stored (68fca57).
     private const string UnitsBeforeTheMapWasStored = "3ad3f7da46aac86625f3fde409187a216e87627089ddfb9fb97e1f86886cb50f";
 
+    // The pinned digest predates the api unit (D69), which the MixedRepo fake's endpoints would add; the units it pins are unchanged.
+    private static readonly Config Pinned = Config.Default with { ArchitectureReview = false };
+
     private readonly FakeLedger ledger = new();
     private readonly FakeSourceTree tree = new();
     private readonly FakeClock clock = new();
@@ -23,7 +26,7 @@ public class CodeMapScanTests
     public CodeMapScanTests() => AddTo(tree);
 
     private Task<ScanResult> ScanAsync(bool fileMode = false) =>
-        new Scan(ledger, tree, new FakeContentHasher(), clock, Config.Default, fileMode ? [] : [csharp, typescript], Root).RunAsync(CancellationToken.None);
+        new Scan(ledger, tree, new FakeContentHasher(), clock, Pinned, fileMode ? [] : [csharp, typescript], Root).RunAsync(CancellationToken.None);
 
     private string Digest()
     {
@@ -83,7 +86,7 @@ public class CodeMapScanTests
         typescript.Map = TypeScript() with { HttpCalls = HttpCalls() };
         var progress = new List<string>();
 
-        var result = await new Scan(ledger, tree, new FakeContentHasher(), clock, Config.Default, [csharp, typescript], Root, new ListProgress(progress)).RunAsync(CancellationToken.None);
+        var result = await new Scan(ledger, tree, new FakeContentHasher(), clock, Pinned, [csharp, typescript], Root, new ListProgress(progress)).RunAsync(CancellationToken.None);
 
         Assert.Equal(UnitsBeforeTheMapWasStored, Digest());
         Assert.Empty(result.SliceMode!.Diagnostics);
@@ -106,7 +109,7 @@ public class CodeMapScanTests
     {
         var progress = new List<string>();
 
-        await new Scan(ledger, tree, new FakeContentHasher(), clock, Config.Default, [csharp, typescript], Root, new ListProgress(progress)).RunAsync(CancellationToken.None);
+        await new Scan(ledger, tree, new FakeContentHasher(), clock, Pinned, [csharp, typescript], Root, new ListProgress(progress)).RunAsync(CancellationToken.None);
 
         Assert.DoesNotContain(ledger.CodeMap!.Map.Edges, edge => edge.Kind == EdgeKind.Http);
         Assert.Empty(ledger.CodeMap.Map.Diagnostics);

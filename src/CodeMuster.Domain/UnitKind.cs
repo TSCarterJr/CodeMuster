@@ -23,4 +23,8 @@ public enum UnitKind
     Impact,
     /// <summary>A group of symbols in one language with the same normalized body hash, to judge whether they should be consolidated (D68).</summary>
     Duplicate,
+    /// <summary>The whole UI's structure (routes, navigation, sections and controls), reviewed for misplaced, duplicated or buried features (D69).</summary>
+    Architecture,
+    /// <summary>Every HTTP endpoint, reviewed for consistent naming, verbs, error shapes, pagination and authorization (D69).</summary>
+    Api,
 }

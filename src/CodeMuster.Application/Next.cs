@@ -84,6 +84,7 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
             var requiresBrowser = unit.Kind == UnitKind.Ux || prior is not null && ReviewEligibility.RequiresBrowser(prior.Finding, sourceUnits.GetValueOrDefault(prior.UnitId));
             var markdown = unit.Kind == UnitKind.Impact ? await RenderImpactAsync(unit, unitMembers, cancellationToken)
                 : unit.Kind == UnitKind.Duplicate ? await RenderDuplicateAsync(unit, unitMembers, cancellationToken)
+                : unit.Kind is UnitKind.Architecture or UnitKind.Api ? await RenderArchitectureAsync(unit, unitMembers, cancellationToken)
                 : Render(unit, await SelectAsync(unitMembers, unit.Kind, cancellationToken), finding, targets, prior, uiPaths,
                     prior is null ? null : receipts.GetValueOrDefault(prior.UnitId)?.EvidenceJson, requiresBrowser);
             var failure = unit.Status == UnitStatus.Failed
@@ -235,13 +236,14 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
     }
 
     // A review kind with its own question (D67 to D69): the header, the kind's instructions and sections, the files, and the fixed findings response (D11).
-    private string RenderReview(Unit unit, string lensId, string instructions, IReadOnlyList<string> sections, IReadOnlyList<Part> parts)
+    private string RenderReview(Unit unit, string lensId, string instructions, IReadOnlyList<string> sections, IReadOnlyList<Part> parts, IReadOnlyList<string>? files = null)
     {
         var lines = Header(unit, [lensId], parts);
         lines.AddRange(["## Instructions", "", instructions]);
         lines.AddRange(sections);
         lines.AddRange(["", "## Files"]);
-        AppendFiles(lines, parts);
+        if (files is null) AppendFiles(lines, parts);
+        else lines.AddRange(files);
         AppendResponse(lines, unit, null, false);
         return string.Join('\n', lines) + "\n";
     }
@@ -279,6 +281,23 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
             .Select((part, i) => part with { Note = string.Create(CultureInfo.InvariantCulture, $"copy {i + 1} of {members.Count}") })
             .ToList();
         return RenderReview(unit, DuplicateReview.LensId, DuplicateReview.Instructions, DuplicateReview.Sections(members, total, symbols), parts);
+    }
+
+    // The structure is the pack, not the code (D69): Files names each member file and the lines the listing cites in it.
+    private async Task<string> RenderArchitectureAsync(Unit unit, IReadOnlyList<UnitMember> members, CancellationToken cancellationToken)
+    {
+        var map = (await ledger.GetCodeMapAsync(cancellationToken))?.Map ?? new CodeMap([], [], [], new ResolutionStats(0, 0, []), []);
+        var paths = members.Select(m => m.Path).ToHashSet(StringComparer.Ordinal);
+        if (unit.Kind == UnitKind.Architecture)
+        {
+            var elements = map.UiElements.Where(e => paths.Contains(e.Path)).ToList();
+            return RenderReview(unit, ArchitectureReview.UiLensId, ArchitectureReview.UiInstructions, ["", "## UI structure", "", .. ArchitectureReview.RenderUi(elements)], [],
+                ArchitectureReview.Files(members, elements.ToLookup(e => e.Path, e => e.Line, StringComparer.Ordinal), "UI elements"));
+        }
+
+        var endpoints = ArchitectureReview.Endpoints(map, paths);
+        return RenderReview(unit, ArchitectureReview.ApiLensId, ArchitectureReview.ApiInstructions, ["", "## Endpoints", "", .. ArchitectureReview.RenderApi(map, paths)], [],
+            ArchitectureReview.Files(members, endpoints.ToLookup(e => e.Symbol.Path, e => e.Symbol.Range.StartLine, StringComparer.Ordinal), "endpoints"));
     }
 
     private static void AppendFiles(List<string> lines, IReadOnlyList<Part> parts)

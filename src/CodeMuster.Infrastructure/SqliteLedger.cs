@@ -160,6 +160,19 @@ public sealed class SqliteLedger : ILedger, IDisposable
             cost_source TEXT);
         """;
 
+    // Part of schema 8 as well (D69): the UI structure the mappers read, stored with the rest of the map so a pack can render it after the scan.
+    internal const string UiElementsSql = """
+        CREATE TABLE IF NOT EXISTS code_ui_elements (
+            kind TEXT NOT NULL,
+            text TEXT NOT NULL,
+            path TEXT NOT NULL,
+            line INTEGER NOT NULL,
+            control TEXT,
+            target TEXT,
+            section TEXT,
+            route TEXT);
+        """;
+
     private const string AgentCallColumns =
         "created_at, run, unit_id, kind, agent, model, effort, answered_model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cache_write_1h_tokens, reported_cost_usd, succeeded, cost_usd, cost_source";
 
@@ -610,7 +623,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
     public async Task ReplaceCodeMapAsync(StoredCodeMap map, CancellationToken cancellationToken)
     {
         await using var transaction = await _connection.BeginTransactionAsync(cancellationToken);
-        await ExecuteAsync("DELETE FROM code_map; DELETE FROM code_symbols; DELETE FROM code_edges; DELETE FROM code_entry_points;", cancellationToken);
+        await ExecuteAsync("DELETE FROM code_map; DELETE FROM code_symbols; DELETE FROM code_edges; DELETE FROM code_entry_points; DELETE FROM code_ui_elements;", cancellationToken);
 
         await using (var header = CreateCommand("""
             INSERT INTO code_map (id, head_commit, scanned_at, mapped_languages, failed_languages, resolved, unresolved, top_unresolved_names, diagnostics)
@@ -643,6 +656,11 @@ public sealed class SqliteLedger : ILedger, IDisposable
             map.Map.EntryPoints,
             entry => [entry.SymbolId, entry.Kind, entry.Display],
             cancellationToken);
+        await InsertRowsAsync(
+            "INSERT INTO code_ui_elements (kind, text, path, line, control, target, section, route) VALUES ($p1, $p2, $p3, $p4, $p5, $p6, $p7, $p8)",
+            map.Map.UiElements,
+            element => [element.Kind, element.Text, element.Path, element.Line, Db(element.Control), Db(element.Target), Db(element.Section), Db(element.Route)],
+            cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 
@@ -662,6 +680,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
         await using var symbols = CreateCommand("SELECT id, path, start_line, end_line, kind, signature, body_hash, normalized_hash FROM code_symbols ORDER BY rowid");
         await using var edges = CreateCommand("SELECT from_id, to_id, kind FROM code_edges ORDER BY rowid");
         await using var entries = CreateCommand("SELECT symbol_id, kind, display FROM code_entry_points ORDER BY rowid");
+        await using var ui = CreateCommand("SELECT kind, text, path, line, control, target, section, route FROM code_ui_elements ORDER BY rowid");
         var rawEdges = await ReadAllAsync(edges, reader => (From: reader.GetString(0), To: reader.GetString(1), Kind: reader.GetString(2)), cancellationToken);
         // A newer build may store an edge kind this one does not know; the rest of the map is still worth reading.
         var unknownKinds = rawEdges.Where(edge => !IsKnownEdgeKind(edge.Kind)).GroupBy(edge => edge.Kind, StringComparer.Ordinal)
@@ -673,7 +692,11 @@ public sealed class SqliteLedger : ILedger, IDisposable
             rawEdges.Where(edge => IsKnownEdgeKind(edge.Kind)).Select(edge => new Edge(edge.From, edge.To, Enum.Parse<EdgeKind>(edge.Kind, ignoreCase: true))).ToList(),
             await ReadAllAsync(entries, reader => new EntryPoint(reader.GetString(0), reader.GetString(1), reader.GetString(2)), cancellationToken),
             headers[0].Resolution,
-            [.. headers[0].Diagnostics, .. unknownKinds]);
+            [.. headers[0].Diagnostics, .. unknownKinds])
+        {
+            UiElements = await ReadAllAsync(ui, reader => new UiElement(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3),
+                Text(reader, 4), Text(reader, 5), Text(reader, 6), Text(reader, 7)), cancellationToken),
+        };
         return new StoredCodeMap(headers[0].Head, headers[0].At, map, headers[0].Mapped, headers[0].Failed);
     }
 
@@ -753,6 +776,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
         }
 
         await ExecuteAsync(AgentCallsSql, cancellationToken);
+        await ExecuteAsync(UiElementsSql, cancellationToken);
         await AddColumnIfMissingAsync("code_symbols", "normalized_hash", "TEXT", cancellationToken);
 
         await ExecuteAsync(string.Create(CultureInfo.InvariantCulture, $"PRAGMA user_version = {SchemaVersion}"), cancellationToken);

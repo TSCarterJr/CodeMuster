@@ -49,13 +49,15 @@ public class SliceScanTests
 
         var result = await ScanAsync();
 
-        Assert.Equal((14, 10, 11, 0, 11), (result.FilesIncluded, result.FilesExcluded, result.UnitsCreated, result.UnitsStale, result.UnitsTotal));
+        // The twelfth unit is the api unit over the controller's endpoints (D69).
+        Assert.Equal((14, 10, 12, 0, 12), (result.FilesIncluded, result.FilesExcluded, result.UnitsCreated, result.UnitsStale, result.UnitsTotal));
+        Assert.Single(ledger.Units, u => u.Kind == UnitKind.Api);
         var slice = Assert.IsType<SliceModeResult>(result.SliceMode);
         Assert.Equal((5, 2, 4, 0.875), (slice.Slices, slice.Orphans, slice.Files, slice.ResolutionRate));
         Assert.Equal(new[] { "typescript: no jsx factory" }, slice.Diagnostics);
 
         var run = Assert.Single(ledger.Runs);
-        Assert.Equal((14, 10, 11, 0.875), (run.FilesIncluded, run.FilesExcluded, run.UnitsTotal, run.ResolutionRate));
+        Assert.Equal((14, 10, 12, 0.875), (run.FilesIncluded, run.FilesExcluded, run.UnitsTotal, run.ResolutionRate));
         Assert.Equal(new[] { "GetService", "fetch" }, run.TopUnresolvedNames);
 
         var included = ledger.Files.Values.Where(f => f.ExcludedReason is null
@@ -90,7 +92,7 @@ public class SliceScanTests
         var result = await ScanAsync(config);
 
         Assert.All(ledger.Units, u => Assert.Equal(UnitStatus.Done, u.Status));
-        Assert.Equal((0, 0, 11), (result.UnitsCreated, result.UnitsStale, result.UnitsTotal));
+        Assert.Equal((0, 0, 12), (result.UnitsCreated, result.UnitsStale, result.UnitsTotal));
     }
 
     [Fact]
@@ -120,7 +122,7 @@ public class SliceScanTests
         Assert.Equal(new[] { ControllerGetQuote, ControllerListQuotes, ExecuteAsync }.Select(UnitIds.Slice).Order(StringComparer.Ordinal), IdsWith(UnitStatus.Stale));
         Assert.Equal((3, 1), (result.UnitsStale, result.UnitsCreated));
         Assert.Equal([UnitIds.Impact(MoneyFormat)], IdsWith(UnitStatus.Pending));
-        Assert.Equal(8, IdsWith(UnitStatus.Done).Count());
+        Assert.Equal(9, IdsWith(UnitStatus.Done).Count());
     }
 
     [Fact]
@@ -197,8 +199,8 @@ public class SliceScanTests
         Assert.Equal(new[] { UnitIds.File(ProgramPath) }, IdsWith(UnitStatus.Done));
         Assert.Equal(UnitStatus.Pending, UnitById(UnitIds.Orphan(ServicePath)).Status);
         Assert.Single(ledger.Members, m => m.UnitId == UnitIds.File(ServicePath));
-        Assert.Equal((7, 11), (result.UnitsCreated, result.UnitsTotal));
-        Assert.Equal(11, ledger.Runs[^1].UnitsTotal);
+        Assert.Equal((8, 12), (result.UnitsCreated, result.UnitsTotal));
+        Assert.Equal(12, ledger.Runs[^1].UnitsTotal);
     }
 
     [Fact]
