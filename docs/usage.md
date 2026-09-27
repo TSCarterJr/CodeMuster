@@ -648,6 +648,17 @@ No source is silently truncated or counted as reviewed. This bounds individual p
 construction, not total repository memory. No representative maximum-scale benchmark has
 been completed.
 
+Schema version 8 adds the stored code map (D60). Every `scan` that runs the mappers (every
+scan except `scan --mode file`, which leaves the last map as it was) replaces it in one
+transaction: each symbol's id, path, line range, kind, signature, body hash and container
+(its C# type, TypeScript class, or file), every call edge, every entry point, the commit the
+scan was at, and the mapper diagnostics. When a language's mapper fails, the map keeps what
+the other mappers returned and records the failed language and its diagnostic, so it reads
+as partial. Source text is never stored. The map is not a unit: it does not change coverage,
+`status`, `next`, `run` or fingerprints. Opening an older ledger upgrades it to schema 8 with
+its rows kept; older CLI versions then ask for an update rather than opening it. No command
+reads the map yet.
+
 Yarn Classic uses `yarn audit --json`; Yarn 2+ uses `yarn npm audit --all --recursive --json`.
 Yarn 4.9.0's real JSON output and command behavior have been exercised. Dependency repairs
 that change a manifest and lockfile require both files in the explicit allowed scope.

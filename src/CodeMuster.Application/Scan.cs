@@ -8,6 +8,7 @@ namespace CodeMuster.Application;
 /// A current finding keeps its verify unit while the code of the unit that reported it is unchanged since that analysis (D27), unless verification is off (D28);
 /// a check that verify completed over whole files whose content is unchanged stays done in the reporting unit's form.
 /// With at least one mapper the scan runs in slice mode: the mappers map the repository at <paramref name="repoRoot"/> and units are slices, orphans, and file units (D25). Without mappers every included file is one file unit.
+/// In slice mode the scan also replaces the stored code map with what the mappers returned, including a failed mapper's diagnostic, at the scanned commit (D60); planning never reads the stored map, and a file-mode scan leaves it as it was.
 /// Each step is reported to <paramref name="progress"/> as it starts or finishes, with mapper steps under their language.
 /// </summary>
 public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config, IReadOnlyList<ICodeMapper>? mappers = null, string repoRoot = "", IProgress<string>? progress = null, IDependencyAuditor? auditor = null)
@@ -110,6 +111,11 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         foreach (var unit in units.Concat(retired))
         {
             existingUnits[unit.Id] = unit;
+        }
+
+        if (active.Count > 0)
+        {
+            await ledger.ReplaceCodeMapAsync(new StoredCodeMap(head, now, mapped.Map, mapped.MappedLanguages, mapped.FailedLanguages), cancellationToken);
         }
 
         var total = existingUnits.Values.Count(u => u.Status != UnitStatus.Retired);

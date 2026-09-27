@@ -53,4 +53,10 @@ public interface ILedger
 
     /// <summary>The most recent run, or null before the first scan.</summary>
     Task<ScanRun?> GetLastRunAsync(CancellationToken cancellationToken);
+
+    /// <summary>Replaces the stored code map with <paramref name="map"/> in one transaction (D60). The map is not a unit and never affects coverage, status, next, run or fingerprints.</summary>
+    Task ReplaceCodeMapAsync(StoredCodeMap map, CancellationToken cancellationToken);
+
+    /// <summary>The code map the latest mapping scan stored, or null when no scan has stored one.</summary>
+    Task<StoredCodeMap?> GetCodeMapAsync(CancellationToken cancellationToken);
 }

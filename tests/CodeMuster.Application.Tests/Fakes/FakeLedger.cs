@@ -173,4 +173,21 @@ public sealed class FakeLedger : ILedger
 
     public Task<ScanRun?> GetLastRunAsync(CancellationToken cancellationToken) =>
         Task.FromResult(Runs.LastOrDefault());
+
+    public StoredCodeMap? CodeMap { get; private set; }
+    public int CodeMapWrites { get; private set; }
+    public int CodeMapReads { get; private set; }
+
+    public Task ReplaceCodeMapAsync(StoredCodeMap map, CancellationToken cancellationToken)
+    {
+        CodeMap = map;
+        CodeMapWrites++;
+        return Task.CompletedTask;
+    }
+
+    public Task<StoredCodeMap?> GetCodeMapAsync(CancellationToken cancellationToken)
+    {
+        CodeMapReads++;
+        return Task.FromResult(CodeMap);
+    }
 }

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using CodeMuster.Domain;
 using Microsoft.Data.Sqlite;
 
@@ -6,7 +7,7 @@ namespace CodeMuster.Infrastructure;
 
 public sealed class SqliteLedger : ILedger, IDisposable
 {
-    internal const int SchemaVersion = 7;
+    internal const int SchemaVersion = 8;
 
     internal const string Schema = """
         CREATE TABLE files (
@@ -98,6 +99,41 @@ public sealed class SqliteLedger : ILedger, IDisposable
 
     internal const string SchemaVersion6 = """
         ALTER TABLE analyses ADD COLUMN evidence_json TEXT;
+        """;
+
+    // Schema 7 added no DDL: it only gates the 'skipped' unit status so an older build refuses a ledger that holds it.
+    internal const string SchemaVersion8 = """
+        CREATE TABLE code_map (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            head_commit TEXT NOT NULL,
+            scanned_at TEXT NOT NULL,
+            mapped_languages TEXT NOT NULL,
+            failed_languages TEXT NOT NULL,
+            resolved INTEGER NOT NULL,
+            unresolved INTEGER NOT NULL,
+            top_unresolved_names TEXT NOT NULL,
+            diagnostics TEXT NOT NULL);
+        CREATE TABLE code_symbols (
+            id TEXT NOT NULL,
+            path TEXT NOT NULL,
+            start_line INTEGER NOT NULL,
+            end_line INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            signature TEXT NOT NULL,
+            body_hash TEXT NOT NULL,
+            container TEXT NOT NULL);
+        CREATE INDEX code_symbols_id ON code_symbols (id);
+        CREATE INDEX code_symbols_path ON code_symbols (path);
+        CREATE TABLE code_edges (
+            from_id TEXT NOT NULL,
+            to_id TEXT NOT NULL,
+            kind TEXT NOT NULL);
+        CREATE INDEX code_edges_from_id ON code_edges (from_id);
+        CREATE INDEX code_edges_to_id ON code_edges (to_id);
+        CREATE TABLE code_entry_points (
+            symbol_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            display TEXT NOT NULL);
         """;
 
     private const string FileColumns =
@@ -500,6 +536,99 @@ public sealed class SqliteLedger : ILedger, IDisposable
         return (await ReadAllAsync(command, ReadRun, cancellationToken)).SingleOrDefault();
     }
 
+    public async Task ReplaceCodeMapAsync(StoredCodeMap map, CancellationToken cancellationToken)
+    {
+        await using var transaction = await _connection.BeginTransactionAsync(cancellationToken);
+        await ExecuteAsync("DELETE FROM code_map; DELETE FROM code_symbols; DELETE FROM code_edges; DELETE FROM code_entry_points;", cancellationToken);
+
+        await using (var header = CreateCommand("""
+            INSERT INTO code_map (id, head_commit, scanned_at, mapped_languages, failed_languages, resolved, unresolved, top_unresolved_names, diagnostics)
+            VALUES (1, $head_commit, $scanned_at, $mapped_languages, $failed_languages, $resolved, $unresolved, $top_unresolved_names, $diagnostics)
+            """))
+        {
+            header.Parameters.AddWithValue("$head_commit", map.HeadCommit);
+            header.Parameters.AddWithValue("$scanned_at", map.ScannedAt);
+            header.Parameters.AddWithValue("$mapped_languages", JsonList(map.MappedLanguages));
+            header.Parameters.AddWithValue("$failed_languages", JsonList(map.FailedLanguages));
+            header.Parameters.AddWithValue("$resolved", map.Map.Resolution.Resolved);
+            header.Parameters.AddWithValue("$unresolved", map.Map.Resolution.Unresolved);
+            header.Parameters.AddWithValue("$top_unresolved_names", JsonList(map.Map.Resolution.TopUnresolvedNames));
+            header.Parameters.AddWithValue("$diagnostics", JsonList(map.Map.Diagnostics));
+            await header.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await InsertRowsAsync(
+            "INSERT INTO code_symbols (id, path, start_line, end_line, kind, signature, body_hash, container) VALUES ($p1, $p2, $p3, $p4, $p5, $p6, $p7, $p8)",
+            map.Map.Symbols,
+            symbol => [symbol.Id, symbol.Path, symbol.Range.StartLine, symbol.Range.EndLine, symbol.Kind, symbol.Signature, symbol.BodyHash, SymbolContainer.Of(symbol)],
+            cancellationToken);
+        await InsertRowsAsync(
+            "INSERT INTO code_edges (from_id, to_id, kind) VALUES ($p1, $p2, $p3)",
+            map.Map.Edges,
+            edge => [edge.From, edge.To, Name(edge.Kind)],
+            cancellationToken);
+        await InsertRowsAsync(
+            "INSERT INTO code_entry_points (symbol_id, kind, display) VALUES ($p1, $p2, $p3)",
+            map.Map.EntryPoints,
+            entry => [entry.SymbolId, entry.Kind, entry.Display],
+            cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<StoredCodeMap?> GetCodeMapAsync(CancellationToken cancellationToken)
+    {
+        await using var header = CreateCommand("""
+            SELECT head_commit, scanned_at, mapped_languages, failed_languages, resolved, unresolved, top_unresolved_names, diagnostics FROM code_map
+            """);
+        var headers = await ReadAllAsync(header, reader => (
+            Head: reader.GetString(0), At: reader.GetString(1), Mapped: ReadJsonList(reader, 2), Failed: ReadJsonList(reader, 3),
+            Resolution: new ResolutionStats(reader.GetInt32(4), reader.GetInt32(5), ReadJsonList(reader, 6)), Diagnostics: ReadJsonList(reader, 7)), cancellationToken);
+        if (headers.Count == 0)
+        {
+            return null;
+        }
+
+        await using var symbols = CreateCommand("SELECT id, path, start_line, end_line, kind, signature, body_hash FROM code_symbols ORDER BY rowid");
+        await using var edges = CreateCommand("SELECT from_id, to_id, kind FROM code_edges ORDER BY rowid");
+        await using var entries = CreateCommand("SELECT symbol_id, kind, display FROM code_entry_points ORDER BY rowid");
+        var map = new CodeMap(
+            await ReadAllAsync(symbols, reader => new Symbol(
+                reader.GetString(0), reader.GetString(1), new LineRange(reader.GetInt32(2), reader.GetInt32(3)), reader.GetString(4), reader.GetString(5), reader.GetString(6)), cancellationToken),
+            await ReadAllAsync(edges, reader => new Edge(reader.GetString(0), reader.GetString(1), Enum.Parse<EdgeKind>(reader.GetString(2), ignoreCase: true)), cancellationToken),
+            await ReadAllAsync(entries, reader => new EntryPoint(reader.GetString(0), reader.GetString(1), reader.GetString(2)), cancellationToken),
+            headers[0].Resolution,
+            headers[0].Diagnostics);
+        return new StoredCodeMap(headers[0].Head, headers[0].At, map, headers[0].Mapped, headers[0].Failed);
+    }
+
+    /// <summary>Inserts every row through one prepared command whose parameters are created once, because a large repository's map has tens of thousands of rows.</summary>
+    private async Task InsertRowsAsync<T>(string sql, IReadOnlyList<T> rows, Func<T, object[]> values, CancellationToken cancellationToken)
+    {
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        await using var insert = CreateCommand(sql);
+        var parameters = values(rows[0]).Select((_, i) => insert.Parameters.Add(new SqliteParameter("$p" + (i + 1).ToString(CultureInfo.InvariantCulture), null))).ToArray();
+        insert.Prepare();
+        foreach (var row in rows)
+        {
+            var rowValues = values(row);
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                parameters[i].Value = rowValues[i];
+            }
+
+            await insert.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    private static string JsonList(IReadOnlyList<string> values) => JsonSerializer.Serialize(values);
+
+    private static IReadOnlyList<string> ReadJsonList(SqliteDataReader reader, int ordinal) =>
+        JsonSerializer.Deserialize<List<string>>(reader.GetString(ordinal)) ?? [];
+
     private async Task MigrateAsync(CancellationToken cancellationToken)
     {
         await using var transaction = await _connection.BeginTransactionAsync(cancellationToken);
@@ -538,6 +667,11 @@ public sealed class SqliteLedger : ILedger, IDisposable
         if (version < 6)
         {
             await ExecuteAsync(SchemaVersion6, cancellationToken);
+        }
+
+        if (version < 8)
+        {
+            await ExecuteAsync(SchemaVersion8, cancellationToken);
         }
 
         await ExecuteAsync(string.Create(CultureInfo.InvariantCulture, $"PRAGMA user_version = {SchemaVersion}"), cancellationToken);

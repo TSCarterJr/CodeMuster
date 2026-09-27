@@ -4,6 +4,15 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
+## Unreleased
+
+- `scan` now stores a code map in the ledger: every method and function with its file,
+  lines, signature and containing type or class, every call between them, every entry
+  point, and the commit scanned. Source text is not stored, and units, coverage and
+  fingerprints are unchanged. The ledger moves to schema 8 the first time this version
+  opens it; CodeMuster 0.3.6 and earlier then refuse that ledger and ask for an update,
+  so back up `.codemuster` if you may need to roll back. No command reads the map yet.
+
 ## 0.3.6 - 2026-09-25
 
 Fixes chosen from a review of 0.3.5 (`docs/product-value-review.md`).
