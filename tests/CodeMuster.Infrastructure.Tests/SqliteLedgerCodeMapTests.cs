@@ -126,6 +126,23 @@ public class SqliteLedgerCodeMapTests
     }
 
     [Fact]
+    public async Task ReplaceCodeMap_RoundTripsTheNormalizedHash_WhenAMapperGaveOne()
+    {
+        using var temp = new TempDirectory();
+        var map = First() with { Map = First().Map with { Symbols = [.. First().Map.Symbols.Select((symbol, i) => i == 0 ? symbol with { NormalizedHash = "norm-1" } : symbol)] } };
+        using (var writer = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None))
+        {
+            await writer.ReplaceCodeMapAsync(map, CancellationToken.None);
+        }
+
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+        var stored = await ledger.GetCodeMapAsync(CancellationToken.None);
+
+        Assert.Equal("norm-1", stored!.Map.Symbols[0].NormalizedHash);
+        Assert.All(stored.Map.Symbols.Skip(1), symbol => Assert.Null(symbol.NormalizedHash));
+    }
+
+    [Fact]
     public async Task ReplaceCodeMap_StoresEachSymbolsContainer_AndNoSourceText()
     {
         using var temp = new TempDirectory();
@@ -137,7 +154,7 @@ public class SqliteLedgerCodeMapTests
             ["MixedRepo.Api.Controllers.QuotesController", "MixedRepo.Api.Services.QuoteService", "MixedRepo.Api.Data.QuoteRepository", "web/src/api.ts", "web/src/store.ts#QuoteStore"],
             await RawSqlite.StringsAsync(temp.DatabasePath, "SELECT container FROM code_symbols ORDER BY rowid"));
         Assert.Equal(
-            ["id", "path", "start_line", "end_line", "kind", "signature", "body_hash", "container"],
+            ["id", "path", "start_line", "end_line", "kind", "signature", "body_hash", "container", "normalized_hash"],
             await RawSqlite.StringsAsync(temp.DatabasePath, "SELECT name FROM pragma_table_info('code_symbols') ORDER BY cid"));
     }
 

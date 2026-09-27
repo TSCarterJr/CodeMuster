@@ -49,6 +49,8 @@ public sealed record StatusReport(
 
     /// <summary>The one status line about spend, or null before the first call.</summary>
     public string? SpendLine => Spend is not { } spend ? null
+        : spend.Unpriced == spend.Calls
+            ? string.Create(CultureInfo.InvariantCulture, $"spend unpriced across {spend.Calls} call{(spend.Calls == 1 ? "" : "s")}; none had a price when recorded")
         : string.Create(CultureInfo.InvariantCulture, $"spend {Application.Spend.Money(spend.CostUsd)} API-equivalent across {spend.Calls} call{(spend.Calls == 1 ? "" : "s")}")
             + (spend.Unpriced == 0 ? "" : string.Create(CultureInfo.InvariantCulture, $"; {spend.Unpriced} call{(spend.Unpriced == 1 ? "" : "s")} unpriced"));
 

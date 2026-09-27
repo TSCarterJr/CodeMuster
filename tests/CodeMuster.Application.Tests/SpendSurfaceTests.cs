@@ -33,6 +33,16 @@ public class SpendSurfaceTests
     }
 
     [Fact]
+    public async Task Status_WhenNoCallIsPriced_SaysUnpricedRatherThanZero()
+    {
+        Call("run r", UnitKind.File, "mystery-1", 10, 5, null, null);
+
+        var status = await new Status(ledger, Config.Default).RunAsync(CancellationToken.None);
+
+        Assert.Equal("spend unpriced across 1 call; none had a price when recorded", status.SpendLine);
+    }
+
+    [Fact]
     public async Task Status_WithoutCalls_PrintsNoSpendLine()
     {
         var status = await new Status(ledger, Config.Default).RunAsync(CancellationToken.None);

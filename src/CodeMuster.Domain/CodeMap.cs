@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace CodeMuster.Domain;
 
 /// <summary>A 1-based, inclusive range of lines within a file.</summary>
@@ -12,7 +14,9 @@ public sealed record LineRange(int StartLine, int EndLine);
 /// <param name="Kind">Free-form kind chosen by the mapper, such as "method" or "function".</param>
 /// <param name="Signature">The declaration without its body, whitespace collapsed; a type member's signature starts with the type's header line.</param>
 /// <param name="BodyHash">Hash of the declaration that whitespace-only edits leave unchanged.</param>
-public sealed record Symbol(string Id, string Path, LineRange Range, string Kind, string Signature, string BodyHash);
+/// <param name="NormalizedHash">Hash of the body with identifiers and literals replaced, so copies that differ only in names match (D68); null when the mapper does not compute one.</param>
+public sealed record Symbol(string Id, string Path, LineRange Range, string Kind, string Signature, string BodyHash,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? NormalizedHash = null);
 
 /// <summary>How a call site reaches the symbol an edge points at (D26).</summary>
 public enum EdgeKind

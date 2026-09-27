@@ -170,7 +170,7 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
         yield return "## Spend";
         yield return "";
         yield return string.Create(CultureInfo.InvariantCulture,
-            $"{Spend.Money(spend.CostUsd)} API-equivalent across {spend.Calls} agent call(s), {spend.Failed} of them failed or rejected; {spend.Unpriced} unpriced.");
+            $"{(spend.Unpriced == spend.Calls ? "No priced call:" : Spend.Money(spend.CostUsd) + " API-equivalent across")} {spend.Calls} agent call(s), {spend.Failed} of them failed or rejected; {spend.Unpriced} unpriced.");
         yield return "API-equivalent is what the calls cost at the provider's API prices, whether or not the harness ran on a subscription. Each cost was fixed when its call was recorded, so a later price change does not alter it.";
         yield return "";
         var tokens = spend.Tokens;

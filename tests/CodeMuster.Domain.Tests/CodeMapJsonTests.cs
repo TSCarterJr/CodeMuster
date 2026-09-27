@@ -37,6 +37,19 @@ public class CodeMapJsonTests
     }
 
     [Fact]
+    public void A_normalized_hash_is_read_when_present_and_left_out_when_absent()
+    {
+        const string json = """{"symbols":[{"id":"a","path":"a.ts","range":{"start_line":1,"end_line":2},"kind":"function","signature":"f()","body_hash":"b","normalized_hash":"n"},{"id":"c","path":"c.ts","range":{"start_line":1,"end_line":2},"kind":"function","signature":"g()","body_hash":"d"}],"edges":[],"entry_points":[],"resolution":{"resolved":0,"unresolved":0,"top_unresolved_names":[]},"diagnostics":[]}""";
+
+        var map = CodeMapJson.Parse(json);
+
+        Assert.Equal("n", map.Symbols[0].NormalizedHash);
+        Assert.Null(map.Symbols[1].NormalizedHash);
+        Assert.DoesNotContain("normalized_hash\": null", CodeMapJson.Serialize(map));
+        Assert.Contains("\"normalized_hash\": \"n\"", CodeMapJson.Serialize(map));
+    }
+
+    [Fact]
     public void Serializes_with_snake_case_names_and_lowercase_enums()
     {
         var json = CodeMapJson.Serialize(SmallMap());

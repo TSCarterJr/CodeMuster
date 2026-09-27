@@ -17,11 +17,12 @@ public class SpendCommandTests
         Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "run", "--agent", "fake")).ExitCode);
 
         var unpriced = Regex.Match((await CliProcess.RunAsync(repo.Root, "status")).Stdout,
-            @"^spend \$0\.00 API-equivalent across (\d+) calls; (\d+) calls unpriced\r?$", RegexOptions.Multiline);
+            @"^spend unpriced across (\d+) calls; none had a price when recorded\r?$", RegexOptions.Multiline);
         Assert.True(unpriced.Success);
         var calls = int.Parse(unpriced.Groups[1].Value, CultureInfo.InvariantCulture);
-        Assert.Equal(calls, int.Parse(unpriced.Groups[2].Value, CultureInfo.InvariantCulture));
         Assert.True(calls > 10);
+        Assert.Contains($"\nNo priced call: {calls} agent call(s), 0 of them failed or rejected; {calls} unpriced.\n",
+            (await CliProcess.RunAsync(repo.Root, "report")).Stdout.ReplaceLineEndings("\n"));
 
         repo.WithPrices("""[{"model": "fake", "input": 3, "output": 15}]""");
         Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "run", "--agent", "fake", "--force")).ExitCode);

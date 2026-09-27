@@ -121,7 +121,8 @@ public sealed class SqliteLedger : ILedger, IDisposable
             kind TEXT NOT NULL,
             signature TEXT NOT NULL,
             body_hash TEXT NOT NULL,
-            container TEXT NOT NULL);
+            container TEXT NOT NULL,
+            normalized_hash TEXT);
         CREATE INDEX code_symbols_id ON code_symbols (id);
         CREATE INDEX code_symbols_path ON code_symbols (path);
         CREATE TABLE code_edges (
@@ -628,9 +629,9 @@ public sealed class SqliteLedger : ILedger, IDisposable
         }
 
         await InsertRowsAsync(
-            "INSERT INTO code_symbols (id, path, start_line, end_line, kind, signature, body_hash, container) VALUES ($p1, $p2, $p3, $p4, $p5, $p6, $p7, $p8)",
+            "INSERT INTO code_symbols (id, path, start_line, end_line, kind, signature, body_hash, container, normalized_hash) VALUES ($p1, $p2, $p3, $p4, $p5, $p6, $p7, $p8, $p9)",
             map.Map.Symbols,
-            symbol => [symbol.Id, symbol.Path, symbol.Range.StartLine, symbol.Range.EndLine, symbol.Kind, symbol.Signature, symbol.BodyHash, SymbolContainer.Of(symbol)],
+            symbol => [symbol.Id, symbol.Path, symbol.Range.StartLine, symbol.Range.EndLine, symbol.Kind, symbol.Signature, symbol.BodyHash, SymbolContainer.Of(symbol), (object?)symbol.NormalizedHash ?? DBNull.Value],
             cancellationToken);
         await InsertRowsAsync(
             "INSERT INTO code_edges (from_id, to_id, kind) VALUES ($p1, $p2, $p3)",
@@ -658,7 +659,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
             return null;
         }
 
-        await using var symbols = CreateCommand("SELECT id, path, start_line, end_line, kind, signature, body_hash FROM code_symbols ORDER BY rowid");
+        await using var symbols = CreateCommand("SELECT id, path, start_line, end_line, kind, signature, body_hash, normalized_hash FROM code_symbols ORDER BY rowid");
         await using var edges = CreateCommand("SELECT from_id, to_id, kind FROM code_edges ORDER BY rowid");
         await using var entries = CreateCommand("SELECT symbol_id, kind, display FROM code_entry_points ORDER BY rowid");
         var rawEdges = await ReadAllAsync(edges, reader => (From: reader.GetString(0), To: reader.GetString(1), Kind: reader.GetString(2)), cancellationToken);
@@ -667,7 +668,8 @@ public sealed class SqliteLedger : ILedger, IDisposable
             .Select(group => string.Create(CultureInfo.InvariantCulture, $"{group.Count()} edge(s) of kind '{group.Key}' are unknown to this version of codemuster and were skipped"));
         var map = new CodeMap(
             await ReadAllAsync(symbols, reader => new Symbol(
-                reader.GetString(0), reader.GetString(1), new LineRange(reader.GetInt32(2), reader.GetInt32(3)), reader.GetString(4), reader.GetString(5), reader.GetString(6)), cancellationToken),
+                reader.GetString(0), reader.GetString(1), new LineRange(reader.GetInt32(2), reader.GetInt32(3)), reader.GetString(4), reader.GetString(5), reader.GetString(6),
+                reader.IsDBNull(7) ? null : reader.GetString(7)), cancellationToken),
             rawEdges.Where(edge => IsKnownEdgeKind(edge.Kind)).Select(edge => new Edge(edge.From, edge.To, Enum.Parse<EdgeKind>(edge.Kind, ignoreCase: true))).ToList(),
             await ReadAllAsync(entries, reader => new EntryPoint(reader.GetString(0), reader.GetString(1), reader.GetString(2)), cancellationToken),
             headers[0].Resolution,
@@ -751,9 +753,20 @@ public sealed class SqliteLedger : ILedger, IDisposable
         }
 
         await ExecuteAsync(AgentCallsSql, cancellationToken);
+        await AddColumnIfMissingAsync("code_symbols", "normalized_hash", "TEXT", cancellationToken);
 
         await ExecuteAsync(string.Create(CultureInfo.InvariantCulture, $"PRAGMA user_version = {SchemaVersion}"), cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    // Schema 8 has not shipped, so a ledger a development build already moved to 8 may lack a column added since.
+    private async Task AddColumnIfMissingAsync(string table, string column, string type, CancellationToken cancellationToken)
+    {
+        await using var info = CreateCommand($"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'");
+        if (Convert.ToInt64(await info.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) == 0)
+        {
+            await ExecuteAsync($"ALTER TABLE {table} ADD COLUMN {column} {type}", cancellationToken);
+        }
     }
 
     private async Task ExecuteAsync(string sql, CancellationToken cancellationToken)

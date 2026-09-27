@@ -376,7 +376,7 @@ Tim asked on 2026-09-27 to implement everything discussed that day: JavaScript m
 
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
-| DUP0 | Symbols carry an optional normalized body hash (D68), stored with the code map, so both mappers can fill it. | `[ ]` | | |
+| DUP0 | Symbols carry an optional normalized body hash (D68), stored with the code map, so both mappers can fill it. | `[x]` | claude 2026-09-27 | `Symbol.NormalizedHash` is optional and left out of JSON when null, so mapper goldens and every existing output stay byte-identical until a mapper fills it; `code_symbols.normalized_hash` is part of unreleased schema 8, and a ledger a development build already moved to 8 gains the column on open. Ledger round-trip and JSON tests failed first (the property did not exist); the pinned column-list test was updated deliberately. |
 | JS1 | The TypeScript mapper maps JavaScript: `jsconfig.json`, a default `allowJs` program when neither config exists, and Express/Koa/Fastify routes as `http` entry points (D64). | `[ ]` | | |
 | PERF5 | Parse files shared by several tsconfigs once, keyed on the resolved `typescript` module and the options that affect binding (D66). | `[ ]` | | Review `mappers-13`. |
 | TSDATA | The TypeScript mapper fills normalized body hashes (D68) and extracts the UI structure: routes, navigation entries, section headings, and form controls or settings with their labels and sections (D69). | `[ ]` | | |
