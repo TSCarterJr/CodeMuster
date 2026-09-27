@@ -17,7 +17,7 @@ public sealed class GitFileFixerTests : IDisposable
     [Fact]
     public async Task ExplicitRelatedFileScope_AcceptsAndCommitsTheCoherentRepair()
     {
-        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((pack, _) =>
+        using var fixer = new GitFileFixer(repo.Root, (dir, _) => new CallbackAgent((pack, _) =>
         {
             Assert.Contains("a.cs, b.cs", pack);
             File.WriteAllText(Path.Combine(dir, "a.cs"), "class A { int x; }\n");
@@ -33,6 +33,22 @@ public sealed class GitFileFixerTests : IDisposable
         Assert.True(await workspace.IsCleanAsync(CancellationToken.None));
     }
 
+    [Fact]
+    public async Task ARequestedIdentity_ReachesTheAdapterFactory_AndTheOriginalOneIsNull()
+    {
+        var requested = new List<AgentIdentity?>();
+        using var fixer = new GitFileFixer(repo.Root, (_, identity) =>
+        {
+            requested.Add(identity);
+            return new CallbackAgent((_, _) => Task.FromResult("response"));
+        });
+
+        await fixer.ReleaseAsync(await fixer.RunAsync("a.cs", "pack", CancellationToken.None), CancellationToken.None);
+        await fixer.ReleaseAsync(await fixer.RunAsync("a.cs", "pack", new AgentIdentity("codex", "gpt-max", "high"), CancellationToken.None), CancellationToken.None);
+
+        Assert.Equal([null, new AgentIdentity("codex", "gpt-max", "high")], requested);
+    }
+
     [Theory]
     [InlineData("diff.noprefix", "true")]
     [InlineData("color.ui", "always")]
@@ -43,7 +59,7 @@ public sealed class GitFileFixerTests : IDisposable
         repo.WriteFile("src/c.cs", "class C\n{\n    int a;\n    int b;\n    int c;\n    int d;\n    int e;\n}\n");
         repo.Commit("multi-line file");
         repo.Run("config", key, value);
-        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
+        using var fixer = new GitFileFixer(repo.Root, (dir, _) => new CallbackAgent((_, _) =>
         {
             File.WriteAllText(Path.Combine(dir, "src", "c.cs"), "class C\n{\n    int a;\n    int b;\n    int repaired;\n    int d;\n    int e;\n}\n");
             return Task.FromResult("response");
@@ -71,7 +87,7 @@ public sealed class GitFileFixerTests : IDisposable
         var repaired = Latin1($"class C\n{{\n{legacy}    int a;\n    int repaired;\n    int c;\n}}\n");
         repo.WriteBytes("src/c.cs", original);
         repo.Commit("legacy encoded file");
-        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
+        using var fixer = new GitFileFixer(repo.Root, (dir, _) => new CallbackAgent((_, _) =>
         {
             File.WriteAllBytes(Path.Combine(dir, "src", "c.cs"), repaired);
             return Task.FromResult("response");
@@ -90,7 +106,7 @@ public sealed class GitFileFixerTests : IDisposable
     public async Task WorkerEditsAreIsolated_AndOnlyItsAssignedFileIsAppliedAndCommitted()
     {
         var worktrees = repo.Run("worktree", "list", "--porcelain");
-        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
+        using var fixer = new GitFileFixer(repo.Root, (dir, _) => new CallbackAgent((_, _) =>
         {
             File.WriteAllText(Path.Combine(dir, "a.cs"), "class A { int x; }\n");
             Assert.Equal("class A { }\n", File.ReadAllText(Path.Combine(repo.Root, "a.cs")));
@@ -118,7 +134,7 @@ public sealed class GitFileFixerTests : IDisposable
     public async Task WorkerThatChangesAnotherFile_IsRejectedWithoutChangingTheMainCheckout(string other)
     {
         string? worker = null;
-        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
+        using var fixer = new GitFileFixer(repo.Root, (dir, _) => new CallbackAgent((_, _) =>
         {
             worker = dir;
             File.WriteAllText(Path.Combine(dir, other), "wrong file\n");
@@ -138,7 +154,7 @@ public sealed class GitFileFixerTests : IDisposable
     public async Task UntrackedHookCache_DoesNotBlockTheAssignedPatch()
     {
         var originalWorktrees = repo.Run("worktree", "list", "--porcelain");
-        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
+        using var fixer = new GitFileFixer(repo.Root, (dir, _) => new CallbackAgent((_, _) =>
         {
             File.WriteAllText(Path.Combine(dir, "a.cs"), "fixed\n");
             Directory.CreateDirectory(Path.Combine(dir, ".impeccable"));
@@ -170,7 +186,7 @@ public sealed class GitFileFixerTests : IDisposable
         }
 
         string? worker = null;
-        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
+        using var fixer = new GitFileFixer(repo.Root, (dir, _) => new CallbackAgent((_, _) =>
         {
             worker = dir;
             var extra = Path.Combine(dir, other);
@@ -196,7 +212,7 @@ public sealed class GitFileFixerTests : IDisposable
         var aStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var bStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent(async (pack, ct) =>
+        using var fixer = new GitFileFixer(repo.Root, (dir, _) => new CallbackAgent(async (pack, ct) =>
         {
             var isA = pack.StartsWith("a", StringComparison.Ordinal);
             var path = isA ? "a.cs" : "b.cs";
@@ -239,7 +255,7 @@ public sealed class GitFileFixerTests : IDisposable
         string? worker = null;
         using var cancellation = new CancellationTokenSource();
         var notes = new List<string>();
-        using var fixer = new GitFileFixer(repo.Root, dir => new CallbackAgent((_, _) =>
+        using var fixer = new GitFileFixer(repo.Root, (dir, _) => new CallbackAgent((_, _) =>
         {
             worker = dir;
             File.WriteAllText(Path.Combine(dir, "a.cs"), "unfinished\n");

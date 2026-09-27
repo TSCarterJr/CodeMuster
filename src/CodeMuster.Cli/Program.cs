@@ -155,6 +155,7 @@ public static class Program
         using var ledger = await SqliteLedger.OpenAsync(Path.Combine(repoRoot, ".codemuster", "ledger.db"), cancellationToken);
         var clock = new SystemClock();
         using var events = command.Verb is "scan" or "run" or "verify" or "fix" ? EngineEvents(clock) : null;
+        var control = command.Verb is "run" or "verify" or "fix" ? EngineControl() : null;
         var changes = ChangeTracker(repoRoot, config);
         if (command.Verb is "status" or "report" or "fix" or "verify" or "run" or "next")
         {
@@ -192,7 +193,7 @@ public static class Program
                 return 1;
             case "run":
             case "verify":
-                return await RunAgentAsync(command, repoRoot, ledger, tree, clock, config, events, cancellationToken);
+                return await RunAgentAsync(command, repoRoot, ledger, tree, clock, config, events, control, cancellationToken);
             case "validate":
                 ITestRunner? runner = config.TestCommand.Count == 0 ? null : new CommandTestRunner(repoRoot, config.TestCommand);
                 var validation = await new Validate(runner).RunAsync(cancellationToken);
@@ -200,7 +201,7 @@ public static class Program
                 Console.WriteLine(validation.Passed ? "validation passed" : "validation failed");
                 return validation.Passed ? 0 : 1;
             case "fix":
-                return await FixAsync(command, repoRoot, ledger, tree, clock, config, events, cancellationToken);
+                return await FixAsync(command, repoRoot, ledger, tree, clock, config, events, control, cancellationToken);
             case "map":
                 return await MapAsync(command, ledger, cancellationToken);
             default:
@@ -222,6 +223,15 @@ public static class Program
     // The hidden engine stream (D65): written only when CODEMUSTER_ENGINE_EVENTS names a file, and never mentioned in help.
     private static EngineEventFile? EngineEvents(IClock clock) =>
         Environment.GetEnvironmentVariable("CODEMUSTER_ENGINE_EVENTS") is { Length: > 0 } path ? new EngineEventFile(path, clock) : null;
+
+    // The hidden control channel (D65): commands appended to the file named by CODEMUSTER_ENGINE_CONTROL.
+    private static EngineControlFile? EngineControl() =>
+        Environment.GetEnvironmentVariable("CODEMUSTER_ENGINE_CONTROL") is { Length: > 0 } path ? new EngineControlFile(path) : null;
+
+    // Test-only: holds every fake agent call open, so end-to-end tests can send engine commands while units run.
+    private static TimeSpan FakeDelay() =>
+        int.TryParse(Environment.GetEnvironmentVariable("CODEMUSTER_FAKE_DELAY_MS"), NumberStyles.None, CultureInfo.InvariantCulture, out var milliseconds)
+            ? TimeSpan.FromMilliseconds(milliseconds) : TimeSpan.Zero;
 
     private static async Task<int> ScanAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, IEngineEvents? events, CancellationToken cancellationToken)
     {
@@ -260,7 +270,7 @@ public static class Program
         return 0;
     }
 
-    private static async Task<int> FixAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, IEngineEvents? events, CancellationToken cancellationToken)
+    private static async Task<int> FixAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, IEngineEvents? events, IEngineControl? control, CancellationToken cancellationToken)
     {
         if (config.TestCommand.Count > 0)
         {
@@ -321,9 +331,10 @@ public static class Program
         }
 
         var progress = new ProgressWriter(Console.Out, ConsoleStyle());
-        using var fileFixer = new GitFileFixer(repoRoot, directory => AgentAdapters.Create(
-            identity.Agent, null, identity.Model, identity.Effort, write: true, workingDirectory: directory), progress, options.RelatedFiles);
-        var fix = new Fix(ledger, tree, clock, config, workspace, tests, fileFixer, new GitBlobHasher(repoRoot), events);
+        // An engine command may change the model or effort for files not yet started (D65); for codex the other setting keeps its resolved value (D55).
+        using var fileFixer = new GitFileFixer(repoRoot, (directory, requested) => AgentAdapters.Create(
+            identity.Agent, null, (requested ?? identity).Model, (requested ?? identity).Effort, write: true, workingDirectory: directory, fakeDelay: FakeDelay()), progress, options.RelatedFiles);
+        var fix = new Fix(ledger, tree, clock, config, workspace, tests, fileFixer, new GitBlobHasher(repoRoot), events, control);
         var result = await fix.RunAsync(adapter, options, progress, cancellationToken);
         foreach (var unitId in result.GaveUp)
         {
@@ -502,14 +513,15 @@ public static class Program
         return 0;
     }
 
-    private static async Task<int> RunAgentAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, IEngineEvents? events, CancellationToken cancellationToken)
+    private static async Task<int> RunAgentAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, IEngineEvents? events, IEngineControl? control, CancellationToken cancellationToken)
     {
         var template = Environment.GetEnvironmentVariable("CODEMUSTER_FAKE_RESPONSE");
+        var templateJson = template is null ? null : await File.ReadAllTextAsync(template, cancellationToken);
         var identity = await ResolveAgentAsync(command, repoRoot, cancellationToken);
-        var adapter = AgentAdapters.Create(
-            identity.Agent,
-            template is null ? null : await File.ReadAllTextAsync(template, cancellationToken),
-            identity.Model, identity.Effort, workingDirectory: repoRoot);
+        // An engine command may change the model or effort for units not yet started (D65); for codex the other setting keeps its resolved value (D55).
+        IAgentAdapter Agent(AgentIdentity requested) =>
+            AgentAdapters.Create(requested.Agent, templateJson, requested.Model, requested.Effort, workingDirectory: repoRoot, fakeDelay: FakeDelay());
+        var adapter = Agent(identity);
         var kind = command.Verb == "verify" ? "verify" : command.Options.GetValueOrDefault("kind");
         var options = new RunOptions(
             int.Parse(command.Options.GetValueOrDefault("jobs", "1")),
@@ -520,7 +532,7 @@ public static class Program
         await PreviewAgentAsync(adapter.Identity, options.Parallelism, clock, cancellationToken);
         if (kind == "verify") await new RefreshVerification(ledger, tree, config, new GitBlobHasher(repoRoot)).RunAsync(cancellationToken);
         Console.WriteLine($"running {command.Options["agent"]} on up to {options.Parallelism} unit(s) at a time; a line prints as each unit finishes");
-        var result = await new Run(ledger, tree, clock, config, adapter, new RunProgressWriter(Console.Out, ConsoleStyle()), new ProgressWriter(Console.Out, ConsoleStyle()), events).RunAsync(options, cancellationToken);
+        var result = await new Run(ledger, tree, clock, config, adapter, new RunProgressWriter(Console.Out, ConsoleStyle()), new ProgressWriter(Console.Out, ConsoleStyle()), events, control, Agent).RunAsync(options, cancellationToken);
         foreach (var unitId in result.GaveUp)
         {
             Console.Error.WriteLine($"gave up on {unitId} after {options.MaxAttempts} attempts");

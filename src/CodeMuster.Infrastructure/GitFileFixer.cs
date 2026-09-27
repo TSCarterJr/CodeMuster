@@ -3,11 +3,16 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Infrastructure;
 
-public sealed class GitFileFixer(string repoRoot, Func<string, IAgentAdapter> adapterForDirectory, IProgress<string>? notes = null, IReadOnlyList<string>? relatedFiles = null) : IFileFixer, IDisposable
+// adapterFor makes the worker's agent in a directory: with the requested identity when an engine command changed the model or effort (D65), or null for the one the fixer was created with.
+public sealed class GitFileFixer(string repoRoot, Func<string, AgentIdentity?, IAgentAdapter> adapterFor, IProgress<string>? notes = null, IReadOnlyList<string>? relatedFiles = null) : IFileFixer, IDisposable
 {
     private readonly SemaphoreSlim worktrees = new(1, 1);
 
-    public async Task<FileFixEdit> RunAsync(string path, string pack, CancellationToken cancellationToken)
+    public Task<FileFixEdit> RunAsync(string path, string pack, CancellationToken cancellationToken) => RunInWorkerAsync(path, pack, null, cancellationToken);
+
+    public Task<FileFixEdit> RunAsync(string path, string pack, AgentIdentity identity, CancellationToken cancellationToken) => RunInWorkerAsync(path, pack, identity, cancellationToken);
+
+    private async Task<FileFixEdit> RunInWorkerAsync(string path, string pack, AgentIdentity? identity, CancellationToken cancellationToken)
     {
         var allowed = new[] { path }.Concat(relatedFiles ?? []).Distinct(StringComparer.Ordinal).ToArray();
         foreach (var file in allowed)
@@ -35,7 +40,7 @@ public sealed class GitFileFixer(string repoRoot, Func<string, IAgentAdapter> ad
             var baseline = (await GitProcess.RunAsync(directory, ["rev-parse", "HEAD"], null, cancellationToken).ConfigureAwait(false)).Trim();
             var scope = string.Join(", ", allowed);
             var instructions = pack + $"\n\nYou are working in an isolated worktree. The explicit allowed file scope is: {scope}. Read related allowed files as needed and make the smallest coherent repair. Do not commit, stage, or modify files outside this scope. The coordinator runs tests and commits the repair.\n";
-            reply = await adapterForDirectory(directory).RunAsync(instructions, cancellationToken).ConfigureAwait(false);
+            reply = await adapterFor(directory, identity).RunAsync(instructions, cancellationToken).ConfigureAwait(false);
             var changed = await GitProcess.RunAsync(directory, ["diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", baseline], null, cancellationToken).ConfigureAwait(false);
             var untracked = await GitProcess.RunAsync(directory, ["ls-files", "--others", "--exclude-standard", "-z"], null, cancellationToken).ConfigureAwait(false);
             var extraPaths = changed.Split('\0', StringSplitOptions.RemoveEmptyEntries).Where(changedPath => !allowed.Contains(changedPath, StringComparer.Ordinal))

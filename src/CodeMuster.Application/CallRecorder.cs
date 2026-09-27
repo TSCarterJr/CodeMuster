@@ -8,10 +8,12 @@ internal sealed class CallRecorder(ILedger ledger, IClock clock, Config config, 
     private readonly PriceTable prices = PriceTable.For(config);
     private readonly string run = verb + " " + Timestamps.Format(clock.UtcNow);
 
-    public async Task<AgentCall> RecordAsync(string? unitId, UnitKind? kind, AgentUsage usage, bool succeeded, CancellationToken cancellationToken)
+    // identity is the agent the call ran with when an engine command changed it (D65); otherwise the one this recorder was created for.
+    public async Task<AgentCall> RecordAsync(string? unitId, UnitKind? kind, AgentUsage usage, bool succeeded, CancellationToken cancellationToken, AgentIdentity? identity = null)
     {
-        var (cost, source) = prices.Cost(by, usage);
-        var call = new AgentCall(Timestamps.Format(clock.UtcNow), run, unitId, kind, by, usage, succeeded, cost, source);
+        var agent = identity ?? by;
+        var (cost, source) = prices.Cost(agent, usage);
+        var call = new AgentCall(Timestamps.Format(clock.UtcNow), run, unitId, kind, agent, usage, succeeded, cost, source);
         await ledger.RecordAgentCallAsync(call, cancellationToken);
         return call;
     }

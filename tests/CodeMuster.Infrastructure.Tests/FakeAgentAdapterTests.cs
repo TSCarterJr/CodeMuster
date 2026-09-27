@@ -16,6 +16,20 @@ public class FakeAgentAdapterTests
     }
 
     [Fact]
+    public async Task ADelay_HoldsEachCallOpen_UntilItPassesOrTheCallIsCancelled()
+    {
+        var adapter = new FakeAgentAdapter(FakeAgentAdapter.DefaultTemplate, delay: TimeSpan.FromSeconds(30));
+        using var cancel = new CancellationTokenSource();
+
+        var call = adapter.RunAsync(Pack("### src/A.cs (csharp)"), cancel.Token);
+        await Task.Delay(50);
+        Assert.False(call.IsCompleted);
+        await cancel.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => call);
+    }
+
+    [Fact]
     public void DefaultTemplate_is_the_sample_formatting_with_no_findings()
     {
         Assert.Equal("{\n  \"summary\": \"fake analysis\",\n  \"findings\": []\n}", FakeAgentAdapter.DefaultTemplate);

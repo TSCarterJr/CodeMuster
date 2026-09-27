@@ -21,7 +21,7 @@ public sealed class GitFileFixerEnvironmentTests : IDisposable
     {
         repo.WriteFile("src/c.cs", "class C\n{\n    int a;\n    int b;\n    int c;\n    int d;\n    int e;\n}\n");
         repo.Commit("multi-line file");
-        using var fixer = new GitFileFixer(repo.Root, dir => new Agent(() =>
+        using var fixer = new GitFileFixer(repo.Root, (dir, _) => new Agent(() =>
             File.WriteAllText(Path.Combine(dir, "src", "c.cs"), "class C\n{\n    int a;\n    int b;\n    int repaired;\n    int d;\n    int e;\n}\n")));
         var previous = Environment.GetEnvironmentVariable("GIT_DIFF_OPTS");
         FileFixEdit edit;

@@ -13,6 +13,9 @@ public interface IFileFixer
     /// <summary>Returns only the assigned file's changes; rejects edits to any other file. A failure after the agent ran carries its usage in an <see cref="AgentCallException"/>. The worker copy stays on disk until the edit is released.</summary>
     Task<FileFixEdit> RunAsync(string path, string pack, CancellationToken cancellationToken);
 
+    /// <summary>Runs as <see cref="RunAsync(string, string, CancellationToken)"/> with the model and effort in <paramref name="identity"/>, which an engine command may have changed since the fixer was created (D65). A fixer bound to one agent ignores it.</summary>
+    Task<FileFixEdit> RunAsync(string path, string pack, AgentIdentity identity, CancellationToken cancellationToken) => RunAsync(path, pack, cancellationToken);
+
     /// <summary>Discards the worker copy once the coordinator has used or rejected its patch; an edit that is never released stays on disk so its finished work can be recovered.</summary>
     Task ReleaseAsync(FileFixEdit edit, CancellationToken cancellationToken) => Task.CompletedTask;
 }

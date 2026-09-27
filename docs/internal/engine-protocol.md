@@ -3,7 +3,11 @@
 This is the machine interface the CLI offers CodeMuster's hosted service (D65). It is
 deliberately left out of `codemuster --help`, `docs/usage.md` and the READMEs. Hidden means
 undocumented for users, not secret: anyone who reads this file can use it. Tests in
-`EngineEventTests`, `EngineEventFileTests` and the CLI `EngineEventsTests` pin it.
+`EngineEventTests`, `EngineControlTests`, `EngineEventFileTests`, `EngineControlFileTests` and
+the CLI `EngineEventsTests` and `EngineControlTests` pin it.
+
+There are two channels, both plain files so they work the same on Windows, macOS and Linux:
+the CLI writes events to one, and a controller writes commands to the other.
 
 ## Event stream
 
@@ -84,6 +88,60 @@ Ordering guarantees:
 
 Worker lanes are the lowest free number, so a pool of 3 uses lanes 1 to 3; after a resize to
 fewer workers, lanes above the new size drain and are not reused.
+
+## Control channel
+
+Set `CODEMUSTER_ENGINE_CONTROL=<file>` and `run`, `verify` and `fix` read commands from that
+file while they work. Other commands ignore the variable. Set `CODEMUSTER_ENGINE_EVENTS` as
+well: every command is acknowledged on the event stream, and without it the acknowledgements
+are lost.
+
+The CLI polls the file every 250 ms. Each poll opens it with read, write and delete sharing,
+reads only the bytes after the last one it read, and closes it, so the controller may keep the
+file open for writing. The file need not exist when the command starts. It is read from its
+beginning, so use a new or empty file for each command: a `pause` left in the file makes the
+next command start paused. If the file becomes shorter than what was read, it is read again
+from the start.
+
+One command per line, UTF-8, ending in LF (a CR before the LF is ignored). A line without its
+LF waits for it. Blank lines are skipped without an acknowledgement. A line is either plain
+text, a command name then its value after whitespace, or a JSON object with a string
+`command` and an optional `value` (a string or a number):
+
+```
+pause
+workers 4
+{"command": "model", "value": "claude-opus-4-7"}
+```
+
+Command names are case-insensitive; values are passed on as written.
+
+| command | effect |
+| --- | --- |
+| `pause` | Start no new units. Units already running finish and are recorded as usual. A paused run with no work left ends normally. Rejected when already paused. |
+| `resume` | Start units again. Rejected when not paused. |
+| `stop` | Start no new units and cancel the running calls, exactly as Ctrl+C does: nothing is recorded for a cancelled call, the ledger stays consistent, the command exits 1, and `run_summary` has `cancelled: true`. fix restores stashed changes as it does on Ctrl+C. |
+| `workers <n>` | Resize the pool to `n` (a whole number of at least 1). Growing starts more units at once; shrinking lets running units finish and starts new ones only while fewer than `n` run. Applies while paused too. |
+| `model <id>` | Units started from now on run with this model; units already running keep theirs. Each analysis, verification and fix records the model and effort it actually ran with (D35), and so does each agent call (D63). |
+| `effort <level>` | As `model`, for the effort or reasoning level. |
+
+`model` and `effort` replace only the setting they name. For codex the other setting keeps the
+value D55 resolved at start; it is not looked up again. The value is passed to the harness
+verbatim, like `--model` and `--effort`; a value the harness rejects fails those units' calls,
+which count as failed attempts.
+
+Every non-blank line gets exactly one acknowledgement event, in the order the lines were
+written:
+
+| type | fields |
+| --- | --- |
+| `command_applied` | `command` (lowercase name), `value` (`workers`: integer; `model`, `effort`: string; otherwise `null`), `line` (the line as written) |
+| `command_rejected` | `line`, `reason`: `unknown command '<name>'`, `already paused`, `not paused`, `workers needs a whole number of at least 1`, `<command> needs a value`, `not valid JSON: ...`, `a JSON command needs a string "command"`, or `this command cannot change the agent's <model or effort>` |
+
+After the acknowledgement, `pause`, `resume` and `stop` also write a `paused`, `resumed` or
+`stopped` event, with no fields of their own. The loop that starts units waits for commands
+alongside its running calls, so a command takes effect within one poll interval of being
+written, even while every worker is busy.
 
 ## Versioning
 

@@ -3,8 +3,9 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
 
-/// <summary>Drives one headless agent over every unit that needs work (D10): hands out packs through <see cref="Next"/>, records each response through <see cref="Done"/>, retries failed attempts, and stops cleanly on cancellation. Adapter calls run in a rolling pool (D66): a slot takes the next unit as soon as its call ends. Only the adapter calls run concurrently; the ledger holds one connection, so every ledger call is made by the loop that starts and finishes units. <paramref name="notes"/> hears about each attempt as it starts, since the first result of a long run can be minutes away.</summary>
-public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config config, IAgentAdapter adapter, IProgress<RunProgress> progress, IProgress<string>? notes = null, IEngineEvents? events = null)
+/// <summary>Drives one headless agent over every unit that needs work (D10): hands out packs through <see cref="Next"/>, records each response through <see cref="Done"/>, retries failed attempts, and stops cleanly on cancellation. Adapter calls run in a rolling pool (D66): a slot takes the next unit as soon as its call ends. Only the adapter calls run concurrently; the ledger holds one connection, so every ledger call is made by the loop that starts and finishes units. <paramref name="notes"/> hears about each attempt as it starts, since the first result of a long run can be minutes away.
+/// With <paramref name="control"/>, engine commands pause, resume, stop or resize the run while it works (D65); a model or effort command applies to units started afterwards through an adapter from <paramref name="retarget"/>, and is rejected without one.</summary>
+public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config config, IAgentAdapter adapter, IProgress<RunProgress> progress, IProgress<string>? notes = null, IEngineEvents? events = null, IEngineControl? control = null, Func<AgentIdentity, IAgentAdapter>? retarget = null)
 {
     private int workers;
     private TaskCompletionSource wake = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -21,14 +22,18 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
     public async Task<RunResult> RunAsync(RunOptions options, CancellationToken cancellationToken)
     {
         Volatile.Write(ref workers, options.Parallelism);
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        // A stop command cancels exactly as Ctrl+C does, so from here on the run watches both.
+        cancellationToken = stopping.Token;
+        var steering = new Steering(control, events, options.Parallelism, adapter.Identity, retarget is not null, Resize, stopping.Cancel);
+        var adapters = new Dictionary<AgentIdentity, IAgentAdapter> { [adapter.Identity] = adapter };
         var total = 0;
         var next = new Next(ledger, tree, config, interactive: false, options.Kind, options.Path);
-        var done = new Done(ledger, clock, config, adapter.Identity);
         var command = options.Kind == UnitKind.Verify ? "verify" : "run";
         var calls = new CallRecorder(ledger, clock, config, adapter.Identity, command);
         var attempts = new Dictionary<string, int>(StringComparer.Ordinal);
         // In start order, so when several calls have ended the oldest is recorded first and none waits behind newer ones.
-        var running = new List<(Task<Attempt> Call, UnitPack Pack, int Worker, DateTimeOffset StartedAt)>();
+        var running = new List<(Task<Attempt> Call, UnitPack Pack, AgentIdentity By, int Worker, DateTimeOffset StartedAt)>();
         var gaveUp = new List<string>();
         var skipped = new List<string>();
         var completed = 0;
@@ -48,12 +53,15 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                 if (wake.Task.IsCompleted) Volatile.Write(ref wake, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
                 var free = Volatile.Read(ref workers) - running.Count;
                 var started = false;
+                var remaining = false;
                 if (free > 0)
                 {
                     var busy = running.Select(entry => entry.Pack.UnitId).ToHashSet(StringComparer.Ordinal);
                     var needing = await ledger.NextAsync(int.MaxValue, options.Kind, options.Path, cancellationToken);
                     total = completed + skipped.Count + needing.Count;
-                    foreach (var unit in needing.Where(unit => !gaveUp.Contains(unit.Id) && !busy.Contains(unit.Id)).Take(free).ToList())
+                    var startable = needing.Where(unit => !gaveUp.Contains(unit.Id) && !busy.Contains(unit.Id)).ToList();
+                    remaining = startable.Count > 0;
+                    foreach (var unit in steering.Paused ? [] : startable.Take(free))
                     {
                         started = true;
                         await StartAsync(unit);
@@ -63,23 +71,26 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                 if (running.Count == 0)
                 {
                     // A unit that was skipped or rejected without a call may have freed its place for another, so look again before stopping.
+                    // A paused run with work left waits for the next command instead.
                     if (started) continue;
-                    return new RunResult(completed, gaveUp, false) { Skipped = skipped };
+                    if (!remaining) return new RunResult(completed, gaveUp, false) { Skipped = skipped };
                 }
 
-                var finished = await Task.WhenAny(running.Select(entry => (Task)entry.Call).Append(Volatile.Read(ref wake).Task)).WaitAsync(cancellationToken);
+                var finished = await Task.WhenAny(running.Select(entry => (Task)entry.Call).Append(Volatile.Read(ref wake).Task).Append(steering.Arrival(calling.Token)))
+                    .WaitAsync(cancellationToken);
+                if (steering.TryApply()) continue;
                 var index = running.FindIndex(entry => entry.Call == finished);
                 if (index < 0)
                 {
                     continue;
                 }
 
-                var (call, pack, _, startedAt) = running[index];
+                var (call, pack, by, _, startedAt) = running[index];
                 running.RemoveAt(index);
                 var attempt = await call;
                 cancellationToken.ThrowIfCancellationRequested();
-                var result = attempt.Failure ?? await done.RunAsync(pack.UnitId, pack.Fingerprint, ResponseText.ExtractJson(attempt.Text), cancellationToken);
-                var spent = attempt.Paid is { } paid ? await calls.RecordAsync(pack.UnitId, pack.Kind, paid, result.Outcome == DoneOutcome.Recorded, cancellationToken) : null;
+                var result = attempt.Failure ?? await new Done(ledger, clock, config, by).RunAsync(pack.UnitId, pack.Fingerprint, ResponseText.ExtractJson(attempt.Text), cancellationToken);
+                var spent = attempt.Paid is { } paid ? await calls.RecordAsync(pack.UnitId, pack.Kind, paid, result.Outcome == DoneOutcome.Recorded, cancellationToken, by) : null;
                 var report = Record(pack.UnitId, pack.Kind, pack.Key, result);
                 events.UnitFinished(pack.UnitId, pack.Kind, pack.Key, report.Attempt, EngineStream.Name(result.Outcome), report.Message,
                     gaveUp.Contains(pack.UnitId), EngineStream.Milliseconds(startedAt, clock.UtcNow), spent);
@@ -138,9 +149,11 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
             }
 
             notes?.Report($"starting {Name(pack.Kind)} {pack.Key}");
+            var identity = steering.Identity;
+            if (!adapters.TryGetValue(identity, out var agent)) adapters[identity] = agent = retarget!(identity);
             var worker = EngineStream.FreeWorker(running.Select(entry => entry.Worker));
             events.UnitStarted(pack.UnitId, pack.Kind, pack.Key, worker, attempts.GetValueOrDefault(pack.UnitId) + 1);
-            running.Add((CallAsync(pack.Markdown, calling.Token), pack, worker, clock.UtcNow));
+            running.Add((CallAsync(agent, pack.Markdown, calling.Token), pack, identity, worker, clock.UtcNow));
         }
 
         RunProgress Record(string unitId, UnitKind kind, string key, DoneResult result)
@@ -165,11 +178,11 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
     }
 
     // Never throws, so the loop can wait on every call at once; a failed call becomes a rejected attempt.
-    private async Task<Attempt> CallAsync(string markdown, CancellationToken cancellationToken)
+    private static async Task<Attempt> CallAsync(IAgentAdapter agent, string markdown, CancellationToken cancellationToken)
     {
         try
         {
-            var reply = await adapter.RunAsync(markdown, cancellationToken);
+            var reply = await agent.RunAsync(markdown, cancellationToken);
             return new Attempt(reply.Text, reply.Usage, null);
         }
         catch (Exception ex)

@@ -15,9 +15,12 @@ public sealed class FakeAgentAdapter : IAgentAdapter
     private readonly AnalysisResponse _template;
     private readonly string? _rawResponse;
     private readonly string? _workingDirectory;
+    private readonly TimeSpan _delay;
 
-    public FakeAgentAdapter(string templateJson, string? model = null, string? effort = null, bool rawResponse = false, string? workingDirectory = null)
+    // delay holds every call open that long, so tests can act while units are in flight.
+    public FakeAgentAdapter(string templateJson, string? model = null, string? effort = null, bool rawResponse = false, string? workingDirectory = null, TimeSpan delay = default)
     {
+        _delay = delay;
         _workingDirectory = workingDirectory;
         _rawResponse = rawResponse ? templateJson : null;
         _template = AnalysisResponseJson.Parse(rawResponse ? DefaultTemplate : templateJson);
@@ -26,10 +29,11 @@ public sealed class FakeAgentAdapter : IAgentAdapter
 
     public AgentIdentity Identity { get; }
 
-    public Task<AgentReply> RunAsync(string pack, CancellationToken cancellationToken)
+    public async Task<AgentReply> RunAsync(string pack, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(new AgentReply(Respond(pack), Usage));
+        if (_delay > TimeSpan.Zero) await Task.Delay(_delay, cancellationToken);
+        return new AgentReply(Respond(pack), Usage);
     }
 
     private string Respond(string pack)
