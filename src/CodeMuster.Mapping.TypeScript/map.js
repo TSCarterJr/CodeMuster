@@ -160,6 +160,7 @@ function mapRepo(request, programs) {
   const unresolvedNames = new Map();
   const diagnostics = new Set();
   const httpCalls = [];
+  const uiElements = [];
   let resolved = 0;
   let unresolved = 0;
   const sourceFiles = new Map();
@@ -235,9 +236,10 @@ function mapRepo(request, programs) {
       }
 
       const route = pageRoute(file);
-      if (route !== undefined) {
-        mapper.defaultExportIds(sourceFile).forEach((id) => entryPoints.set(`${id}\n${route}`, { symbol_id: id, kind: 'page', display: route }));
-      }
+      const pageIds = route === undefined ? [] : mapper.defaultExportIds(sourceFile);
+      pageIds.forEach((id) => entryPoints.set(`${id}\n${route}`, { symbol_id: id, kind: 'page', display: route }));
+      const page = pageIds.map((id) => symbols.get(id)).find((symbol) => symbol !== undefined && symbol.path === file);
+      uiElements.push(...mapper.uiElements(sourceFile, file, route, page === undefined ? mapper.defaultExportLine(sourceFile) : page.range.start_line));
 
       mapper.routes(sourceFile).forEach(({ id, display }) => entryPoints.set(`${id}\n${display}`, { symbol_id: id, kind: 'http', display }));
     }
@@ -257,11 +259,14 @@ function mapRepo(request, programs) {
     },
     diagnostics: [...diagnostics].sort(ordinal),
     http_calls: httpCalls.sort((a, b) => ordinal(a.path, b.path) || a.line - b.line || ordinal(a.from, b.from)),
+    ...(uiElements.length === 0 ? {} : { ui_elements: uiElements.sort((a, b) => ordinal(a.path, b.path) || a.line - b.line) }),
   };
   return request.debug === true ? { ...map, parsed_files: parsedFiles } : map;
 }
 
 function createMapper(ts, checker, repoRoot) {
+  const literalKinds = new Set(LITERAL_KINDS.map((name) => ts.SyntaxKind[name]));
+
   function repoPath(sourceFile) {
     return path.relative(repoRoot, sourceFile.fileName).split(path.sep).join('/');
   }
@@ -452,7 +457,209 @@ function createMapper(ts, checker, repoRoot) {
       kind: declaration.kind,
       signature: declaration.header + collapse(sourceFile.text.slice(start, declaration.fn.body.getStart(sourceFile))),
       body_hash: crypto.createHash('sha256').update(tokenText(declaration.node, sourceFile), 'utf8').digest('hex'),
+      normalized_hash: crypto.createHash('sha256').update(normalizedTokens(declaration.fn.body, sourceFile, []).join(' '), 'utf8').digest('hex'),
     };
+  }
+
+  // D68: the body's tokens with every identifier and every literal replaced by a placeholder, so copies that differ only in names and literals
+  // match; keywords, operators, punctuation and the shape of property accesses stay, and trivia (whitespace, comments, JSDoc) never appears.
+  function normalizedTokens(node, sourceFile, tokens) {
+    if (ts.isJSDoc(node)) {
+      return tokens;
+    }
+
+    const children = node.getChildren(sourceFile);
+    if (children.length > 0) {
+      children.forEach((child) => normalizedTokens(child, sourceFile, tokens));
+    } else if (node.kind === ts.SyntaxKind.Identifier || node.kind === ts.SyntaxKind.PrivateIdentifier) {
+      tokens.push('$id');
+    } else if (node.kind === ts.SyntaxKind.JsxText) {
+      if (collapse(node.text) !== '') {
+        tokens.push('$literal');
+      }
+    } else if (literalKinds.has(node.kind)) {
+      tokens.push('$literal');
+    } else if (node.end > node.pos) {
+      tokens.push(node.getText(sourceFile));
+    }
+
+    return tokens;
+  }
+
+  // D69: the file's UI structure, read from its markup in document order. A heading applies to what follows it until a heading of the same or a
+  // higher level; a fieldset, a section or a titled Section/Card/Panel/Group component scopes the headings inside it.
+  function uiElements(sourceFile, file, route, routeLine) {
+    const found = [];
+    const element = (kind, text, at, extra) => {
+      const entry = { kind, text, path: file, line: typeof at === 'number' ? at : line(sourceFile, at.getStart(sourceFile)) };
+      Object.entries({ ...extra, route }).filter(([, value]) => value !== undefined).forEach(([key, value]) => { entry[key] = value; });
+      found.push(entry);
+    };
+    if (route !== undefined) {
+      element('route', route, routeLine, {});
+    }
+
+    const labels = new Map();
+    const collectLabels = (node) => {
+      if (ts.isJsxElement(node) && tagOf(node.openingElement) === 'label' && attribute(node.openingElement, 'htmlFor') !== undefined) {
+        labels.set(attribute(node.openingElement, 'htmlFor'), jsxText(node));
+      }
+
+      ts.forEachChild(node, collectLabels);
+    };
+    collectLabels(sourceFile);
+
+    for (const statement of sourceFile.statements) {
+      const headings = [];
+      const section = () => (headings.length === 0 ? undefined : headings[headings.length - 1].text);
+      const heading = (level, text, at) => {
+        while (headings.length > 0 && headings[headings.length - 1].level >= level) {
+          headings.pop();
+        }
+
+        element('heading', text, at, { section: section() });
+        headings.push({ level, text });
+      };
+      const walk = (node) => {
+        if (ts.isArrayLiteralExpression(node)) {
+          node.elements.filter(ts.isObjectLiteralExpression).forEach((item) => {
+            const text = NAV_TEXT.map((name) => literalProperty(item, name)).find((value) => value !== undefined);
+            const target = NAV_TARGET.map((name) => literalProperty(item, name)).find((value) => value !== undefined && /^(\/|https?:)/.test(value));
+            if (text !== undefined && target !== undefined) {
+              element('nav', text, item, { target, section: section() });
+            }
+          });
+        }
+
+        const opening = ts.isJsxElement(node) ? node.openingElement : ts.isJsxSelfClosingElement(node) ? node : undefined;
+        if (opening === undefined) {
+          ts.forEachChild(node, walk);
+          return;
+        }
+
+        const tag = tagOf(opening);
+        const scoped = SCOPES.has(tag) || (!/^[a-z]/.test(tag) && /(Section|Card|Panel|Group|Fieldset)$/.test(tag));
+        const saved = scoped ? [...headings] : undefined;
+        const text = ts.isJsxElement(node) ? jsxText(node) : '';
+        const control = controlOf(tag, opening);
+        const target = attribute(opening, 'href', true) ?? attribute(opening, 'to', true);
+        if (/^h[1-3]$/.test(tag) && text !== '') {
+          heading(Number(tag[1]), text, opening);
+        } else if (tag === 'legend' && text !== '') {
+          heading(3, text, opening);
+        } else if (control !== undefined) {
+          element('control', labelOf(node, opening, labels), opening, { control, section: section() });
+        } else if (target !== undefined && (/NavLink$/.test(tag) || insideNavigation(node))) {
+          element('nav', text || attribute(opening, 'aria-label') || attribute(opening, 'title') || target, opening, { target, section: section() });
+        } else if (scoped && tag !== 'fieldset') {
+          const title = ['title', 'heading', 'label', 'aria-label'].map((name) => attribute(opening, name)).find((value) => value !== undefined && value !== '');
+          if (title !== undefined) {
+            heading(2, title, opening);
+          }
+        }
+
+        ts.forEachChild(node, walk);
+        if (saved !== undefined) {
+          headings.splice(0, headings.length, ...saved);
+        }
+      };
+      walk(statement);
+    }
+
+    return found.sort((a, b) => a.line - b.line).slice(0, UI_ELEMENTS_PER_FILE);
+  }
+
+  function tagOf(opening) {
+    return opening.tagName.getText();
+  }
+
+  // A static attribute value; with fold, an href built from literals and constants reads as a route template.
+  function attribute(opening, name, folded) {
+    const found = opening.attributes.properties.find((property) => ts.isJsxAttribute(property) && property.name.getText() === name);
+    const value = found && found.initializer;
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (ts.isStringLiteral(value)) {
+      return value.text;
+    }
+
+    return ts.isJsxExpression(value) && value.expression !== undefined ? (folded ? fold(value.expression, 0) : literalText(value.expression)) : undefined;
+  }
+
+  function jsxText(node, excluded) {
+    const parts = [];
+    const visit = (child) => {
+      if (child === excluded) {
+        return;
+      }
+
+      if (child.kind === ts.SyntaxKind.JsxText) {
+        parts.push(child.text);
+      } else if (ts.isJsxExpression(child) && child.expression !== undefined && literalText(child.expression) !== undefined) {
+        parts.push(literalText(child.expression));
+      } else if (ts.isJsxElement(child) || ts.isJsxFragment(child)) {
+        child.children.forEach(visit);
+      }
+    };
+    node.children.forEach(visit);
+    return collapse(parts.join(' '));
+  }
+
+  function controlOf(tag, opening) {
+    if (tag === 'input') {
+      const type = (attribute(opening, 'type') ?? 'text').toLowerCase();
+      return ['hidden', 'submit', 'button', 'reset', 'image'].includes(type) ? undefined : type;
+    }
+
+    if (tag === 'select' || tag === 'textarea') {
+      return tag;
+    }
+
+    return !/^[a-z]/.test(tag) && CONTROL_COMPONENT.test(tag) ? tag : undefined;
+  }
+
+  // The text of an enclosing <label>, else of the <label htmlFor> naming its id, else its own label, aria-label, title, placeholder or name.
+  function labelOf(node, opening, labels) {
+    for (let parent = node.parent; parent !== undefined && !ts.isSourceFile(parent); parent = parent.parent) {
+      if (ts.isJsxElement(parent) && tagOf(parent.openingElement) === 'label') {
+        const text = jsxText(parent, node);
+        if (text !== '') {
+          return text;
+        }
+      }
+    }
+
+    const id = attribute(opening, 'id');
+    if (id !== undefined && labels.has(id) && labels.get(id) !== '') {
+      return labels.get(id);
+    }
+
+    return ['label', 'aria-label', 'title', 'placeholder', 'name'].map((name) => attribute(opening, name)).find((value) => value !== undefined && value !== '') ?? '';
+  }
+
+  function insideNavigation(node) {
+    for (let parent = node.parent; parent !== undefined && !ts.isSourceFile(parent); parent = parent.parent) {
+      const opening = ts.isJsxElement(parent) ? parent.openingElement : undefined;
+      if (opening === undefined) {
+        continue;
+      }
+
+      const tag = tagOf(opening);
+      if (NAV_CONTAINERS.has(tag) || (!/^[a-z]/.test(tag) && /(Nav|Menu|Sidebar|Tabs|Breadcrumb)/i.test(tag))
+        || ['navigation', 'menu', 'menubar', 'tablist'].includes(attribute(opening, 'role'))
+        || /(^|[\s_-])(nav|navbar|menu|sidebar)([\s_-]|$)/i.test(attribute(opening, 'className') ?? '')) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function literalProperty(object, name) {
+    const value = property(object, name);
+    return value === undefined ? undefined : literalText(value);
   }
 
   function callSites(declaration) {
@@ -687,6 +894,13 @@ function createMapper(ts, checker, repoRoot) {
     return current;
   }
 
+  // The line of the file's export default statement, or 1 when it has none.
+  function defaultExportLine(sourceFile) {
+    const statement = sourceFile.statements.find((node) => ts.isExportAssignment(node)
+      || ((ts.getCombinedModifierFlags(node) & ts.ModifierFlags.ExportDefault) === ts.ModifierFlags.ExportDefault));
+    return statement === undefined ? 1 : line(sourceFile, statement.getStart(sourceFile));
+  }
+
   function defaultExportIds(sourceFile) {
     const moduleSymbol = checker.getSymbolAtLocation(sourceFile);
     return targetIds(moduleSymbol && checker.getExportsOfModule(moduleSymbol).find((exported) => exported.name === 'default'));
@@ -762,10 +976,21 @@ function createMapper(ts, checker, repoRoot) {
       .join('');
   }
 
-  return { repoPath, declarations, symbol, callSites, defaultExportIds, collectMounts, routes };
+  return { repoPath, declarations, symbol, callSites, defaultExportIds, collectMounts, routes, uiElements, defaultExportLine };
 }
 
 const AXIOS_VERBS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options']);
+
+const LITERAL_KINDS = [
+  'StringLiteral', 'NumericLiteral', 'BigIntLiteral', 'RegularExpressionLiteral', 'NoSubstitutionTemplateLiteral', 'TemplateHead', 'TemplateMiddle', 'TemplateTail',
+];
+
+const UI_ELEMENTS_PER_FILE = 200;
+const SCOPES = new Set(['fieldset', 'section']);
+const NAV_CONTAINERS = new Set(['nav', 'aside', 'header', 'menu']);
+const NAV_TEXT = ['label', 'title', 'name', 'text'];
+const NAV_TARGET = ['href', 'to', 'path', 'url', 'link'];
+const CONTROL_COMPONENT = /(Checkbox|Switch|Toggle|Select|Input|TextField|TextArea|Textarea|Radio|RadioGroup|Slider|Combobox|DatePicker)$/;
 
 const ROUTE_VERBS = new Set(['get', 'post', 'put', 'patch', 'delete', 'del', 'all', 'use', 'head', 'options']);
 

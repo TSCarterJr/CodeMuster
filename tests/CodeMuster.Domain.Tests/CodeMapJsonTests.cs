@@ -62,6 +62,36 @@ public class CodeMapJsonTests
     }
 
     [Fact]
+    public void Ui_elements_round_trip_with_their_optional_fields_left_out_when_absent()
+    {
+        var map = SmallMap() with
+        {
+            UiElements =
+            [
+                new UiElement("route", "/settings", "web/app/settings/page.tsx", 3, Route: "/settings"),
+                new UiElement("control", "Auto charge customer", "web/app/settings/page.tsx", 12, Control: "Switch", Section: "General", Route: "/settings"),
+                new UiElement("nav", "Invoices", "web/components/Sidebar.tsx", 4, Target: "/invoices"),
+            ],
+        };
+
+        var json = CodeMapJson.Serialize(map);
+        var parsed = CodeMapJson.Parse(json);
+
+        Assert.Equal(map.UiElements, parsed.UiElements);
+        Assert.Contains("\"ui_elements\"", json);
+        Assert.DoesNotContain("null", json.Split("\"ui_elements\"")[1]);
+    }
+
+    [Fact]
+    public void A_map_without_ui_elements_leaves_the_key_out_and_parses_with_none()
+    {
+        var json = CodeMapJson.Serialize(SmallMap());
+
+        Assert.DoesNotContain("ui_elements", json);
+        Assert.Empty(CodeMapJson.Parse(json).UiElements);
+    }
+
+    [Fact]
     public void Round_trips_http_calls_including_one_built_at_runtime()
     {
         var map = SmallMap() with

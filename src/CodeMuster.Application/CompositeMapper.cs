@@ -52,6 +52,7 @@ public static class CompositeMapper
             diagnostics)
         {
             HttpCalls = maps.SelectMany(m => m.HttpCalls).ToList(),
+            UiElements = maps.SelectMany(m => m.UiElements).ToList(),
         };
         return new CompositeMap(merged, failed, mapped);
     }

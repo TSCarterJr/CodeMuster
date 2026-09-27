@@ -812,6 +812,17 @@ starting with `http: `; they are not findings and do not make the map partial. S
 progress line on stderr such as `linked 1 UI call to an endpoint; 1 call and 1 endpoint
 unmatched`; its stdout, units, slices and fingerprints do not change.
 
+The TypeScript mapper also gives each TypeScript and JavaScript symbol a normalized hash (D68):
+a hash of its body's tokens with every identifier and literal replaced, so bodies that differ
+only in names, strings, numbers, whitespace or comments share it. It is stored with the symbol.
+The mapper also reads the UI's structure (D69): each page route; navigation entries (a link with
+a static `href` or `to` inside a `nav`, `aside`, `header`, `menu` or a Nav, Menu or Sidebar
+component, any `NavLink`, and arrays of `{ label, href }` objects); section headings (`h1` to
+`h3`, `legend`, and titled `Section`, `Card`, `Panel` or `Group` components); and form controls
+(`input`, `select`, `textarea`, and components such as `Switch`, `Toggle` or `Checkbox`) with
+their label, the heading they sit under, the page route and `path:line`, at most 200 per file.
+Scan keeps that structure in memory only; the ledger does not store it.
+
 Yarn Classic uses `yarn audit --json`; Yarn 2+ uses `yarn npm audit --all --recursive --json`.
 Yarn 4.9.0's real JSON output and command behavior have been exercised. Dependency repairs
 that change a manifest and lockfile require both files in the explicit allowed scope.

@@ -57,6 +57,19 @@ public class CompositeMapperTests
     }
 
     [Fact]
+    public async Task UiElements_OfEveryMapper_AreMergedInMapperOrder()
+    {
+        UiElement[] csharpElements = [new("heading", "Quotes", "src/Pages/Quotes.razor", 2)];
+        UiElement[] typescriptElements = [new("control", "Auto charge customer", "web/app/settings/page.tsx", 11, Control: "Switch", Section: "General", Route: "/settings")];
+        var csharp = new FakeCodeMapper(Languages.CSharp, MixedRepo.CSharp() with { UiElements = csharpElements });
+        var typescript = new FakeCodeMapper(Languages.TypeScript, MixedRepo.TypeScript() with { UiElements = typescriptElements });
+
+        var mapped = await MapAsync(csharp, typescript);
+
+        Assert.Equal(csharpElements.Concat(typescriptElements), mapped.Map.UiElements);
+    }
+
+    [Fact]
     public async Task MapperWhoseLanguageHasNoIncludedFile_IsNotRun()
     {
         var go = new FakeCodeMapper(Languages.Go, MixedRepo.CSharp());

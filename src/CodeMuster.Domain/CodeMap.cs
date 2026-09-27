@@ -65,7 +65,36 @@ public sealed record CodeMap(IReadOnlyList<Symbol> Symbols, IReadOnlyList<Edge> 
 {
     /// <summary>Every outgoing HTTP call the mapper read statically (D61); empty when the mapper records none. Scan joins them to entry points as <see cref="EdgeKind.Http"/> edges and the ledger does not store them.</summary>
     public IReadOnlyList<HttpCall> HttpCalls { get; init; } = [];
+
+    /// <summary>The UI's structure the mapper read from markup (D69): page routes, navigation entries, section headings and form controls; empty when it read none. Kept in memory for scan only: the ledger does not store it.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<UiElement> UiElements { get; init; } = [];
+
+    // Written only when there is at least one element, so a map without UI reads and writes as before.
+    [JsonInclude]
+    [JsonPropertyName("ui_elements")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    private IReadOnlyList<UiElement>? SerializedUiElements
+    {
+        get => UiElements.Count == 0 ? null : UiElements;
+        init => UiElements = value ?? [];
+    }
 }
+
+/// <summary>One piece of the UI's structure, read from markup by a mapper (D69).</summary>
+/// <param name="Kind">One of "route" (a page), "nav" (a navigation or menu entry), "heading" (a section heading) or "control" (a form control or setting).</param>
+/// <param name="Text">The route, the entry's or heading's text, or the control's label; empty when a control has none.</param>
+/// <param name="Path">Repo-relative path of the file that defines it.</param>
+/// <param name="Line">1-based line where it is defined.</param>
+/// <param name="Control">For a control, what it is: an input type such as "text" or "checkbox", "select", "textarea", or the component's name such as "Switch".</param>
+/// <param name="Target">For a navigation entry, the route or URL it links to.</param>
+/// <param name="Section">The nearest section heading the element sits under, when there is one.</param>
+/// <param name="Route">The page route of the file, when the file is a page.</param>
+public sealed record UiElement(string Kind, string Text, string Path, int Line,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Control = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Target = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Section = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Route = null);
 
 /// <summary>An outgoing HTTP request that UI code makes, read statically by a mapper (D61).</summary>
 /// <param name="From">Id of the symbol whose body contains the call.</param>
