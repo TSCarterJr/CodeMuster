@@ -70,7 +70,8 @@ public class HeadlessTests
         Assert.Equal(2 * files, total);
         Assert.Contains($"\nverify {files}/{files}\n", status.Stdout.ReplaceLineEndings("\n"));
         var progress = Regex.Matches(run.Stdout, "^(\\d+)/\\d+ (file|verify) ", RegexOptions.Multiline).Select(m => (int.Parse(m.Groups[1].Value), m.Groups[2].Value)).ToList();
-        Assert.Equal(Enumerable.Range(1, total).Select(n => (n, n <= files ? "file" : "verify")), progress);
+        Assert.Equal(Enumerable.Range(1, total), progress.Select(p => p.Item1));
+        Assert.Equal(files, progress.Count(p => p.Item2 == "file"));
         Assert.Equal($"completed {total} unit(s), 0 gave up", run.Stdout.TrimEnd().Split('\n')[^1].TrimEnd('\r'));
 
         var report = await CliProcess.RunAsync(repo.Root, "report");

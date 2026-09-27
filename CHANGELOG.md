@@ -54,6 +54,12 @@ start with 0.2.8.
   their own Simplifications section, and `fix` repairs them only with `--include simplification`.
   Existing configurations are not changed, because a new lens re-audits every unit; add the lens
   yourself to use it.
+- Faster scans and runs. C# documents are bound in parallel and a project listed by two
+  solutions is mapped once (a scan of CodeMuster's own repository went from about 30 s to 18 s);
+  TypeScript files that several `tsconfig.json` files share are parsed once; dependency audits run
+  while the code is mapped, with npm, pnpm and yarn audits side by side (a fixture scan went from
+  11.1 s to 7.3 s); and `run` and `verify` start the next unit as soon as a worker is free instead
+  of waiting for the slowest unit of each batch. Maps, units and fingerprints are unchanged.
 
 ## 0.3.6 - 2026-09-25
 

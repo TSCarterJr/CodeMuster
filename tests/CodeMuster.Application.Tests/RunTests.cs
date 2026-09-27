@@ -277,20 +277,19 @@ public class RunTests
     public async Task Cancel_WhileCallsAreHeldOpen_LeavesThemNotDone_AndSecondRunFinishesTheRest()
     {
         AddFileUnits("a", "b", "c", "d", "e");
-        var adapter = Always(EmptyResponse);
-        using var cts = new CancellationTokenSource();
-        var secondBatch = new TaskCompletionSource();
-
-        var run = RunAsync(adapter, new RunOptions(2, 1, false), cts.Token, report =>
+        var hold = true;
+        var held = new TaskCompletionSource();
+        var adapter = new FakeAgentAdapter(async (pack, token) =>
         {
-            if (report.Completed == 2)
-            {
-                adapter.Gate = new TaskCompletionSource();
-                secondBatch.SetResult();
-            }
+            if (hold && UnitIdOf(pack) is not ("file:src/a.cs" or "file:src/b.cs")) await held.Task.WaitAsync(token);
+            return EmptyResponse;
         });
-        await secondBatch.Task;
-        await adapter.WhenInFlightAsync(2);
+        using var cts = new CancellationTokenSource();
+        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        var run = RunAsync(adapter, new RunOptions(2, 1, false), cts.Token);
+        while (reports.Count < 2 || adapter.Packs.Count < 4) await Task.Delay(1, guard.Token);
+        await adapter.WhenInFlightAsync(2).WaitAsync(guard.Token);
         cts.Cancel();
         var result = await run;
 
@@ -303,7 +302,7 @@ public class RunTests
         Assert.Equal(["file:src/a.cs", "file:src/b.cs"], ledger.Units.Where(u => u.Status == UnitStatus.Done).Select(u => u.Id));
         Assert.Equal(3, ledger.Units.Count(u => u.Status == UnitStatus.Pending));
 
-        adapter.Gate = null;
+        hold = false;
         var second = await RunAsync(adapter, new RunOptions(2, 1, false));
 
         Assert.False(second.Cancelled);

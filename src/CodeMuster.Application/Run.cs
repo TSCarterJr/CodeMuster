@@ -3,21 +3,35 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
 
-/// <summary>Drives one headless agent over every unit that needs work (D10): hands out packs through <see cref="Next"/>, records each response through <see cref="Done"/>, retries failed attempts, and stops cleanly on cancellation. Adapter calls run concurrently; ledger calls are serialized because the ledger holds one connection. <paramref name="notes"/> hears about each attempt as it starts, since the first result of a long run can be minutes away.</summary>
+/// <summary>Drives one headless agent over every unit that needs work (D10): hands out packs through <see cref="Next"/>, records each response through <see cref="Done"/>, retries failed attempts, and stops cleanly on cancellation. Adapter calls run in a rolling pool (D66): a slot takes the next unit as soon as its call ends. Only the adapter calls run concurrently; the ledger holds one connection, so every ledger call is made by the loop that starts and finishes units. <paramref name="notes"/> hears about each attempt as it starts, since the first result of a long run can be minutes away.</summary>
 public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config config, IAgentAdapter adapter, IProgress<RunProgress> progress, IProgress<string>? notes = null)
 {
+    private int workers;
+    private TaskCompletionSource wake = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Changes how many adapter calls the running pool keeps in flight. A smaller pool lets calls already running finish; a larger one starts more units at once.</summary>
+    public void Resize(int workers)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(workers, 1);
+        Volatile.Write(ref this.workers, workers);
+        Volatile.Read(ref wake).TrySetResult();
+    }
+
     /// <summary>Runs until nothing needs work or every remaining unit has used its attempts, reporting after every attempt.</summary>
     public async Task<RunResult> RunAsync(RunOptions options, CancellationToken cancellationToken)
     {
+        Volatile.Write(ref workers, options.Parallelism);
         var total = 0;
         var next = new Next(ledger, tree, config, interactive: false, options.Kind, options.Path);
         var done = new Done(ledger, clock, config, adapter.Identity);
         var calls = new CallRecorder(ledger, clock, config, adapter.Identity, options.Kind == UnitKind.Verify ? "verify" : "run");
-        using var turn = new SemaphoreSlim(1, 1);
         var attempts = new Dictionary<string, int>(StringComparer.Ordinal);
+        // In start order, so when several calls have ended the oldest is recorded first and none waits behind newer ones.
+        var running = new List<(Task<Attempt> Call, UnitPack Pack)>();
         var gaveUp = new List<string>();
         var skipped = new List<string>();
         var completed = 0;
+        using var calling = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         try
         {
@@ -28,84 +42,86 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
 
             while (true)
             {
-                var units = (await ledger.NextAsync(options.Parallelism + gaveUp.Count, options.Kind, options.Path, cancellationToken))
-                    .Where(unit => !gaveUp.Contains(unit.Id))
-                    .Take(options.Parallelism)
-                    .ToList();
-                if (units.Count == 0)
+                cancellationToken.ThrowIfCancellationRequested();
+                if (wake.Task.IsCompleted) Volatile.Write(ref wake, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+                var free = Volatile.Read(ref workers) - running.Count;
+                var started = false;
+                if (free > 0)
                 {
+                    var busy = running.Select(entry => entry.Pack.UnitId).ToHashSet(StringComparer.Ordinal);
+                    var needing = await ledger.NextAsync(int.MaxValue, options.Kind, options.Path, cancellationToken);
+                    total = completed + skipped.Count + needing.Count;
+                    foreach (var unit in needing.Where(unit => !gaveUp.Contains(unit.Id) && !busy.Contains(unit.Id)).Take(free).ToList())
+                    {
+                        started = true;
+                        await StartAsync(unit);
+                    }
+                }
+
+                if (running.Count == 0)
+                {
+                    // A unit that was skipped or rejected without a call may have freed its place for another, so look again before stopping.
+                    if (started) continue;
                     return new RunResult(completed, gaveUp, false) { Skipped = skipped };
                 }
 
-                total = completed + skipped.Count + (await NeedingWorkAsync(options.Kind, options.Path, cancellationToken)).Count;
-                var packs = new List<UnitPack>(units.Count);
-                foreach (var unit in units)
+                var finished = await Task.WhenAny(running.Select(entry => (Task)entry.Call).Append(Volatile.Read(ref wake).Task)).WaitAsync(cancellationToken);
+                var index = running.FindIndex(entry => entry.Call == finished);
+                if (index < 0)
                 {
-                    try
-                    {
-                        packs.Add(await next.ForUnitAsync(unit.Id, cancellationToken));
-                    }
-                    catch (PackTooLargeException ex)
-                    {
-                        await ledger.SkipUnitAsync(unit.Id, unit.Fingerprint, ex.Message, cancellationToken);
-                        skipped.Add(unit.Id);
-                        progress.Report(new RunProgress(unit.Id, unit.Kind, unit.Key, 0, DoneOutcome.Skipped,
-                            "skipped: " + ex.Message, completed, total));
-                    }
-                    catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-                    {
-                        Record(unit.Id, unit.Kind, unit.Key, new DoneResult(DoneOutcome.Rejected, ex.Message));
-                    }
+                    continue;
                 }
-                await Task.WhenAll(packs.Select(AttemptAsync));
+
+                var (call, pack) = running[index];
+                running.RemoveAt(index);
+                var attempt = await call;
+                cancellationToken.ThrowIfCancellationRequested();
+                var result = attempt.Failure ?? await done.RunAsync(pack.UnitId, pack.Fingerprint, ResponseText.ExtractJson(attempt.Text), cancellationToken);
+                if (attempt.Paid is { } paid) await calls.RecordAsync(pack.UnitId, pack.Kind, paid, result.Outcome == DoneOutcome.Recorded, cancellationToken);
+                Record(pack.UnitId, pack.Kind, pack.Key, result);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             return new RunResult(completed, gaveUp, true) { Skipped = skipped };
         }
-
-        async Task AttemptAsync(UnitPack pack)
+        finally
         {
-            if (pack.RequiresBrowser)
-            {
-                await turn.WaitAsync(cancellationToken);
-                try
-                {
-                    gaveUp.Add(pack.UnitId);
-                    progress.Report(new RunProgress(pack.UnitId, pack.Kind, pack.Key, 0, DoneOutcome.Rejected,
-                        "browser evidence required: use codemuster next --kind ux (or verify) in a browser-capable agent session, then done; source review alone cannot complete this unit", completed, total));
-                }
-                finally { turn.Release(); }
-                return;
-            }
-            DoneResult? failure = null;
-            var text = "";
-            AgentUsage? paid = null;
-            notes?.Report($"starting {Name(pack.Kind)} {pack.Key}");
+            await calling.CancelAsync();
+            await Task.WhenAll(running.Select(entry => entry.Call));
+        }
+
+        async Task StartAsync(Unit unit)
+        {
+            UnitPack pack;
             try
             {
-                var reply = await adapter.RunAsync(pack.Markdown, cancellationToken);
-                (text, paid) = (reply.Text, reply.Usage);
+                pack = await next.ForUnitAsync(unit.Id, cancellationToken);
+            }
+            catch (PackTooLargeException ex)
+            {
+                await ledger.SkipUnitAsync(unit.Id, unit.Fingerprint, ex.Message, cancellationToken);
+                skipped.Add(unit.Id);
+                progress.Report(new RunProgress(unit.Id, unit.Kind, unit.Key, 0, DoneOutcome.Skipped,
+                    "skipped: " + ex.Message, completed, total));
+                return;
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                failure = new DoneResult(DoneOutcome.Rejected, ex.Message);
-                paid = CallRecorder.PaidUsage(ex);
+                Record(unit.Id, unit.Kind, unit.Key, new DoneResult(DoneOutcome.Rejected, ex.Message));
+                return;
             }
 
-            cancellationToken.ThrowIfCancellationRequested();
-            await turn.WaitAsync(cancellationToken);
-            try
+            if (pack.RequiresBrowser)
             {
-                var result = failure ?? await done.RunAsync(pack.UnitId, pack.Fingerprint, ResponseText.ExtractJson(text), cancellationToken);
-                if (paid is not null) await calls.RecordAsync(pack.UnitId, pack.Kind, paid, result.Outcome == DoneOutcome.Recorded, cancellationToken);
-                Record(pack.UnitId, pack.Kind, pack.Key, result);
+                gaveUp.Add(pack.UnitId);
+                progress.Report(new RunProgress(pack.UnitId, pack.Kind, pack.Key, 0, DoneOutcome.Rejected,
+                    "browser evidence required: use codemuster next --kind ux (or verify) in a browser-capable agent session, then done; source review alone cannot complete this unit", completed, total));
+                return;
             }
-            finally
-            {
-                turn.Release();
-            }
+
+            notes?.Report($"starting {Name(pack.Kind)} {pack.Key}");
+            running.Add((CallAsync(pack.Markdown, calling.Token), pack));
         }
 
         void Record(string unitId, UnitKind kind, string key, DoneResult result)
@@ -127,8 +143,22 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
         }
     }
 
-    private async Task<IReadOnlyList<Unit>> NeedingWorkAsync(UnitKind? kind, string? path, CancellationToken cancellationToken) =>
-        await ledger.NextAsync(int.MaxValue, kind, path, cancellationToken);
+    // Never throws, so the loop can wait on every call at once; a failed call becomes a rejected attempt.
+    private async Task<Attempt> CallAsync(string markdown, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reply = await adapter.RunAsync(markdown, cancellationToken);
+            return new Attempt(reply.Text, reply.Usage, null);
+        }
+        catch (Exception ex)
+        {
+            return new Attempt("", CallRecorder.PaidUsage(ex), new DoneResult(DoneOutcome.Rejected, ex.Message));
+        }
+    }
+
+    // Paid is the usage to record, or null when the harness never ran; Failure is set when the call itself failed.
+    private sealed record Attempt(string Text, AgentUsage? Paid, DoneResult? Failure);
 
     private async Task<IReadOnlyList<Unit>> UnderPathAsync(IReadOnlyList<Unit> units, string? path, CancellationToken cancellationToken)
     {
