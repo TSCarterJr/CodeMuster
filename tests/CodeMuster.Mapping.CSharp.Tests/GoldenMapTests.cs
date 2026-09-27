@@ -72,6 +72,24 @@ public class GoldenMapTests(FixtureMaps maps) : IClassFixture<FixtureMaps>
             symbol.BodyHash);
     }
 
+    [Fact]
+    public void Normalized_hash_replaces_identifiers_and_literals_and_keeps_keywords_and_punctuation()
+    {
+        var symbol = maps["mixed-repo"].Symbols.Single(symbol => symbol.Id == "M:MixedRepo.Api.Controllers.QuotesController.ListQuotes(System.Int32)");
+
+        Assert.Equal(
+            Hashing.Sha256Hex("[ $id ( $literal ) ] public $id < $id > $id ( int $id ) { return $id . $id ( $id ) ; }"),
+            symbol.NormalizedHash);
+    }
+
+    [Theory]
+    [InlineData("mixed-repo")]
+    [InlineData("minimal-api")]
+    public void Every_symbol_has_a_normalized_hash(string fixture)
+    {
+        Assert.All(maps[fixture].Symbols, symbol => Assert.Matches("^[0-9a-f]{64}$", symbol.NormalizedHash));
+    }
+
     private static IEnumerable<Edge> Sorted(IEnumerable<Edge> edges) =>
         edges.OrderBy(edge => edge.From, StringComparer.Ordinal).ThenBy(edge => edge.To, StringComparer.Ordinal).ThenBy(edge => edge.Kind);
 }

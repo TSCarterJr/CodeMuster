@@ -98,7 +98,7 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
                 continue;
             }
 
-            map.Symbols.Add(new Symbol(from, path, Lines(node), KindOf(node), Signature(node), BodyHash(node)));
+            map.Symbols.Add(new Symbol(from, path, Lines(node), KindOf(node), Signature(node), BodyHash(node), NormalizedHash(node)));
             CountCallSites(node, model, map, cancellationToken);
             foreach (var callee in Callees(node, model, cancellationToken))
             {
@@ -290,13 +290,21 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
         return header + "\n" + member;
     }
 
-    private static string BodyHash(SyntaxNode node)
-    {
-        var tokens = node is AccessorDeclarationSyntax accessor
+    private static string BodyHash(SyntaxNode node) =>
+        Hashing.Sha256Hex(string.Join(" ", DeclarationTokens(node).Select(token => token.Text)));
+
+    private static string NormalizedHash(SyntaxNode node) =>
+        Hashing.Sha256Hex(string.Join(" ", DeclarationTokens(node).Select(Normalized)));
+
+    private static string Normalized(SyntaxToken token) =>
+        token.IsKind(SyntaxKind.IdentifierToken) ? "$id"
+        : token.IsKind(SyntaxKind.InterpolatedStringTextToken) || (token.Parent is LiteralExpressionSyntax && !SyntaxFacts.IsKeywordKind(token.Kind())) ? "$literal"
+        : token.Text;
+
+    private static IEnumerable<SyntaxToken> DeclarationTokens(SyntaxNode node) =>
+        node is AccessorDeclarationSyntax accessor
             ? Header(accessor.Parent!.Parent!).Concat(accessor.DescendantTokens())
             : node.DescendantTokens();
-        return Hashing.Sha256Hex(string.Join(" ", tokens.Select(token => token.Text)));
-    }
 
     private static IEnumerable<SyntaxToken> Header(SyntaxNode node)
     {

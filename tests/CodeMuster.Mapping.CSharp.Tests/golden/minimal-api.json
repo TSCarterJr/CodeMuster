@@ -6,7 +6,8 @@
       "range": { "start_line": 5, "end_line": 8 },
       "kind": "method",
       "signature": "public static class Endpoints\npublic static string Hello()",
-      "body_hash": "083d02d86dc665fdf220b008585c81c07b1fa6f676490e0592c671104c53b3b3"
+      "body_hash": "083d02d86dc665fdf220b008585c81c07b1fa6f676490e0592c671104c53b3b3",
+      "normalized_hash": "1d0fd0d2c70b3d97f85c16fdd6db70b476ffb255c342f24df031ee44462c4f81"
     },
     {
       "id": "M:MinimalApi.Endpoints.Echo(System.String)",
@@ -14,7 +15,8 @@
       "range": { "start_line": 10, "end_line": 13 },
       "kind": "method",
       "signature": "public static class Endpoints\npublic static string Echo(string text)",
-      "body_hash": "4ac5fbb84219faeab7c104a51b3934c4edaec96d0d9485df5422575d181842a8"
+      "body_hash": "4ac5fbb84219faeab7c104a51b3934c4edaec96d0d9485df5422575d181842a8",
+      "normalized_hash": "21119e2c14925397d2024081df5146e72472654711450b857a771dc60b4e2818"
     },
     {
       "id": "M:MinimalApi.Endpoints.Greeting(System.String)",
@@ -22,7 +24,8 @@
       "range": { "start_line": 15, "end_line": 18 },
       "kind": "method",
       "signature": "public static class Endpoints\nprivate static string Greeting(string name)",
-      "body_hash": "c5d2ed3fb33559ab69089c2dff555bf8bb429bb4e4cb098cef98088437effac0"
+      "body_hash": "c5d2ed3fb33559ab69089c2dff555bf8bb429bb4e4cb098cef98088437effac0",
+      "normalized_hash": "1413453e2076327105e7da94c52dc5d3fc8240889481d93c6a021ee5c80798df"
     }
   ],
   "edges": [
