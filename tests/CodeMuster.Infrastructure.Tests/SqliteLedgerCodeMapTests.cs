@@ -52,6 +52,7 @@ public class SqliteLedgerCodeMapTests
         Assert.Equal(expected.MappedLanguages, actual.MappedLanguages);
         Assert.Equal(expected.FailedLanguages, actual.FailedLanguages);
         Assert.Equal(expected.Map.UiElements, actual.Map.UiElements);
+        Assert.Equal(expected.InputsDigest, actual.InputsDigest);
     }
 
     [Fact]
@@ -151,6 +152,19 @@ public class SqliteLedgerCodeMapTests
     }
 
     [Fact]
+    public async Task ReplaceCodeMap_RoundTripsTheInputsDigest_OrItsAbsence()
+    {
+        using var temp = new TempDirectory();
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+
+        await ledger.ReplaceCodeMapAsync(First() with { InputsDigest = "digest-1" }, CancellationToken.None);
+        Assert.Equal("digest-1", (await ledger.GetCodeMapAsync(CancellationToken.None))!.InputsDigest);
+
+        await ledger.ReplaceCodeMapAsync(First(), CancellationToken.None);
+        Assert.Null((await ledger.GetCodeMapAsync(CancellationToken.None))!.InputsDigest);
+    }
+
+    [Fact]
     public async Task ReplaceCodeMap_RoundTripsTheNormalizedHash_WhenAMapperGaveOne()
     {
         using var temp = new TempDirectory();
@@ -181,6 +195,24 @@ public class SqliteLedgerCodeMapTests
         Assert.Equal(
             ["id", "path", "start_line", "end_line", "kind", "signature", "body_hash", "container", "normalized_hash"],
             await RawSqlite.StringsAsync(temp.DatabasePath, "SELECT name FROM pragma_table_info('code_symbols') ORDER BY cid"));
+    }
+
+    [Fact]
+    public async Task ADevelopmentLedgerAtEight_GainsTheUiTableAndTheDigestColumn_OnOpen()
+    {
+        using var temp = new TempDirectory();
+        using (var created = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None))
+        {
+            await created.ReplaceCodeMapAsync(First(), CancellationToken.None);
+        }
+
+        await RawSqlite.ExecuteAsync(temp.DatabasePath, "ALTER TABLE code_map DROP COLUMN inputs_digest; DROP TABLE code_ui_elements;");
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+        await ledger.ReplaceCodeMapAsync(First() with { InputsDigest = "digest-2", Map = First().Map with { UiElements = [new UiElement("heading", "Quotes", "web/app/page.tsx", 8)] } }, CancellationToken.None);
+
+        var stored = await ledger.GetCodeMapAsync(CancellationToken.None);
+        Assert.Equal("digest-2", stored!.InputsDigest);
+        Assert.Single(stored.Map.UiElements);
     }
 
     [Fact]

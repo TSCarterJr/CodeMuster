@@ -140,6 +140,18 @@ reached by those slices. File units cover files without mapped symbols or a supp
 Mapping failures may fall back to file coverage with low fidelity; inspect diagnostics and
 `status`. `scan --mode file` skips code mapping and plans one unit per included file.
 
+A scan reuses the stored code map instead of mapping again when nothing the mappers read has
+changed since that map was taken (D66): the same CodeMuster mapper builds, the same set of mapped
+files with the same content, and the same project, solution, MSBuild `.props` and `.targets`,
+`global.json`, `NuGet.config`, `tsconfig`/`jsconfig`, `package.json` and lockfile content. It
+prints `reused the code map from <commit>; nothing mapped changed`, and the units, fingerprints
+and stored map are exactly what mapping again would give. A map that was partial (a mapper
+failed or reported a diagnostic, such as an unrestored project) or that skipped a language is
+never reused, so restoring or installing and scanning again maps afresh. Mapping also depends on
+things outside the repository, such as the installed .NET SDK, restored packages and
+`node_modules`; after changing those without changing a tracked file, run `scan --remap` to map
+again regardless.
+
 Opt-in `dead_code` assessments also run during scan without model calls. Opt-in
 `user_experience` settings add separate UI browser-review units. An orphan is not proof of
 dead code, and source coverage does not count as a visual or workflow review. Browser reviews
@@ -720,7 +732,7 @@ and manage them.
 |---|---|
 | `init` | `--for claude,codex,gemini` (or `all`/`none`), `--yes`, `--no-gitignore`, `--no-hooks`, `--no-skills` |
 | `doctor` | `--fix` to offer the setup commands it found, `--yes` to run them without asking |
-| `scan` | `--mode slice` (default), `--mode file` |
+| `scan` | `--mode slice` (default), `--mode file`, `--remap` (map again even when nothing it reads changed) |
 | `status` | No options |
 | `estimate` | `--path <path>` |
 | `run --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--kind file\|slice\|orphan\|verify\|ux\|impact\|duplicate\|architecture\|api`, `--force` |

@@ -112,7 +112,8 @@ public sealed class SqliteLedger : ILedger, IDisposable
             resolved INTEGER NOT NULL,
             unresolved INTEGER NOT NULL,
             top_unresolved_names TEXT NOT NULL,
-            diagnostics TEXT NOT NULL);
+            diagnostics TEXT NOT NULL,
+            inputs_digest TEXT);
         CREATE TABLE code_symbols (
             id TEXT NOT NULL,
             path TEXT NOT NULL,
@@ -626,8 +627,8 @@ public sealed class SqliteLedger : ILedger, IDisposable
         await ExecuteAsync("DELETE FROM code_map; DELETE FROM code_symbols; DELETE FROM code_edges; DELETE FROM code_entry_points; DELETE FROM code_ui_elements;", cancellationToken);
 
         await using (var header = CreateCommand("""
-            INSERT INTO code_map (id, head_commit, scanned_at, mapped_languages, failed_languages, resolved, unresolved, top_unresolved_names, diagnostics)
-            VALUES (1, $head_commit, $scanned_at, $mapped_languages, $failed_languages, $resolved, $unresolved, $top_unresolved_names, $diagnostics)
+            INSERT INTO code_map (id, head_commit, scanned_at, mapped_languages, failed_languages, resolved, unresolved, top_unresolved_names, diagnostics, inputs_digest)
+            VALUES (1, $head_commit, $scanned_at, $mapped_languages, $failed_languages, $resolved, $unresolved, $top_unresolved_names, $diagnostics, $inputs_digest)
             """))
         {
             header.Parameters.AddWithValue("$head_commit", map.HeadCommit);
@@ -638,6 +639,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
             header.Parameters.AddWithValue("$unresolved", map.Map.Resolution.Unresolved);
             header.Parameters.AddWithValue("$top_unresolved_names", JsonList(map.Map.Resolution.TopUnresolvedNames));
             header.Parameters.AddWithValue("$diagnostics", JsonList(map.Map.Diagnostics));
+            header.Parameters.AddWithValue("$inputs_digest", Db(map.InputsDigest));
             await header.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -667,11 +669,11 @@ public sealed class SqliteLedger : ILedger, IDisposable
     public async Task<StoredCodeMap?> GetCodeMapAsync(CancellationToken cancellationToken)
     {
         await using var header = CreateCommand("""
-            SELECT head_commit, scanned_at, mapped_languages, failed_languages, resolved, unresolved, top_unresolved_names, diagnostics FROM code_map
+            SELECT head_commit, scanned_at, mapped_languages, failed_languages, resolved, unresolved, top_unresolved_names, diagnostics, inputs_digest FROM code_map
             """);
         var headers = await ReadAllAsync(header, reader => (
             Head: reader.GetString(0), At: reader.GetString(1), Mapped: ReadJsonList(reader, 2), Failed: ReadJsonList(reader, 3),
-            Resolution: new ResolutionStats(reader.GetInt32(4), reader.GetInt32(5), ReadJsonList(reader, 6)), Diagnostics: ReadJsonList(reader, 7)), cancellationToken);
+            Resolution: new ResolutionStats(reader.GetInt32(4), reader.GetInt32(5), ReadJsonList(reader, 6)), Diagnostics: ReadJsonList(reader, 7), Digest: Text(reader, 8)), cancellationToken);
         if (headers.Count == 0)
         {
             return null;
@@ -697,7 +699,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
             UiElements = await ReadAllAsync(ui, reader => new UiElement(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3),
                 Text(reader, 4), Text(reader, 5), Text(reader, 6), Text(reader, 7)), cancellationToken),
         };
-        return new StoredCodeMap(headers[0].Head, headers[0].At, map, headers[0].Mapped, headers[0].Failed);
+        return new StoredCodeMap(headers[0].Head, headers[0].At, map, headers[0].Mapped, headers[0].Failed) { InputsDigest = headers[0].Digest };
     }
 
     private static bool IsKnownEdgeKind(string kind) => Enum.TryParse<EdgeKind>(kind, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) && !char.IsAsciiDigit(kind[0]);
@@ -778,6 +780,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
         await ExecuteAsync(AgentCallsSql, cancellationToken);
         await ExecuteAsync(UiElementsSql, cancellationToken);
         await AddColumnIfMissingAsync("code_symbols", "normalized_hash", "TEXT", cancellationToken);
+        await AddColumnIfMissingAsync("code_map", "inputs_digest", "TEXT", cancellationToken);
 
         await ExecuteAsync(string.Create(CultureInfo.InvariantCulture, $"PRAGMA user_version = {SchemaVersion}"), cancellationToken);
         await transaction.CommitAsync(cancellationToken);

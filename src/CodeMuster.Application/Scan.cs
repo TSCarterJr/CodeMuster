@@ -13,7 +13,7 @@ namespace CodeMuster.Application;
 /// Only the stored map carries the UI-to-API join (D61): its <see cref="EdgeKind.Http"/> edges and diagnostics never reach slices, fingerprints or the result's diagnostics, and one progress line summarizes it when the mappers found an HTTP call.
 /// Each step is reported to <paramref name="progress"/> as it starts or finishes, with mapper steps under their language.
 /// </summary>
-public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config, IReadOnlyList<ICodeMapper>? mappers = null, string repoRoot = "", IProgress<string>? progress = null, IDependencyAuditor? auditor = null, IEngineEvents? events = null)
+public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config, IReadOnlyList<ICodeMapper>? mappers = null, string repoRoot = "", IProgress<string>? progress = null, IDependencyAuditor? auditor = null, IEngineEvents? events = null, bool remap = false)
 {
     // Every step also reaches the engine stream (D65) when there is one.
     private readonly IProgress<string>? progress = EngineStream.Tee(progress, events);
@@ -48,10 +48,10 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         var auditing = config.Vulnerabilities && auditor is not null
             ? auditor.AuditAsync(repoRoot, auditPaths, progress, auditCancellation.Token)
             : null;
-        (CompositeMap Mapped, HttpLinkResult Linked, List<PlannedUnit> Planned, DeadCodeScan? DeadCode) mapping;
+        (CompositeMap Mapped, HttpLinkResult Linked, List<PlannedUnit> Planned, DeadCodeScan? DeadCode, string? Digest) mapping;
         try
         {
-            mapping = await MapAndPlanAsync(active, mappingInputs, included, cancellationToken);
+            mapping = await MapAndPlanAsync(active, mappingInputs, included, current, cancellationToken);
         }
         catch when (auditing is not null)
         {
@@ -61,7 +61,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             throw;
         }
 
-        var (mapped, linked, planned, deadCode) = mapping;
+        var (mapped, linked, planned, deadCode, digest) = mapping;
         var audit = auditing is null ? null : Merged(await auditing);
         if (audit is not null)
         {
@@ -117,7 +117,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
 
         if (active.Count > 0)
         {
-            await ledger.ReplaceCodeMapAsync(new StoredCodeMap(head, now, linked.Map, mapped.MappedLanguages, mapped.FailedLanguages), cancellationToken);
+            await ledger.ReplaceCodeMapAsync(new StoredCodeMap(head, now, linked.Map, mapped.MappedLanguages, mapped.FailedLanguages) { InputsDigest = digest }, cancellationToken);
         }
 
         var total = existingUnits.Values.Count(u => u.Status != UnitStatus.Retired);
@@ -146,22 +146,39 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
     }
 
     /// <summary>Files the audit may look at: everything not excluded, plus data manifests and lockfiles, which are excluded as code but are exactly what the audit tools read (D38).</summary>
-    /// <summary>Maps the repository and plans every unit except the dependency units, which wait for the audit.</summary>
-    private async Task<(CompositeMap Mapped, HttpLinkResult Linked, List<PlannedUnit> Planned, DeadCodeScan? DeadCode)> MapAndPlanAsync(
-        IReadOnlyList<ICodeMapper> active, IReadOnlyList<FileRecord> mappingInputs, IReadOnlyList<FileRecord> included, CancellationToken cancellationToken)
+    /// <summary>
+    /// Maps the repository, or reuses the stored map when <see cref="MapInputs"/> proves mapping again would return it (D66) and <c>--remap</c> was not given, and plans every unit except the dependency units, which wait for the audit.
+    /// Returns the digest to store with the map, null when it may not be reused.
+    /// </summary>
+    private async Task<(CompositeMap Mapped, HttpLinkResult Linked, List<PlannedUnit> Planned, DeadCodeScan? DeadCode, string? Digest)> MapAndPlanAsync(
+        IReadOnlyList<ICodeMapper> active, IReadOnlyList<FileRecord> mappingInputs, IReadOnlyList<FileRecord> included, IReadOnlyList<FileRecord> current, CancellationToken cancellationToken)
     {
-        var mapped = await CompositeMapper.MapAsync(active, repoRoot, mappingInputs, progress, cancellationToken);
-        progress?.Report("planning units");
-        var linked = HttpLinks.Join(mapped.Map);
-        if (linked.Summary is { } summary)
+        var stored = active.Count > 0 && (config.Impact || !remap) ? await ledger.GetCodeMapAsync(cancellationToken) : null;
+        var digest = active.Count > 0 ? MapInputs.Digest(active, mappingInputs, current) : null;
+        CompositeMap mapped;
+        HttpLinkResult linked;
+        if (!remap && stored?.InputsDigest is { } storedDigest && storedDigest == digest)
         {
-            progress?.Report(summary);
+            progress?.Report($"reused the code map from {stored.HeadCommit[..Math.Min(7, stored.HeadCommit.Length)]}; nothing mapped changed");
+            mapped = MapInputs.Unlinked(stored);
+            linked = new HttpLinkResult(stored.Map, 0, 0, 0, 0, false);
+            progress?.Report("planning units");
+        }
+        else
+        {
+            mapped = await CompositeMapper.MapAsync(active, repoRoot, mappingInputs, progress, cancellationToken);
+            progress?.Report("planning units");
+            linked = HttpLinks.Join(mapped.Map);
+            if (linked.Summary is { } summary)
+            {
+                progress?.Report(summary);
+            }
         }
 
         List<PlannedUnit> planned = [.. SliceBuilder.Build(mapped, included), .. UxReview.Plan(included, config.UserExperience)];
         if (config.Impact && active.Count > 0)
         {
-            planned = [.. planned, .. ImpactReview.Plan(await ledger.GetCodeMapAsync(cancellationToken), linked.Map, included)];
+            planned = [.. planned, .. ImpactReview.Plan(stored, linked.Map, included)];
         }
 
         if (config.Duplicates && active.Count > 0)
@@ -191,7 +208,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             planned = [.. planned, .. await PlanVerifyUnitsAsync(planned, cancellationToken)];
         }
 
-        return (mapped, linked, planned, deadCode);
+        return (mapped, linked, planned, deadCode, digest is null ? null : MapInputs.Storable(digest, mapped, active, mappingInputs));
     }
 
     private IReadOnlyList<string> AuditPaths(IReadOnlyList<FileRecord> current) =>

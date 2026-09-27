@@ -22,7 +22,7 @@ public static class CommandLine
         ["init"] = new(["for"], ["yes", "no-gitignore", "no-hooks", "no-skills"]),
         ["intelligent-config"] = new(["agent", "model", "effort"], []),
         ["doctor"] = new([], ["fix", "yes"]),
-        ["scan"] = new(["mode"], []),
+        ["scan"] = new(["mode"], ["remap"]),
         ["status"] = new([], []),
         ["estimate"] = new(["path"], []),
         ["next"] = new(["batch", "out", "path", "kind"], []),
@@ -127,6 +127,7 @@ public static class CommandLine
 
         if (flags.Contains("no-skills") && options.ContainsKey("for")) throw Mistake(verb, "--for cannot be used with --no-skills");
         if (verb == "doctor" && flags.Contains("yes") && !flags.Contains("fix")) throw Mistake(verb, "--yes only applies with --fix");
+        if (verb == "scan" && flags.Contains("remap") && options.GetValueOrDefault("mode") == "file") throw Mistake(verb, "--remap maps the code again, so it cannot be used with --mode file");
         return new Command(verb, positionals, options, flags);
     }
 

@@ -112,17 +112,20 @@ public static class HelpText
             A missing .NET SDK is named with its download link; doctor never installs it.
             """,
         "scan" => """
-            usage: codemuster scan [--mode slice|file]
+            usage: codemuster scan [--mode slice|file] [--remap]
 
             Refresh the ledger from repository files. Changed units become pending or stale.
               --mode slice   Map entry-point call paths and unreached code (default)
               --mode file    Plan one unit per included file without code mapping
+              --remap        Map the code again even when nothing it reads changed
 
             Also runs dependency audit tools when vulnerabilities is enabled in config.
             Optional dead_code records static candidates; user_experience.enabled queues UI browser reviews.
             Also plans impact units for symbols changed since the previous scan, duplicate units for
             groups of repeated code, and one architecture unit over the UI's structure and one api unit
             over the endpoints; "impact", "duplicates" and "architecture_review": false turn them off.
+            When no mapped file, project, build or package file changed since the last complete map,
+            scan reuses that map instead of mapping again.
             Uses no agent calls. Run scan again after changing code or configuration.
             Next: codemuster estimate, then codemuster run --agent codex -j 4.
             """,

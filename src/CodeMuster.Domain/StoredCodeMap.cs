@@ -8,6 +8,9 @@ namespace CodeMuster.Domain;
 /// <param name="FailedLanguages">Languages whose mapper threw; their symbols are missing from the map and <see cref="CodeMap.Diagnostics"/> says why.</param>
 public sealed record StoredCodeMap(string HeadCommit, string ScannedAt, CodeMap Map, IReadOnlyList<string> MappedLanguages, IReadOnlyList<string> FailedLanguages)
 {
+    /// <summary>A hash over everything the mapping read (the mapper builds, each mapped file and mapping input with its content hash); null when the map may not be reused, because it was partial or a language was skipped (D66).</summary>
+    public string? InputsDigest { get; init; }
+
     /// <summary>True when a mapper failed or reported a diagnostic, so the map may lack symbols or edges. The UI-to-API join's diagnostics (<see cref="HttpCall.DiagnosticPrefix"/>) describe unmatched calls and endpoints, not missing code, so they do not count.</summary>
     public bool IsPartial => FailedLanguages.Count > 0 || Map.Diagnostics.Any(diagnostic => !diagnostic.StartsWith(HttpCall.DiagnosticPrefix, StringComparison.Ordinal));
 }

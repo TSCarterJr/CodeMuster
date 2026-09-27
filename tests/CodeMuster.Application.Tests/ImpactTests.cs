@@ -32,8 +32,12 @@ public class ImpactTests
         tree.HeadCommit = Second;
         csharp.Map = csharp.Map with { Symbols = csharp.Map.Symbols.Select(s => s.Id == symbolId ? change(s) : s).ToList() };
         typescript.Map = typescript.Map with { Symbols = typescript.Map.Symbols.Select(s => s.Id == symbolId ? change(s) : s).ToList() };
+        Edit(csharp.Map.Symbols.Concat(typescript.Map.Symbols).First(s => s.Id == symbolId).Path);
         await ScanAsync();
     }
+
+    // The file behind a changed symbol changes too, or the scan would rightly reuse the stored map (D66); appending keeps its line numbers.
+    private void Edit(string path) => tree.Add(path, tree.Contents[path] + "// edited\n");
 
     [Fact]
     public async Task FirstScan_PlansNoImpactUnits()
@@ -84,6 +88,8 @@ public class ImpactTests
             ],
         };
 
+        Edit(MoneyPath);
+        Edit(ServicePath);
         await ScanAsync();
 
         Assert.Equal([UnitIds.Impact(MoneyFormat)], Live(UnitKind.Impact).Select(u => u.Id));
@@ -103,6 +109,7 @@ public class ImpactTests
         const string third = "3333333333333333333333333333333333333333";
         tree.HeadCommit = third;
         csharp.Map = csharp.Map with { Symbols = csharp.Map.Symbols.Select(s => s.Id == ListForTenant ? s with { BodyHash = "body:again" } : s).ToList() };
+        Edit(RepositoryPath);
         await ScanAsync();
 
         var again = Assert.Single(Live(UnitKind.Impact));
@@ -118,6 +125,7 @@ public class ImpactTests
         Assert.Equal(DoneOutcome.Recorded, (await new Done(ledger, clock, Config.Default).RunAsync(unit.Id, unit.Fingerprint, """{ "summary": "Callers still fine.", "findings": [] }""", CancellationToken.None)).Outcome);
 
         csharp.Map = csharp.Map with { Symbols = csharp.Map.Symbols.Select(s => s.Id == ListForTenant ? s with { BodyHash = "body:again" } : s).ToList() };
+        Edit(RepositoryPath);
         await ScanAsync();
 
         Assert.Equal(UnitStatus.Stale, Assert.Single(Live(UnitKind.Impact)).Status);
@@ -141,17 +149,17 @@ public class ImpactTests
     }
 
     [Fact]
-    public async Task ImpactOff_PlansNothing_AndNeverReadsTheStoredMap()
+    public async Task ImpactOff_PlansNothing()
     {
         var off = Config.Default with { Impact = false };
         await ScanAsync(off);
         tree.HeadCommit = Second;
         csharp.Map = WithBodyHash(CSharp(), ListForTenant, "body:changed");
+        Edit(RepositoryPath);
 
         await ScanAsync(off);
 
         Assert.Empty(Live(UnitKind.Impact));
-        Assert.Equal(0, ledger.CodeMapReads);
     }
 
     [Fact]

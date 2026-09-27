@@ -85,6 +85,12 @@ start with 0.2.8.
   one agent call and reruns only when its files or their structure change. On by default;
   `"architecture_review": false` turns both off. The ledger now also stores the UI structure
   with the code map (a new table in the still unreleased schema 8).
+- A `scan` with nothing to map again is faster: when no mapped file and no project, build or
+  package file changed since the last complete map, and CodeMuster's mappers are the same build,
+  the scan reuses the stored map instead of loading MSBuild and the TypeScript compiler, and says
+  `reused the code map from <commit>`. The result is exactly what mapping again gives. A partial
+  map is never reused. `scan --remap` maps again regardless, for example after a new .NET SDK or
+  a `dotnet restore` or `npm install` that changed no tracked file.
 
 ## 0.3.6 - 2026-09-25
 

@@ -153,7 +153,7 @@ public class CommandLineTests
     [InlineData("run --agent fake --bogus x", "codemuster run: unknown option --bogus (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --kind, --force)")]
     [InlineData("verify --agent fake --kind file", "codemuster verify: unknown option --kind (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --force)")]
     [InlineData("run --agnet=fake", "codemuster run: unknown option --agnet; did you mean --agent? (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --kind, --force)")]
-    [InlineData("scan --yes", "codemuster scan: unknown option --yes (options: --mode)")]
+    [InlineData("scan --yes", "codemuster scan: unknown option --yes (options: --mode, --remap)")]
     [InlineData("doctor --fix --force", "codemuster doctor: unknown option --force (options: --fix, --yes)")]
     [InlineData("validate --fix", "codemuster validate: unknown option --fix (validate takes no options)")]
     public void Parse_UnknownOption_IsNamed_WithTheValidOnes(string arguments, string expected)
@@ -204,6 +204,7 @@ public class CommandLineTests
     [InlineData("intelligent-config --agent claude --model m --effort high")]
     [InlineData("intelligent-config")]
     [InlineData("scan --mode file")]
+    [InlineData("scan --remap")]
     [InlineData("scan")]
     [InlineData("estimate --path web")]
     [InlineData("run --agent fake -j 2 --attempts 1 --path web --model m --effort e --kind orphan --force")]
@@ -255,6 +256,15 @@ public class CommandLineTests
 
         Assert.Equal(message, error.Message);
         Assert.StartsWith("usage: codemuster map ", error.Usage);
+    }
+
+    [Fact]
+    public void Parse_ScanRemap_NeedsSliceMode()
+    {
+        var error = Assert.Throws<UsageException>(() => CommandLine.Parse(["scan", "--mode", "file", "--remap"]));
+
+        Assert.Equal("codemuster scan: --remap maps the code again, so it cannot be used with --mode file", error.Message);
+        Assert.True(CommandLine.Parse(["scan", "--remap"]).Flags.Contains("remap"));
     }
 
     [Theory]

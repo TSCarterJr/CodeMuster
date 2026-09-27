@@ -122,6 +122,7 @@ public class CodeMapScanTests
         await ScanAsync();
         var units = ledger.Units.ToList();
         csharp.Map = CSharp() with { Symbols = CSharp().Symbols.Take(3).ToList(), Edges = [], EntryPoints = [] };
+        tree.Add(ControllerPath, "content of an edited controller");
 
         await ScanAsync();
 
