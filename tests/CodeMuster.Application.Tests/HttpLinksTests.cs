@@ -18,6 +18,20 @@ public class HttpLinksTests
         [.. HttpLinks.Join(Map(entryPoints, call)).Map.Edges.Where(edge => edge.Kind == EdgeKind.Http).Select(edge => edge.To)];
 
     [Theory]
+    [InlineData("/{API_URL}/users", "GET /users")]
+    [InlineData("/{import.meta.env.VITE_API}/api/orders/{id}", "GET /api/orders/{id}")]
+    public void A_leading_variable_is_read_as_the_server_address_when_the_full_path_matches_nothing(string url, string endpoint)
+    {
+        Assert.Equal([$"M:Api.{endpoint}"], Linked([Endpoint(endpoint)], Call("GET", url)));
+    }
+
+    [Fact]
+    public void A_leading_variable_that_is_a_real_route_segment_still_matches_as_one()
+    {
+        Assert.Equal(["M:Api.GET /{tenant}/users"], Linked([Endpoint("GET /{tenant}/users"), Endpoint("GET /users")], Call("GET", "/{tenant}/users")));
+    }
+
+    [Theory]
     [InlineData("GET /quotes", "GET", "/quotes", true)]
     [InlineData("GET /quotes", "GET", "/customers", false)]
     [InlineData("GET /quotes/{id}", "GET", "/quotes/5", true)]

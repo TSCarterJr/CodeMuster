@@ -11,7 +11,17 @@ start with 0.2.8.
   point, and the commit scanned. Source text is not stored, and units, coverage and
   fingerprints are unchanged. The ledger moves to schema 8 the first time this version
   opens it; CodeMuster 0.3.6 and earlier then refuse that ledger and ask for an update,
-  so back up `.codemuster` if you may need to roll back. No command reads the map yet.
+  so back up `.codemuster` if you may need to roll back.
+- New `codemuster map`: `map` summarizes the stored map, `map callers <symbol>` and
+  `map callees <symbol>` show who calls a method and what it reaches, and
+  `map flow <entry point>` shows the call tree from an endpoint, page or worker. Output is
+  text, Mermaid (`--format mermaid`) or JSON, and `--out map.html` writes a self-contained
+  interactive page that works offline.
+- The map links React calls to the C# API: `fetch` and `axios` calls with a readable URL
+  (including `${API_URL}/...` base addresses) are matched to endpoints by method and route,
+  so a page's flow continues through the API to the database code. Calls that match no
+  endpoint and endpoints the UI never calls are listed by `map`. Units, coverage and
+  fingerprints are unchanged.
 
 ## 0.3.6 - 2026-09-25
 

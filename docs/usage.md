@@ -358,13 +358,20 @@ codemuster map --out map.html
 ```
 
 - `map` prints the commit and scan time, symbol counts by language, edge counts by kind, the
-  entry points, a warning when a mapper failed (the map is partial), and the other forms.
+  entry points, the UI-to-API results (calls that match no endpoint, calls whose URL is built at
+  runtime, and endpoints the UI never calls), a warning when a mapper failed (the map is
+  partial), and the other forms.
   `--format json` prints the same as JSON.
 - `map callers <symbol>` and `map callees <symbol>` list the direct callers or callees, each
-  with its edge kind (`call`, `bound`, `implements`, `overrides`), `path:line` and signature.
+  with its edge kind (`call`, `bound`, `implements`, `overrides`, or `http` for a UI call that
+  reaches an API endpoint), `path:line` and signature.
   `--depth N` (default 1) walks further and prints the tree.
 - `map flow <entry point>` prints the call tree from an entry point, matched by its display
-  ignoring case (`"GET /quotes"`, `/quotes`) or by its symbol id; `--depth` defaults to 6.
+  ignoring case (`"GET /quotes"`, `/quotes`, or `quotes` without the slash) or by its symbol id;
+  `--depth` defaults to 6. A page's flow follows `http` edges into the API, so
+  `map flow quotes` runs from the React page through its `fetch` call to the controller,
+  service and repository. In Git Bash on Windows write page routes without the leading slash:
+  Git Bash rewrites `/quotes` into a Windows path before CodeMuster sees it.
 
 `<symbol>` is an exact symbol id, `Type.Method` (`QuoteService.ListQuotes`), a method or function
 name (`ListForTenant`), or part of one. When several symbols match, `map` lists them with their

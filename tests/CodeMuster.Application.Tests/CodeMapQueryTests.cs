@@ -78,6 +78,36 @@ public class CodeMapQueryTests
     }
 
     [Fact]
+    public async Task Flow_MatchesAPageRoute_WithoutItsLeadingSlash()
+    {
+        var result = await RunAsync(Sample(), Walk("flow", "items"));
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.StartsWith("flow /items (page) from ItemsPage", Lines(result.Output)[0]);
+    }
+
+    [Fact]
+    public async Task Flow_ExplainsARouteGitBashRewroteIntoAWindowsPath()
+    {
+        var result = await RunAsync(Sample(), Walk("flow", "C:/Program Files/Git/items"));
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("Git Bash rewrote /items into \"C:/Program Files/Git/items\"; write it as items", result.Error);
+    }
+
+    [Fact]
+    public async Task Summary_ListsTheUiToApiResults_SeparatelyFromPartialMapWarnings()
+    {
+        var result = await RunAsync(Sample(diagnostics: ["http: web/lib/api.ts:14 GET /customers matches no endpoint", "http: GET /items/{id} is not called from the mapped UI"]), new MapRequest(null, null, null, MapFormat.Text, Page: false));
+
+        var lines = Lines(result.Output);
+        Assert.Contains("ui to api:", lines);
+        Assert.Contains("  web/lib/api.ts:14 GET /customers matches no endpoint", lines);
+        Assert.Contains("  GET /items/{id} is not called from the mapped UI", lines);
+        Assert.DoesNotContain(lines, line => line.StartsWith("warning: partial map", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Callees_ListsDirectCallees_WithKindPathLineAndSignature_AtDepthOne()
     {
         var result = await RunAsync(Sample(), Walk("callees", "ItemService.Load"));

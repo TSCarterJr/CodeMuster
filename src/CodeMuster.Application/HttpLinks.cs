@@ -7,6 +7,7 @@ namespace CodeMuster.Application;
 /// Joins the UI's static HTTP calls to the C# <c>http</c> entry points that serve them (D61). A call links to an endpoint when the methods agree (ANY on either side agrees with any method)
 /// and the routes match segment by segment, empty segments ignored: a route parameter (<c>{id}</c>, <c>{id:int}</c>) matches any one segment, an optional one (<c>{id?}</c>, <c>{id=1}</c>) may also match none,
 /// a catch-all (<c>{*rest}</c>) matches the remainder, a call's own parameter segment matches only a route parameter, and literal segments compare case-insensitively as ASP.NET routing does.
+/// A call that matches nothing and starts with its own parameter segment is tried again without it, since that leading variable is usually the API's base address (<c>`${API_URL}/users`</c>).
 /// Of the endpoints a call matches it links to those with the most literal segments, then those that name a method, as ASP.NET's route precedence would choose.
 /// </summary>
 public static class HttpLinks
@@ -34,7 +35,14 @@ public static class HttpLinks
                 continue;
             }
 
-            var targets = Best(endpoints.Where(endpoint => endpoint.Serves(call.Method, Segments(call.Url))).ToList());
+            var segments = Segments(call.Url);
+            var targets = Best(endpoints.Where(endpoint => endpoint.Serves(call.Method, segments)).ToList());
+            if (targets.Count == 0 && segments.Length > 0 && IsParameter(segments[0]))
+            {
+                // `${API_URL}/users` is how most front ends reach their API: read the leading variable as the server address.
+                targets = Best(endpoints.Where(endpoint => endpoint.Serves(call.Method, segments[1..])).ToList());
+            }
+
             if (targets.Count == 0)
             {
                 unmatched++;

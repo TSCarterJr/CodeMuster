@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
@@ -70,7 +71,7 @@ public sealed class CodeMapQuery(ILedger ledger)
             if (entries.Count != 1)
             {
                 return Fail(entries.Count == 0
-                    ? $"no entry point matches \"{target}\"; entry points:\n" + EntryList(index, index.EntryPoints)
+                    ? RewrittenByGitBash(target) + $"no entry point matches \"{target}\"; entry points:\n" + EntryList(index, index.EntryPoints)
                     : $"\"{target}\" matches {entries.Count} entry points; use one of these symbol ids:\n" + string.Join('\n', entries.Select(entry => $"  {entry.Display} ({entry.Kind})  {entry.SymbolId}")));
             }
 
@@ -132,12 +133,22 @@ public sealed class CodeMapQuery(ILedger ledger)
             }
         }
 
+        var http = stored.Map.Diagnostics.Where(IsHttp).ToList();
+        if (http.Count > 0)
+        {
+            text.Append("ui to api:\n");
+            foreach (var diagnostic in http)
+            {
+                text.Append("  ").Append(diagnostic[HttpCall.DiagnosticPrefix.Length..]).Append('\n');
+            }
+        }
+
         if (stored.IsPartial)
         {
             text.Append(stored.FailedLanguages.Count > 0
                 ? $"warning: partial map; failed languages: {string.Join(", ", stored.FailedLanguages)}\n"
                 : "warning: partial map; the mappers reported:\n");
-            foreach (var line in stored.Map.Diagnostics.SelectMany(diagnostic => diagnostic.Split('\n')))
+            foreach (var line in stored.Map.Diagnostics.Where(diagnostic => !IsHttp(diagnostic)).SelectMany(diagnostic => diagnostic.Split('\n')))
             {
                 text.Append("  ").Append(line.TrimEnd('\r')).Append('\n');
             }
@@ -149,6 +160,17 @@ public sealed class CodeMapQuery(ILedger ledger)
         text.Append("  codemuster map callees <symbol> [--depth N]\n");
         text.Append("  add --format mermaid|json, or --out map.html for an interactive page\n");
         return text.ToString();
+    }
+
+    private static bool IsHttp(string diagnostic) => diagnostic.StartsWith(HttpCall.DiagnosticPrefix, StringComparison.Ordinal);
+
+    // Git Bash turns an argument such as /quotes into its own install path (C:/Program Files/Git/quotes) before a program sees it.
+    private static string RewrittenByGitBash(string target)
+    {
+        var match = Regex.Match(target, @"^[A-Za-z]:[\\/].*?[\\/]Git[\\/](?<route>.*)$");
+        return match.Success
+            ? $"Git Bash rewrote /{match.Groups["route"].Value} into \"{target}\"; write it as {match.Groups["route"].Value} (or set MSYS_NO_PATHCONV=1)\n"
+            : "";
     }
 
     private static string Short(string commit) => commit.Length > 7 ? commit[..7] : commit;
@@ -473,6 +495,11 @@ public sealed class CodeMapQuery(ILedger ledger)
             if (matches.Count == 0)
             {
                 matches = [.. EntryPoints.Where(entry => entry.SymbolId == query)];
+            }
+
+            if (matches.Count == 0)
+            {
+                matches = [.. EntryPoints.Where(entry => entry.Display.Equals("/" + query.TrimStart('/'), StringComparison.OrdinalIgnoreCase))];
             }
 
             if (matches.Count == 0)
