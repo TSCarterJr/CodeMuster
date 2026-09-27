@@ -151,6 +151,8 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
             lines.Add("");
         }
 
+        if (status.Spend is { } spend) lines.AddRange(SpendSection(spend, PriceTable.For(config)));
+
         lines.Add("## Units");
         lines.Add("");
         lines.Add("| unit | status | summary |");
@@ -161,6 +163,47 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
         }
 
         return string.Join('\n', lines) + "\n";
+    }
+
+    private static IEnumerable<string> SpendSection(SpendSummary spend, PriceTable prices)
+    {
+        yield return "## Spend";
+        yield return "";
+        yield return string.Create(CultureInfo.InvariantCulture,
+            $"{Spend.Money(spend.CostUsd)} API-equivalent across {spend.Calls} agent call(s), {spend.Failed} of them failed or rejected; {spend.Unpriced} unpriced.");
+        yield return "API-equivalent is what the calls cost at the provider's API prices, whether or not the harness ran on a subscription. Each cost was fixed when its call was recorded, so a later price change does not alter it.";
+        yield return "";
+        var tokens = spend.Tokens;
+        yield return string.Create(CultureInfo.InvariantCulture, $"tokens: {tokens.Input} input, {tokens.Output} output, {tokens.CacheRead} cache read, {tokens.CacheWrite} cache write");
+        yield return "";
+        yield return "| model | calls | input | output | cache read | cache write | cost |";
+        yield return "|---|---|---|---|---|---|---|";
+        foreach (var group in spend.ByModel)
+        {
+            var t = group.Tokens;
+            yield return string.Create(CultureInfo.InvariantCulture, $"| {Cell(group.Label)} | {group.Calls} | {t.Input} | {t.Output} | {t.CacheRead} | {t.CacheWrite} | {Spend.Cost(group)} |");
+        }
+
+        foreach (var (heading, groups) in new[] { ("unit kind", spend.ByKind), ("run", spend.ByRun) })
+        {
+            yield return "";
+            yield return $"| {heading} | calls | cost |";
+            yield return "|---|---|---|";
+            foreach (var group in groups) yield return string.Create(CultureInfo.InvariantCulture, $"| {Cell(group.Label)} | {group.Calls} | {Spend.Cost(group)} |");
+        }
+
+        yield return "";
+        var sources = spend.BySource.Select(entry => string.Create(CultureInfo.InvariantCulture, $"{entry.Key} {entry.Value}"));
+        yield return $"prices: bundled table checked {prices.Checked}" + (spend.BySource.Count == 0 ? "" : "; priced calls by source: " + string.Join(", ", sources));
+        if (spend.Unpriced > 0)
+        {
+            var reasons = new List<string>();
+            if (spend.WithoutUsage > 0) reasons.Add(string.Create(CultureInfo.InvariantCulture, $"{spend.WithoutUsage} reported no usage"));
+            if (spend.UnknownModels.Count > 0) reasons.Add($"{spend.Unpriced - spend.WithoutUsage} used a model that had no price when recorded ({string.Join(", ", spend.UnknownModels)}); add it under \"prices\" in .codemuster/config.json to price later calls");
+            yield return string.Create(CultureInfo.InvariantCulture, $"unpriced: {spend.Unpriced} call(s); ") + string.Join("; ", reasons);
+        }
+
+        yield return "";
     }
 
     private static string? AuditedBy(IReadOnlyList<Unit> units, IReadOnlyDictionary<string, AgentIdentity> provenance)

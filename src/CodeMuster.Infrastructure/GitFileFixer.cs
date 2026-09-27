@@ -18,6 +18,7 @@ public sealed class GitFileFixer(string repoRoot, Func<string, IAgentAdapter> ad
         var directory = Path.Combine(Path.GetTempPath(), "codemuster-fix-" + Guid.NewGuid().ToString("N"));
         var created = false;
         var retain = false;
+        AgentReply? reply = null;
         try
         {
             await worktrees.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -34,7 +35,7 @@ public sealed class GitFileFixer(string repoRoot, Func<string, IAgentAdapter> ad
             var baseline = (await GitProcess.RunAsync(directory, ["rev-parse", "HEAD"], null, cancellationToken).ConfigureAwait(false)).Trim();
             var scope = string.Join(", ", allowed);
             var instructions = pack + $"\n\nYou are working in an isolated worktree. The explicit allowed file scope is: {scope}. Read related allowed files as needed and make the smallest coherent repair. Do not commit, stage, or modify files outside this scope. The coordinator runs tests and commits the repair.\n";
-            var response = await adapterForDirectory(directory).RunAsync(instructions, cancellationToken).ConfigureAwait(false);
+            reply = await adapterForDirectory(directory).RunAsync(instructions, cancellationToken).ConfigureAwait(false);
             var changed = await GitProcess.RunAsync(directory, ["diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", baseline], null, cancellationToken).ConfigureAwait(false);
             var untracked = await GitProcess.RunAsync(directory, ["ls-files", "--others", "--exclude-standard", "-z"], null, cancellationToken).ConfigureAwait(false);
             var extraPaths = changed.Split('\0', StringSplitOptions.RemoveEmptyEntries).Where(changedPath => !allowed.Contains(changedPath, StringComparer.Ordinal))
@@ -43,7 +44,7 @@ public sealed class GitFileFixer(string repoRoot, Func<string, IAgentAdapter> ad
             if (extraPaths.Length > 0)
             {
                 retain = true;
-                throw new InvalidOperationException($"worker for {path} changed files outside its assigned file: {string.Join(", ", extraPaths)}; no changes were applied; worker retained at {directory}");
+                throw new AgentCallException($"worker for {path} changed files outside its assigned file: {string.Join(", ", extraPaths)}; no changes were applied; worker retained at {directory}", reply.Usage);
             }
 
             // Pin every format setting git apply depends on, so user config such as diff.noprefix, color.ui=always, diff.external or diff.context cannot reshape the patch.
@@ -51,7 +52,7 @@ public sealed class GitFileFixer(string repoRoot, Func<string, IAgentAdapter> ad
             // Latin-1 maps each byte to one char and back, so a file in Windows-1252 or any other non-UTF-8 encoding reaches git apply unchanged.
             var patch = await GitProcess.RunAsync(directory, ["--literal-pathspecs", "diff", "--binary", "--no-color", "--no-ext-diff", "--no-textconv", "--unified=3", "--src-prefix=a/", "--dst-prefix=b/", baseline, "--", .. allowed], null, cancellationToken, new Dictionary<string, string> { ["GIT_DIFF_OPTS"] = "" }, Encoding.Latin1).ConfigureAwait(false);
             retain = true;
-            return new FileFixEdit(response, patch, directory);
+            return new FileFixEdit(reply.Text, patch, directory) { Usage = reply.Usage };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -66,7 +67,10 @@ public sealed class GitFileFixer(string repoRoot, Func<string, IAgentAdapter> ad
         catch (Exception exception) when (created && !retain)
         {
             retain = true;
-            throw new InvalidOperationException($"worker for {path} failed: {exception.Message}; no changes were applied; worker retained at {directory}", exception);
+            // Once the agent has run, the failure still carries the usage it paid for.
+            var message = $"worker for {path} failed: {exception.Message}; no changes were applied; worker retained at {directory}";
+            if (reply is not null) throw new AgentCallException(message, reply.Usage, exception);
+            throw new InvalidOperationException(message, exception);
         }
         finally
         {

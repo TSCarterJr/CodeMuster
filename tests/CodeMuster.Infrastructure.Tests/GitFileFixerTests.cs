@@ -125,7 +125,8 @@ public sealed class GitFileFixerTests : IDisposable
             return Task.FromResult("response");
         }));
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => fixer.RunAsync("a.cs", "pack", CancellationToken.None));
+        var error = await Assert.ThrowsAsync<AgentCallException>(() => fixer.RunAsync("a.cs", "pack", CancellationToken.None));
+        Assert.Equal(CallbackAgent.Usage, error.Usage);
 
         Assert.Contains("outside its assigned file", error.Message);
         Assert.Empty(repo.Run("status", "--porcelain"));
@@ -178,7 +179,8 @@ public sealed class GitFileFixerTests : IDisposable
             return Task.FromResult("response");
         }));
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => fixer.RunAsync("a.cs", "pack", CancellationToken.None));
+        var error = await Assert.ThrowsAsync<AgentCallException>(() => fixer.RunAsync("a.cs", "pack", CancellationToken.None));
+        Assert.Equal(CallbackAgent.Usage, error.Usage);
 
         Assert.Contains(other, error.Message);
         Assert.NotNull(worker);
@@ -261,8 +263,9 @@ public sealed class GitFileFixerTests : IDisposable
 
     private sealed class CallbackAgent(Func<string, CancellationToken, Task<string>> run) : IAgentAdapter
     {
+        public static readonly AgentUsage Usage = new(10, 2, 0, 0, "fake", null);
         public AgentIdentity Identity { get; } = new("fake", null, null);
-        public Task<string> RunAsync(string pack, CancellationToken cancellationToken) => run(pack, cancellationToken);
+        public async Task<AgentReply> RunAsync(string pack, CancellationToken cancellationToken) => new(await run(pack, cancellationToken), Usage);
     }
 
     public void Dispose() => repo.Dispose();

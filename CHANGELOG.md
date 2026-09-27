@@ -6,6 +6,20 @@ start with 0.2.8.
 
 ## Unreleased
 
+- Spend tracking: every agent call that `run`, `verify` and `fix` make is recorded with its
+  input, output and cache tokens, the model that answered, and its cost, including failed calls,
+  unusable answers and rejected repairs. The cost is the harness's own figure when it reports
+  one (Claude Code, OpenCode), otherwise the tokens at a price table bundled with CodeMuster
+  (Anthropic, OpenAI and Google models, checked 2026-09-27); it is fixed when the call is
+  recorded, and a model without a price is shown as unpriced, never as free. `status` adds a
+  spend line, `report` a Spend section by model, unit kind and run, and `estimate` a cost per
+  model for the pending work. Figures are API-equivalent: on a subscription you pay the
+  subscription. Add `prices` to `.codemuster/config.json` to price other models or use your
+  own rates. `intelligent-config` prints its call's usage and cost.
+- The claude adapter now asks for `--output-format json` and codex for `exec --json` to read
+  usage; the answer text passed on is unchanged. A Claude Code call that ends in an error
+  (`is_error`) is now a failed attempt with its message, instead of an answer to parse.
+
 - `scan` now stores a code map in the ledger: every method and function with its file,
   lines, signature and containing type or class, every call between them, every entry
   point, and the commit scanned. Source text is not stored, and units, coverage and

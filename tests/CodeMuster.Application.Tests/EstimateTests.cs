@@ -48,7 +48,7 @@ public class EstimateTests
             [new EstimateLine(UnitKind.File, 4, 1210 + 4 * 700), new EstimateLine(UnitKind.Slice, 1, 1201 + 700)],
             report.Lines);
         Assert.Equal(5911, report.TotalTokens);
-        Assert.Equal("file 4 units ~4010 tokens\nslice 1 units ~1901 tokens\ntotal ~5911 tokens", report.Render());
+        Assert.StartsWith("file 4 units ~4010 tokens\nslice 1 units ~1901 tokens\ntotal ~5911 tokens\nAPI-equivalent cost of ~5911 input", report.Render());
     }
 
     [Fact]

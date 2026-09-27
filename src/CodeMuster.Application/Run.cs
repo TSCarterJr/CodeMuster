@@ -12,6 +12,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
         var total = 0;
         var next = new Next(ledger, tree, config, interactive: false, options.Kind, options.Path);
         var done = new Done(ledger, clock, config, adapter.Identity);
+        var calls = new CallRecorder(ledger, clock, config, adapter.Identity, options.Kind == UnitKind.Verify ? "verify" : "run");
         using var turn = new SemaphoreSlim(1, 1);
         var attempts = new Dictionary<string, int>(StringComparer.Ordinal);
         var gaveUp = new List<string>();
@@ -80,14 +81,17 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
             }
             DoneResult? failure = null;
             var text = "";
+            AgentUsage? paid = null;
             notes?.Report($"starting {Name(pack.Kind)} {pack.Key}");
             try
             {
-                text = await adapter.RunAsync(pack.Markdown, cancellationToken);
+                var reply = await adapter.RunAsync(pack.Markdown, cancellationToken);
+                (text, paid) = (reply.Text, reply.Usage);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
                 failure = new DoneResult(DoneOutcome.Rejected, ex.Message);
+                paid = CallRecorder.PaidUsage(ex);
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -95,6 +99,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
             try
             {
                 var result = failure ?? await done.RunAsync(pack.UnitId, pack.Fingerprint, ResponseText.ExtractJson(text), cancellationToken);
+                if (paid is not null) await calls.RecordAsync(pack.UnitId, pack.Kind, paid, result.Outcome == DoneOutcome.Recorded, cancellationToken);
                 Record(pack.UnitId, pack.Kind, pack.Key, result);
             }
             finally

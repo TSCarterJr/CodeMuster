@@ -29,6 +29,9 @@ public sealed class TempRepo : IDisposable
         AppendConfig("\"test_command\": [" + quoted + "]");
     }
 
+    /// <summary>Adds per-model prices over the bundled table (D63), as a JSON array.</summary>
+    public void WithPrices(string json) => AppendConfig("\"prices\": " + json);
+
     /// <summary>Raises the whole-file pack budget, as scan, run and fix read it.</summary>
     public void WithSliceTokenBudget(int tokens) =>
         AppendConfig("\"slice_token_budget\": " + tokens.ToString(System.Globalization.CultureInfo.InvariantCulture));

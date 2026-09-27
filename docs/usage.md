@@ -121,7 +121,8 @@ that is not installed is passed over for the next one, and scan prints a warning
 lockfiles, the tool that ran and any it passed over.
 
 `estimate` uses roughly four bytes per input token. It is not a price quote: responses, retries,
-and verification work created by future findings can add to usage.
+and verification work created by future findings can add to usage. It also prices those tokens
+per model; see [Spend](#spend).
 
 ### 3. Analyze and verify
 
@@ -258,6 +259,7 @@ Edit the existing `.codemuster/config.json`; keep lenses that are already useful
 | `user_experience` | Disabled | UI-only browser review settings: `enabled`, optional HTTP(S) `base_url`, and `include`/`exclude` globs. See [application reviews](application-reviews.md). |
 | `exclude` | `[]` | Additional repo-relative exclusion globs. |
 | `test_command` | `[]` | Program and arguments to run once before fixing and after each fix attempt; empty means no configured validation. |
+| `prices` | Not set | Per-model prices in US dollars per million tokens that override or extend the bundled price table. See [Spend](#spend). |
 
 A glob without a slash matches file names anywhere. Use `vendor/**` to exclude a directory.
 Built-in exclusions cover generated files, migrations, lockfiles, binaries, and non-code files.
@@ -341,6 +343,62 @@ In `.codemuster/ledger.db`, `findings.fix_status` and `fix_reason` are separate 
 `verify_status` and `verify_reason`. Commit messages list addressed IDs under `Findings:` and
 declined IDs under `Declined:`. Those IDs can be compared with ledger rows when investigating
 recording problems. Inspect a live ledger read-only; do not change its rows during a run.
+
+## Spend
+
+Every agent call that `run`, `verify` and `fix` make is recorded in the ledger, whether its
+answer was used or not: a failed call, an unusable answer, a rejected repair and a repair that
+finished after the run stopped all cost money too. A call is recorded once the harness has run;
+a harness that could not start (not installed, a bad flag) spent nothing and is not recorded.
+Each record keeps the input, output, cache-read and cache-write tokens, the model that
+answered, the harness's own cost when it reports one, and a cost fixed when the call is recorded.
+
+| Harness | What it reports | Model |
+|---|---|---|
+| `claude` (`--output-format json`) | Tokens for every model the call used and its own cost | Reported; the model with the largest share |
+| `codex` (`exec --json`) | Tokens; input includes cached tokens, which CodeMuster separates | Not reported: the model shown in the start preview |
+| `gemini` (`--output-format json`) | Tokens per model; nothing on failure | Reported |
+| `opencode` (`run --format json`) | Tokens and cost per step | Not reported: the `--model` passed, if any |
+
+The cost is the harness's own figure when it gives one (Claude Code and OpenCode), and
+otherwise the tokens priced at the answering model's rates from a price table bundled with
+CodeMuster. The table lists each model's input, output, cache-read, five-minute and one-hour
+cache-write price, the official page it came from, and the date it was checked. A model the
+table does not know keeps its tokens with no cost and is reported as unpriced, never as free.
+A later price change never alters a recorded cost.
+
+All figures are API-equivalent: what the calls would cost at the provider's API prices. When a
+harness runs on a subscription, you pay the subscription, not this amount.
+
+- `status` adds one line, such as `spend $12.40 API-equivalent across 214 calls; 3 calls unpriced`.
+- `report` adds a Spend section: totals and tokens, a table by model, cost by unit kind and by
+  run (each `run`, `verify` or `fix` invocation), the price table date, and why calls are unpriced.
+- `estimate` prices the pending input tokens per model: the models already used, any in
+  `prices`, else a few representative ones. Output is assumed at 10% of input until 20 calls
+  with usage are recorded, then measured from them. Once priced calls exist it also shows their
+  average cost and what the pending units would cost at that rate.
+- `intelligent-config` prints its one call's usage and cost; it does not open the ledger, so that
+  call is not in the totals.
+
+Harness overhead dominates small units. Each Claude Code call carries about 45K tokens of its
+own system prompt and tools before any of the pack. The first call writes them to the prompt
+cache at the one-hour rate (2x input), about $0.36 on Claude Opus 5.5, and calls within the
+cache lifetime read them back at the much lower cache-read rate. The pack-based token estimate
+does not include this overhead; the recorded average per call does.
+
+To price a model the table lacks, or to use your own negotiated rates, add `prices` to
+`.codemuster/config.json`. Rates are US dollars per million tokens; a missing cache rate is
+charged at the input rate. An entry matches its model id exactly, and also the same id with a
+release date or a bracketed context tag after it, such as `claude-haiku-4-5-20251001`.
+
+```json
+"prices": [
+  {"model": "in-house-7", "input": 1.0, "output": 5.0, "cache_read": 0.1, "cache_write": 1.25},
+  {"model": "claude-opus-5-5", "input": 4, "output": 20, "cache_read": 0.2, "cache_write": 5, "cache_write_1h": 8}
+]
+```
+
+Config prices apply to calls recorded after the change, and win over the bundled table.
 
 ## Code map
 
@@ -712,6 +770,10 @@ as partial. Source text is never stored. The map is not a unit: it does not chan
 its rows kept; older CLI versions then ask for an update rather than opening it. `map` reads it
 (see [Code map](#code-map)). An edge kind a newer build stored and this one does not know is
 skipped when the map is read, with a diagnostic, so the map reads as partial instead of failing.
+Schema 8 also adds the `agent_calls` table: one row per agent call with its run, unit, requested
+and answering model, token counts, the harness-reported cost, and the cost and its source fixed
+when the call was recorded (D63, see [Spend](#spend)). A ledger that a development build had
+already moved to schema 8 gains the table the next time it is opened.
 
 The stored map also links the UI to the API (D61). The TypeScript mapper reads each `fetch`,
 `axios` verb helper, `axios(config)` / `axios.request(config)` and `axios.create({ baseURL })`

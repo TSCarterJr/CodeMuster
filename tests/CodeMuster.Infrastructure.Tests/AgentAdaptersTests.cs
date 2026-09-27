@@ -20,7 +20,7 @@ public class AgentAdaptersTests
     {
         var adapter = Assert.IsType<FakeAgentAdapter>(AgentAdapters.Create("fake", null));
 
-        Assert.Equal(FakeAgentAdapter.DefaultTemplate, await adapter.RunAsync(Pack, CancellationToken.None));
+        Assert.Equal(FakeAgentAdapter.DefaultTemplate, (await adapter.RunAsync(Pack, CancellationToken.None)).Text);
     }
 
     [Fact]
@@ -30,6 +30,6 @@ public class AgentAdaptersTests
 
         var adapter = AgentAdapters.Create("fake", template);
 
-        Assert.Equal("custom", AnalysisResponseJson.Parse(await adapter.RunAsync(Pack, CancellationToken.None)).Summary);
+        Assert.Equal("custom", AnalysisResponseJson.Parse((await adapter.RunAsync(Pack, CancellationToken.None)).Text).Summary);
     }
 }

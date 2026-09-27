@@ -1,0 +1,12 @@
+(node:70580) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:46044) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+{
+  "session_id": "a989bd67-56b7-48a4-99fc-9dcc86ee80a2",
+  "error": {
+    "type": "Error",
+    "message": "When using Gemini API, you must specify the GEMINI_API_KEY environment variable.\nUpdate your environment and try again (no reload needed if using .env)!",
+    "code": 41
+  }
+}

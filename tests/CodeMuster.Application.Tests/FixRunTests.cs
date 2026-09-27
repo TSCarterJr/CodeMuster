@@ -82,8 +82,8 @@ public class FixRunTests
         {
             try
             {
-                var response = await adapter.RunAsync(pack, cancellationToken);
-                return new FileFixEdit(response, workspace.Clean ? "" : path);
+                var reply = await adapter.RunAsync(pack, cancellationToken);
+                return new FileFixEdit(reply.Text, workspace.Clean ? "" : path) { Usage = reply.Usage };
             }
             finally
             {

@@ -1,0 +1,48 @@
+Samples of each harness's machine-readable output that the adapter usage tests parse (COST1, D63).
+
+Real output (*-real.*), captured on 2026-09-27 with one prompt per harness, approved by Tim,
+run on the development machine by the coordinating agent. They contain no secrets.
+
+claude-real.json
+  Claude Code 2.1.283, `claude --print --output-format json`, prompt on stdin; stderr was empty.
+  claude-opus-5-5 answered "OK". Claude Code's own system prompt and tools are about 45K tokens
+  per call, written to the prompt cache at the 1-hour rate: 45188 x $8/M + 2 x $4/M + 4 x $20/M
+  = $0.361592, which is exactly the reported total_cost_usd.
+codex-real.jsonl, codex-real.stderr.txt
+  codex-cli 0.157.0, `codex exec --json`. The only usage is turn.completed; no event names the
+  model. stderr carried MCP transport noise that must not affect parsing.
+opencode-real.jsonl
+  opencode 1.15.13, `opencode run --format json`. Usage and cost in step_finish; no event names the model.
+gemini-real-error.stderr.txt
+  Gemini CLI (not signed in on that machine), `gemini --output-format json`: exit 41, stdout empty,
+  node deprecation warnings then the JSON error object on stderr.
+
+Documented output (*-documented-*): field names verbatim from the sources below; ids, text and
+numbers are illustrative, built without calling a model, for shapes the real calls did not show
+(errors, several models in one call, a rerouted model, gemini success).
+
+claude-documented-two-models.json, claude-documented-error-max-turns.json, claude-documented-api-error.json
+  Types SDKResultSuccess, SDKResultError and ModelUsage in @anthropic-ai/claude-agent-sdk@0.3.283
+  (claudeCodeVersion 2.1.283): https://unpkg.com/@anthropic-ai/claude-agent-sdk@0.3.283/sdk.d.ts
+  https://code.claude.com/docs/en/headless and https://code.claude.com/docs/en/agent-sdk/cost-tracking
+  modelUsage covers every model call (subagents and helpers included); input excludes cache reads and writes.
+  An error subtype (error_max_turns and similar) has no result field, only errors[]; an API error is
+  subtype success with is_error true and the message in result. The exact nonzero exit code is not verified.
+
+codex-documented-reroute.jsonl, codex-documented-failed.jsonl
+  codex-rs/exec/src/exec_events.rs and event_processor_with_jsonl_output.rs at tag rust-v0.157.0:
+  https://github.com/openai/codex/blob/rust-v0.157.0/codex-rs/exec/src/exec_events.rs
+  input_tokens includes cached_input_tokens; output_tokens includes reasoning_output_tokens;
+  turn.completed usage is the thread's running total. A "model rerouted: A -> B" error item is
+  the only place a model is named.
+
+gemini-documented-success.json
+  Gemini CLI 0.22.2 (checked against v0.61.0), packages/core/src/output/json-formatter and
+  telemetry/uiTelemetry: https://github.com/google-gemini/gemini-cli/blob/v0.61.0/packages/core/src/telemetry/uiTelemetry.ts
+  prompt includes cached; thoughts are billed as output on top of candidates. Not observed live.
+
+opencode-documented-two-steps.jsonl
+  packages/opencode/src/cli/cmd/run.ts and session/message-v2.ts (StepFinishPart) at v1.15.13:
+  https://github.com/sst/opencode/blob/v1.15.13/packages/opencode/src/cli/cmd/run.ts
+  One step_finish per model call; input excludes cache reads and writes; output excludes reasoning;
+  cost comes from models.dev and is 0 for a model it has no price for.

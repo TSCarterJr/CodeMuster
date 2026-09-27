@@ -9,6 +9,7 @@ public sealed class FakeLedger : ILedger
     public List<UnitMember> Members { get; } = [];
     public List<(Analysis Analysis, IReadOnlyList<Finding> Findings)> Analyses { get; } = [];
     public List<ScanRun> Runs { get; } = [];
+    public List<AgentCall> Calls { get; } = [];
     public Dictionary<long, VerifyResponse> Verifications { get; } = [];
     public Dictionary<long, FixOutcome> Fixes { get; } = [];
     private List<(int AnalysisIndex, VerifyResponse Verdict)> PendingVerdicts { get; } = [];
@@ -164,6 +165,15 @@ public sealed class FakeLedger : ILedger
     public Task<IReadOnlyList<Analysis>> GetFailedAnalysesAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<Analysis>>(Analyses.Select(a => a.Analysis)
             .Where(a => !a.Succeeded && Units.Any(u => u.Id == a.UnitId && u.Status != UnitStatus.Retired)).ToList());
+
+    public Task RecordAgentCallAsync(AgentCall call, CancellationToken cancellationToken)
+    {
+        Calls.Add(call);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<AgentCall>> GetAgentCallsAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AgentCall>>(Calls.ToList());
 
     public Task RecordRunAsync(ScanRun run, CancellationToken cancellationToken)
     {

@@ -31,18 +31,10 @@ public class HarnessAdapterTests
     }
 
     [Fact]
-    public void Claude_prints_text_with_read_only_tools_and_no_prompts()
-    {
-        string[] expected = ["--print", "--output-format", "text", "--permission-mode", "dontAsk", "--strict-mcp-config", "--no-session-persistence", "--tools", "Read,Glob,Grep"];
-
-        Assert.Equal(expected, new ClaudeAdapter("claude").Arguments);
-    }
-
-    [Fact]
     public void Codex_execs_read_only_from_stdin_and_writes_the_last_message_to_a_temp_file()
     {
         var arguments = new CodexAdapter("codex").Arguments;
-        string[] expected = ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never", "--disable", "shell_tool", "--output-last-message"];
+        string[] expected = ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never", "--disable", "shell_tool", "--json", "--output-last-message"];
 
         Assert.Equal(expected, arguments.Take(expected.Length));
         Assert.Equal(expected.Length + 2, arguments.Count);

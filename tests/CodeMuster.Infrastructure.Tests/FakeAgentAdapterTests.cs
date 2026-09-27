@@ -11,7 +11,7 @@ public class FakeAgentAdapterTests
         const string response = "{\"changes\":{},\"reasons\":{}}";
         var adapter = new FakeAgentAdapter(response, "test-model", "high", rawResponse: true);
 
-        Assert.Equal(response, await adapter.RunAsync("configuration context", CancellationToken.None));
+        Assert.Equal(response, (await adapter.RunAsync("configuration context", CancellationToken.None)).Text);
         Assert.Equal("test-model", adapter.Identity.Model);
     }
 
@@ -26,7 +26,7 @@ public class FakeAgentAdapterTests
     {
         var adapter = new FakeAgentAdapter(FakeAgentAdapter.DefaultTemplate);
 
-        var output = await adapter.RunAsync(Pack("### src/A.cs (csharp)"), CancellationToken.None);
+        var output = (await adapter.RunAsync(Pack("### src/A.cs (csharp)"), CancellationToken.None)).Text;
 
         Assert.Equal(FakeAgentAdapter.DefaultTemplate, output);
         Assert.Empty(AnalysisResponseJson.Parse(output).Findings);
@@ -40,7 +40,7 @@ public class FakeAgentAdapterTests
         var adapter = new FakeAgentAdapter(AnalysisResponseJson.Serialize(new AnalysisResponse("planted", [first, second])));
         var pack = Pack("### src/Api/Quotes.cs :: Quotes.List (csharp)", "### src/Api/Other.cs (csharp)");
 
-        var output = await adapter.RunAsync(pack, CancellationToken.None);
+        var output = (await adapter.RunAsync(pack, CancellationToken.None)).Text;
 
         var expected = new AnalysisResponse("planted", [first with { Path = "src/Api/Quotes.cs" }, second with { Path = "src/Api/Quotes.cs" }]);
         Assert.Equal(AnalysisResponseJson.Serialize(expected), output);
@@ -52,7 +52,7 @@ public class FakeAgentAdapterTests
         var finding = new Finding("elsewhere/x.cs", 1, 2, Severity.Medium, "bug", "claim", "evidence", 0.7, "default");
         var adapter = new FakeAgentAdapter(AnalysisResponseJson.Serialize(new AnalysisResponse("planted", [finding])));
 
-        var response = AnalysisResponseJson.Parse(await adapter.RunAsync(Pack("### src/Only.ts (typescript)"), CancellationToken.None));
+        var response = AnalysisResponseJson.Parse((await adapter.RunAsync(Pack("### src/Only.ts (typescript)"), CancellationToken.None)).Text);
 
         Assert.Equal("src/Only.ts", Assert.Single(response.Findings).Path);
     }
@@ -69,7 +69,7 @@ public class FakeAgentAdapterTests
             "## Finding", "", "```json", JsonSerializer.Serialize(finding, DomainJson.Options), "```", "",
             "## Files", "", "### src/A.cs (csharp)", "", "```csharp", "class A {}", "```", "", "## Response", "");
 
-        var output = await adapter.RunAsync(pack, CancellationToken.None);
+        var output = (await adapter.RunAsync(pack, CancellationToken.None)).Text;
 
         Assert.Equal(VerifyResponseJson.Serialize(new VerifyResponse(verdict, "fake verification")), output);
     }
@@ -84,7 +84,7 @@ public class FakeAgentAdapterTests
         repo.WriteFile(key, original);
         var adapter = AgentAdapters.Create("fake", null, write: true, workingDirectory: repo.Root);
 
-        var response = FixResponseJson.Parse(await adapter.RunAsync(FixPack(key, 7, 9), CancellationToken.None));
+        var response = FixResponseJson.Parse((await adapter.RunAsync(FixPack(key, 7, 9), CancellationToken.None)).Text);
 
         Assert.Equal([7L, 9L], response.Addressed);
         Assert.Empty(response.Declined);

@@ -4,6 +4,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="audits/*.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="agent-output/*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

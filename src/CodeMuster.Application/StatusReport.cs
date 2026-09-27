@@ -44,6 +44,14 @@ public sealed record StatusReport(
     /// <summary>Whether required browser work lacks a current recorded receipt.</summary>
     public bool UxIncomplete { get; init; }
 
+    /// <summary>What every recorded agent call cost (D63), or null before the first call.</summary>
+    public SpendSummary? Spend { get; init; }
+
+    /// <summary>The one status line about spend, or null before the first call.</summary>
+    public string? SpendLine => Spend is not { } spend ? null
+        : string.Create(CultureInfo.InvariantCulture, $"spend {Application.Spend.Money(spend.CostUsd)} API-equivalent across {spend.Calls} call{(spend.Calls == 1 ? "" : "s")}")
+            + (spend.Unpriced == 0 ? "" : string.Create(CultureInfo.InvariantCulture, $"; {spend.Unpriced} call{(spend.Unpriced == 1 ? "" : "s")} unpriced"));
+
     /// <summary>The plain-text block the CLI prints, lines joined with LF and no trailing newline.</summary>
     public string Render()
     {
@@ -70,6 +78,7 @@ public sealed record StatusReport(
         lines.Add(string.Create(CultureInfo.InvariantCulture, $"excluded {Excluded}"));
         lines.Add(string.Create(CultureInfo.InvariantCulture, $"low-fidelity {LowFidelity}"));
         if (UxStatus is not null) lines.Add(UxStatus);
+        if (SpendLine is { } spendLine) lines.Add(spendLine);
         if (ResolutionRate is { } rate)
         {
             lines.Add(string.Create(CultureInfo.InvariantCulture, $"resolution {rate * 100:0.0}%"));

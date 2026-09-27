@@ -131,6 +131,13 @@ A lens's globs select where its instructions apply; `exclude` removes files from
 The report includes verification verdicts and recorded fix outcomes. Refuted findings are
 hidden unless you use `--include-refuted`.
 
+Every agent call is recorded with its tokens, the model that answered and its cost, including
+failed and rejected attempts. `status` shows the total, `report` breaks it down by model, unit
+kind and run, and `estimate` prices the pending work per model. Figures are API-equivalent
+(what the calls cost at API prices, even on a subscription), from the harness's own cost or a
+dated price table you can extend with `prices` in `.codemuster/config.json`. See
+[Spend](https://github.com/TSCarterJr/CodeMuster/blob/main/docs/usage.md#spend).
+
 ## Explore the code map
 
 Every `scan` stores the call graph it mapped. `map` reads it without scanning again:

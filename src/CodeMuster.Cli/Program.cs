@@ -529,6 +529,7 @@ public static class Program
             token => new IntelligentConfig(tree, fileSystem, adapter, clock).RunAsync(repoRoot, token), cancellationToken);
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"inspected {result.TrackedFiles} tracked file paths with bounded manifest/source samples"));
         foreach (var change in result.Changes) Console.WriteLine($"- {change}");
+        Console.WriteLine(result.SpendLine());
         if (result.Changed)
         {
             Console.WriteLine($"updated .codemuster/config.json; backup: {result.BackupPath}");

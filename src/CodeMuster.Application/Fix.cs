@@ -95,6 +95,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         if (tests is not null && !options.AllowFailingTests) await CheckBaselineAsync(tests, repository, notes, cancellationToken);
         var next = new Next(ledger, tree!, config ?? Config.Default, interactive: false, UnitKind.Fix, options.Path);
         var done = new Done(ledger, clock!, config ?? Config.Default, adapter.Identity);
+        var calls = new CallRecorder(ledger, clock!, config ?? Config.Default, adapter.Identity, "fix");
         var attempts = new Dictionary<string, int>(StringComparer.Ordinal);
         var running = new Dictionary<Task<ParallelAttempt>, UnitPack>();
         var gaveUp = new List<string>();
@@ -140,6 +141,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                 {
                     if (draining)
                     {
+                        await calls.RecordAsync(unit.UnitId, UnitKind.Fix, edit.Usage, false, CancellationToken.None);
                         notes?.Report($"{unit.Key} finished after the run stopped; its repair was not applied and its worker is retained at {edit.Worktree}");
                         continue;
                     }
@@ -150,6 +152,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
+                        await calls.RecordAsync(unit.UnitId, UnitKind.Fix, edit.Usage, false, CancellationToken.None);
                         draining = true;
                         pending.Clear();
                         gaveUp.Add(unit.UnitId);
@@ -160,11 +163,14 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                     {
                         await editor.ReleaseAsync(edit, CancellationToken.None);
                     }
+
+                    await calls.RecordAsync(unit.UnitId, UnitKind.Fix, edit.Usage, response is not null, CancellationToken.None);
                 }
 
                 if (attempt.Error is { } workerError)
                 {
                     await RecordFailureAsync(unit, workerError, adapter.Identity, cancellationToken);
+                    if (attempt.Paid is { } usage) await calls.RecordAsync(unit.UnitId, UnitKind.Fix, usage, false, cancellationToken);
                 }
 
                 if (response is null)
@@ -220,11 +226,11 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         {
             try
             {
-                return new ParallelAttempt(await editor.RunAsync(pack.Key, pack.Markdown, workers.Token), null);
+                return new ParallelAttempt(await editor.RunAsync(pack.Key, pack.Markdown, workers.Token), null, null);
             }
             catch (Exception ex) when (!workers.IsCancellationRequested)
             {
-                return new ParallelAttempt(null, ex.Message);
+                return new ParallelAttempt(null, ex.Message, CallRecorder.PaidUsage(ex));
             }
         }
 
@@ -346,7 +352,8 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         }
     }
 
-    private sealed record ParallelAttempt(FileFixEdit? Edit, string? Error);
+    // Paid is the usage of a worker that failed after its agent ran, or null when no agent call was made.
+    private sealed record ParallelAttempt(FileFixEdit? Edit, string? Error, AgentUsage? Paid);
 
     private const string CommandHint = "Fix test_command in .codemuster/config.json; codemuster validate runs it.";
 

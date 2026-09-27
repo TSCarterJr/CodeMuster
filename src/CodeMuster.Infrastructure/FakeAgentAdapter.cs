@@ -7,6 +7,9 @@ public sealed class FakeAgentAdapter : IAgentAdapter
 {
     private const double RefutesBelowConfidence = 0.5;
 
+    /// <summary>What every fake call reports using, so the whole spend path runs without a model (D63).</summary>
+    public static AgentUsage Usage { get; } = new(1200, 300, 0, 0, "fake", null);
+
     public static string DefaultTemplate { get; } = AnalysisResponseJson.Serialize(new AnalysisResponse("fake analysis", []));
 
     private readonly AnalysisResponse _template;
@@ -23,10 +26,15 @@ public sealed class FakeAgentAdapter : IAgentAdapter
 
     public AgentIdentity Identity { get; }
 
-    public Task<string> RunAsync(string pack, CancellationToken cancellationToken)
+    public Task<AgentReply> RunAsync(string pack, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (_rawResponse is not null) return Task.FromResult(_rawResponse);
+        return Task.FromResult(new AgentReply(Respond(pack), Usage));
+    }
+
+    private string Respond(string pack)
+    {
+        if (_rawResponse is not null) return _rawResponse;
         if (FixTargets(pack) is { Count: > 0 } targets)
         {
             if (_workingDirectory is not null)
@@ -37,18 +45,18 @@ public sealed class FakeAgentAdapter : IAgentAdapter
                 File.AppendAllText(Path.Combine(_workingDirectory, key), edit);
             }
 
-            return Task.FromResult(FixResponseJson.Serialize(new FixResponse("fake fix", targets, [])));
+            return FixResponseJson.Serialize(new FixResponse("fake fix", targets, []));
         }
 
         if (FindingUnderTest(pack) is { } finding)
         {
             var verdict = finding.Confidence < RefutesBelowConfidence ? Verdict.Refuted : Verdict.Confirmed;
-            return Task.FromResult(VerifyResponseJson.Serialize(new VerifyResponse(verdict, "fake verification")));
+            return VerifyResponseJson.Serialize(new VerifyResponse(verdict, "fake verification"));
         }
 
         var path = FirstFilePath(pack);
         var findings = _template.Findings.Select(finding => finding with { Path = path }).ToList();
-        return Task.FromResult(AnalysisResponseJson.Serialize(_template with { Findings = findings }));
+        return AnalysisResponseJson.Serialize(_template with { Findings = findings });
     }
 
     private static IReadOnlyList<long> FixTargets(string pack)

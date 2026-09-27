@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
@@ -23,6 +24,10 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
 
     /// <summary>Whether scan reports conservative unused-code candidates from supported call maps.</summary>
     public bool DeadCode { get; init; }
+
+    /// <summary>Per-model prices that override or extend the bundled price table (D63); null when the repository sets none.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<ModelPrice>? Prices { get; init; }
 
     /// <summary>Optional browser-based reviews, scoped to UI files.</summary>
     public UserExperienceSettings UserExperience { get; init; } = new();

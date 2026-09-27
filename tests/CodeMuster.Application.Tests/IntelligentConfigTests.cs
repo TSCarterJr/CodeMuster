@@ -45,6 +45,19 @@ public class IntelligentConfigTests
     }
 
     [Fact]
+    public async Task ReportsItsOneCallsUsageAndCost_SinceTheCommandDoesNotOpenTheLedger()
+    {
+        var (fs, tree) = Setup();
+        var usage = new AgentUsage(1_000_000, 100_000, 0, 0, "claude-sonnet-4-6", null);
+        var adapter = new FakeAgentAdapter((_, _) => Task.FromResult(Proposal)) { Usage = usage };
+
+        var result = await new IntelligentConfig(tree, fs, adapter, new FakeClock()).RunAsync(Root, CancellationToken.None);
+
+        Assert.Equal((usage, 4.5m, "table " + PriceTable.Default.Checked), (result.Usage, result.CostUsd!.Value, result.CostSource!));
+        Assert.Equal($"agent call: 1000000 input, 100000 output, 0 cache read, 0 cache write tokens by claude-sonnet-4-6, $4.50 API-equivalent (table {PriceTable.Default.Checked}); not recorded in the ledger", result.SpendLine());
+    }
+
+    [Fact]
     public async Task RepeatedRecommendationsAreANoOp_AndExistingTestCommandWins()
     {
         var (fs, tree) = Setup();

@@ -32,6 +32,7 @@ public static class ConfigJson
             throw new JsonException("lens globs must be an array of nonempty path globs");
         if (config.Lenses.Any(lens => string.Equals(lens.Id?.Trim(), DeadCodeReview.Id, StringComparison.OrdinalIgnoreCase) || string.Equals(lens.Id?.Trim(), UxReview.Id, StringComparison.OrdinalIgnoreCase)))
             throw new JsonException("built-in reviews reserve lens ids dead_code and user_experience; rename the conflicting custom lens");
+        if (config.Prices is { } prices) PriceTable.Validate(prices);
         return config;
     }
 

@@ -48,6 +48,12 @@ public interface ILedger
     /// <summary>Failed attempts for non-retired units, in insertion order, including attempts followed by success.</summary>
     Task<IReadOnlyList<Analysis>> GetFailedAnalysesAsync(CancellationToken cancellationToken);
 
+    /// <summary>Appends one agent call with its usage and cost (D63), independent of whether its response was recorded.</summary>
+    Task RecordAgentCallAsync(AgentCall call, CancellationToken cancellationToken);
+
+    /// <summary>Every recorded agent call, oldest first.</summary>
+    Task<IReadOnlyList<AgentCall>> GetAgentCallsAsync(CancellationToken cancellationToken);
+
     /// <summary>Appends a run.</summary>
     Task RecordRunAsync(ScanRun run, CancellationToken cancellationToken);
 

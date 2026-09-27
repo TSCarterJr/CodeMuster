@@ -47,10 +47,10 @@ public sealed class GitFileFixerEnvironmentTests : IDisposable
     {
         public AgentIdentity Identity { get; } = new("fake", null, null);
 
-        public Task<string> RunAsync(string pack, CancellationToken cancellationToken)
+        public Task<AgentReply> RunAsync(string pack, CancellationToken cancellationToken)
         {
             edit();
-            return Task.FromResult("response");
+            return Task.FromResult(new AgentReply("response", AgentUsage.Unknown));
         }
     }
 }

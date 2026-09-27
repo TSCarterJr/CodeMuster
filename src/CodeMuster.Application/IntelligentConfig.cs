@@ -20,7 +20,9 @@ public sealed class IntelligentConfig(ISourceTree tree, IFileSystem fileSystem, 
         var files = (await tree.ListFilesAsync(cancellationToken)).OrderBy(f => f.Path, StringComparer.Ordinal).ToArray();
         var context = await ContextAsync(files, config, cancellationToken);
         var prompt = Instructions + "\n\nCurrent configuration (preserve existing values):\n" + original + "\n\n" + context.Text;
-        var response = await agent.RunAsync(prompt, cancellationToken);
+        var reply = await agent.RunAsync(prompt, cancellationToken);
+        var response = reply.Text;
+        var (cost, costSource) = PriceTable.For(config).Cost(agent.Identity, reply.Usage);
         cancellationToken.ThrowIfCancellationRequested();
         var proposal = ParseResponse(response);
         var changes = proposal["changes"] as JsonObject ?? throw new JsonException("intelligent-config response needs a changes object");
@@ -89,7 +91,7 @@ public sealed class IntelligentConfig(ISourceTree tree, IFileSystem fileSystem, 
         }
         var serialized = updated.ToJsonString(DomainJson.Options) + "\n";
         _ = ConfigJson.Parse(serialized);
-        if (JsonNode.DeepEquals(JsonNode.Parse(original), updated)) return new(false, null, [], files.Length);
+        if (JsonNode.DeepEquals(JsonNode.Parse(original), updated)) return new(false, null, [], files.Length) { Usage = reply.Usage, CostUsd = cost, CostSource = costSource };
         cancellationToken.ThrowIfCancellationRequested();
         if (await fileSystem.ReadAllTextAsync(configPath, cancellationToken) != original)
             throw new InvalidOperationException("config changed during analysis; recommendations were not applied. Run intelligent-config again.");
@@ -99,7 +101,7 @@ public sealed class IntelligentConfig(ISourceTree tree, IFileSystem fileSystem, 
             backup = string.Create(CultureInfo.InvariantCulture, $".codemuster/config.backup-{stamp}-{suffix}.json");
         await fileSystem.WriteAllTextAsync(Path.Combine(repoRoot, backup), original, cancellationToken);
         await fileSystem.WriteAllTextAtomicallyAsync(configPath, serialized, cancellationToken);
-        return new(true, backup, descriptions, files.Length);
+        return new(true, backup, descriptions, files.Length) { Usage = reply.Usage, CostUsd = cost, CostSource = costSource };
     }
 
     private async Task<(string Text, IReadOnlyList<string[]> Commands)> ContextAsync(IReadOnlyList<SourceFile> files, Config config, CancellationToken cancellationToken)
@@ -203,4 +205,17 @@ public sealed class IntelligentConfig(ISourceTree tree, IFileSystem fileSystem, 
 }
 
 /// <summary>Applied configuration changes and the retained repo-relative backup, if anything changed.</summary>
-public sealed record IntelligentConfigResult(bool Changed, string? BackupPath, IReadOnlyList<string> Changes, int TrackedFiles);
+public sealed record IntelligentConfigResult(bool Changed, string? BackupPath, IReadOnlyList<string> Changes, int TrackedFiles)
+{
+    /// <summary>What the one agent call used (D63). The command does not open the ledger (D53), so the call is reported here and not recorded in spend.</summary>
+    public AgentUsage Usage { get; init; } = AgentUsage.Unknown;
+
+    /// <summary>The call's API-equivalent cost, or null when unpriced.</summary>
+    public decimal? CostUsd { get; init; }
+
+    /// <summary>Where <see cref="CostUsd"/> came from: harness, config, or the dated table.</summary>
+    public string? CostSource { get; init; }
+
+    /// <summary>One line describing the call's usage and cost, for the command's output.</summary>
+    public string SpendLine() => "agent call: " + Spend.Describe(Usage, CostUsd, CostSource) + "; not recorded in the ledger";
+}

@@ -35,9 +35,48 @@ public sealed class OpenCodeAdapter(string executable, string? model = null, str
         },
     });
 
-    public async Task<string> RunAsync(string pack, CancellationToken cancellationToken) =>
-        FinalText(await HeadlessProcess.RunAsync(executable, Arguments, pack, cancellationToken, workingDirectory,
-            new Dictionary<string, string> { ["OPENCODE_CONFIG_CONTENT"] = Settings }).ConfigureAwait(false));
+    public async Task<AgentReply> RunAsync(string pack, CancellationToken cancellationToken) =>
+        Reply(await HeadlessProcess.CaptureAsync(executable, Arguments, pack, cancellationToken, workingDirectory,
+            new Dictionary<string, string> { ["OPENCODE_CONFIG_CONTENT"] = Settings }).ConfigureAwait(false), executable, Arguments);
+
+    internal static AgentReply Reply(ProcessOutput output, string executable, IReadOnlyList<string> arguments)
+    {
+        var usage = Usage(output.Output);
+        if (output.ExitCode != 0) throw new AgentCallException(output.Failure(executable, arguments), usage);
+        try
+        {
+            return new AgentReply(FinalText(output.Output), usage);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new AgentCallException(ex.Message, usage, ex);
+        }
+    }
+
+    // Each step_finish is one model call. Input excludes cache reads and writes, reasoning is billed as output, and a zero cost means models.dev has no price for the model, not that the call was free.
+    internal static AgentUsage Usage(string output)
+    {
+        long? input = null, generated = null, cacheRead = null, cacheWrite = null;
+        decimal? cost = null;
+        foreach (var document in UsageJson.Lines(output))
+        {
+            using (document)
+            {
+                var root = document.RootElement;
+                if (UsageJson.String(root, "type") != "step_finish" || UsageJson.Object(root, "part") is not { } part || UsageJson.Object(part, "tokens") is not { } tokens)
+                    continue;
+                var cache = UsageJson.Object(tokens, "cache");
+                input = UsageJson.Sum(input, UsageJson.Long(tokens, "input"));
+                generated = UsageJson.Sum(generated, UsageJson.Sum(UsageJson.Long(tokens, "output"), UsageJson.Long(tokens, "reasoning")));
+                cacheRead = UsageJson.Sum(cacheRead, UsageJson.Long(cache, "read"));
+                cacheWrite = UsageJson.Sum(cacheWrite, UsageJson.Long(cache, "write"));
+                if (UsageJson.Decimal(part, "cost") is { } step) cost = (cost ?? 0) + step;
+            }
+        }
+
+        var usage = new AgentUsage(input, generated, cacheRead, cacheWrite, null, null);
+        return usage.HasTokens && cost > 0 ? usage with { ReportedCostUsd = cost } : usage;
+    }
 
     internal static string FinalText(string output)
     {

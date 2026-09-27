@@ -12,8 +12,9 @@ public sealed class FakeAgentAdapter(Func<string, CancellationToken, Task<string
     public int MaxInFlight => Volatile.Read(ref maxInFlight);
     public TaskCompletionSource? Gate { get; set; }
     public AgentIdentity Identity { get; set; } = new("fake");
+    public AgentUsage Usage { get; set; } = AgentUsage.Unknown;
 
-    public async Task<string> RunAsync(string pack, CancellationToken cancellationToken)
+    public async Task<AgentReply> RunAsync(string pack, CancellationToken cancellationToken)
     {
         Enter(pack);
         try
@@ -23,7 +24,7 @@ public sealed class FakeAgentAdapter(Func<string, CancellationToken, Task<string
                 await gate.Task.WaitAsync(cancellationToken);
             }
 
-            return await respond(pack, cancellationToken);
+            return new AgentReply(await respond(pack, cancellationToken), Usage);
         }
         finally
         {

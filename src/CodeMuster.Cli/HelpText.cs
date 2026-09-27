@@ -123,7 +123,9 @@ public static class HelpText
             Show completed/total units, stale work, exclusions, and mapping fidelity.
             The fix row counts completed file units, including declined findings.
             Coverage measures work recorded; it does not prove the code is bug-free.
-            Use report for individual verification verdicts and fix outcomes.
+            After the first agent call, a spend line totals the recorded calls at API prices
+            (API-equivalent, also on a subscription) and counts calls with no price.
+            Use report for individual verification verdicts, fix outcomes, and spend by model, kind and run.
             """,
         "estimate" => """
             usage: codemuster estimate [--path <path>]
@@ -132,6 +134,10 @@ public static class HelpText
               --path <path>   Select units touching a repo-relative file or folder
 
             This is an approximate input estimate, not a price or total-token guarantee.
+            It is also priced per model at API rates (API-equivalent): the models already used,
+            any in config "prices", else representative ones. Output is assumed at 10% of input
+            until 20 calls with usage are recorded, then measured from them. Harness prompts and
+            tool calls are not counted; the recorded average per call includes them.
             """,
         "next" => """
             usage: codemuster next [--batch N] [--out <file>] [--path <path>] [--kind <kind>]
@@ -211,6 +217,8 @@ public static class HelpText
               --include-refuted  Include findings the verification pass refuted
 
             Unverified, unsure, and fixed findings remain visible with their recorded state.
+            A Spend section lists every recorded agent call's tokens and API-equivalent cost by
+            model, unit kind and run, with the price table date and why any call is unpriced.
             """,
         "map" => """
             usage: codemuster map [callers <symbol> | callees <symbol> | flow <entry point>] [--depth N] [--format text|mermaid|json] [--out <file>]

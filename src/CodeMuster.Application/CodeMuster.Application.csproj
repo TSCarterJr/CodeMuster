@@ -4,6 +4,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="prices.json" LogicalName="CodeMuster.Application.prices.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../CodeMuster.Domain/CodeMuster.Domain.csproj" />
   </ItemGroup>
 </Project>

@@ -136,6 +136,32 @@ public sealed class SqliteLedger : ILedger, IDisposable
             display TEXT NOT NULL);
         """;
 
+    // Part of schema 8, which no release has shipped: IF NOT EXISTS also gives the table to a ledger that a development build already moved to 8.
+    internal const string AgentCallsSql = """
+        CREATE TABLE IF NOT EXISTS agent_calls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            run TEXT NOT NULL,
+            unit_id TEXT,
+            kind TEXT,
+            agent TEXT NOT NULL,
+            model TEXT,
+            effort TEXT,
+            answered_model TEXT,
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            cache_read_tokens INTEGER,
+            cache_write_tokens INTEGER,
+            cache_write_1h_tokens INTEGER,
+            reported_cost_usd TEXT,
+            succeeded INTEGER NOT NULL,
+            cost_usd TEXT,
+            cost_source TEXT);
+        """;
+
+    private const string AgentCallColumns =
+        "created_at, run, unit_id, kind, agent, model, effort, answered_model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cache_write_1h_tokens, reported_cost_usd, succeeded, cost_usd, cost_source";
+
     private const string FileColumns =
         "path, language, content_hash, size, mtime, first_seen, last_seen, last_commit, last_commit_at, excluded_reason, deleted_at, summary, summary_hash";
 
@@ -517,6 +543,50 @@ public sealed class SqliteLedger : ILedger, IDisposable
         }, cancellationToken);
     }
 
+    public async Task RecordAgentCallAsync(AgentCall call, CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand($"""
+            INSERT INTO agent_calls ({AgentCallColumns})
+            VALUES ($created_at, $run, $unit_id, $kind, $agent, $model, $effort, $answered_model, $input_tokens, $output_tokens, $cache_read_tokens, $cache_write_tokens, $cache_write_1h_tokens, $reported_cost_usd, $succeeded, $cost_usd, $cost_source)
+            """);
+        command.Parameters.AddWithValue("$created_at", call.CreatedAt);
+        command.Parameters.AddWithValue("$run", call.Run);
+        command.Parameters.AddWithValue("$unit_id", Db(call.UnitId));
+        command.Parameters.AddWithValue("$kind", Db(call.Kind is { } kind ? Name(kind) : null));
+        command.Parameters.AddWithValue("$agent", call.By.Agent);
+        command.Parameters.AddWithValue("$model", Db(call.By.Model));
+        command.Parameters.AddWithValue("$effort", Db(call.By.Effort));
+        command.Parameters.AddWithValue("$answered_model", Db(call.Usage.Model));
+        command.Parameters.AddWithValue("$input_tokens", Db(call.Usage.InputTokens));
+        command.Parameters.AddWithValue("$output_tokens", Db(call.Usage.OutputTokens));
+        command.Parameters.AddWithValue("$cache_read_tokens", Db(call.Usage.CacheReadTokens));
+        command.Parameters.AddWithValue("$cache_write_tokens", Db(call.Usage.CacheWriteTokens));
+        command.Parameters.AddWithValue("$cache_write_1h_tokens", Db(call.Usage.CacheWrite1hTokens));
+        command.Parameters.AddWithValue("$reported_cost_usd", Db(Money(call.Usage.ReportedCostUsd)));
+        command.Parameters.AddWithValue("$succeeded", call.Succeeded);
+        command.Parameters.AddWithValue("$cost_usd", Db(Money(call.CostUsd)));
+        command.Parameters.AddWithValue("$cost_source", Db(call.CostSource));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<AgentCall>> GetAgentCallsAsync(CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand($"SELECT {AgentCallColumns} FROM agent_calls ORDER BY id");
+        return await ReadAllAsync(command, reader => new AgentCall(
+            reader.GetString(0), reader.GetString(1), Text(reader, 2),
+            Text(reader, 3) is { } kind ? Enum.Parse<UnitKind>(kind, ignoreCase: true) : null,
+            new AgentIdentity(reader.GetString(4), Text(reader, 5), Text(reader, 6)),
+            new AgentUsage(Long(reader, 8), Long(reader, 9), Long(reader, 10), Long(reader, 11), Text(reader, 7), Money(Text(reader, 13))) { CacheWrite1hTokens = Long(reader, 12) },
+            reader.GetBoolean(14), Money(Text(reader, 15)), Text(reader, 16)), cancellationToken);
+    }
+
+    // Money is stored as invariant decimal text: REAL would round, and a recorded cost must read back exactly.
+    private static string? Money(decimal? value) => value?.ToString(CultureInfo.InvariantCulture);
+
+    private static decimal? Money(string? text) => text is null ? null : decimal.Parse(text, NumberStyles.Number, CultureInfo.InvariantCulture);
+
+    private static long? Long(SqliteDataReader reader, int ordinal) => reader.IsDBNull(ordinal) ? null : reader.GetInt64(ordinal);
+
     public async Task RecordRunAsync(ScanRun run, CancellationToken cancellationToken)
     {
         await using var command = CreateCommand($"INSERT INTO runs ({RunColumns}) VALUES ($started_at, $head_commit, $files_included, $files_excluded, $units_total, $resolution_rate, $top_unresolved_names)");
@@ -679,6 +749,8 @@ public sealed class SqliteLedger : ILedger, IDisposable
         {
             await ExecuteAsync(SchemaVersion8, cancellationToken);
         }
+
+        await ExecuteAsync(AgentCallsSql, cancellationToken);
 
         await ExecuteAsync(string.Create(CultureInfo.InvariantCulture, $"PRAGMA user_version = {SchemaVersion}"), cancellationToken);
         await transaction.CommitAsync(cancellationToken);

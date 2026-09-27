@@ -41,6 +41,7 @@ public sealed class Status(ILedger ledger, Config config)
             UxStatus = !config.UserExperience.Enabled ? null : run is null ? "UX: no scan yet" : uxUnits.Count == 0 ? "UX: not applicable (no UI targets in the configured scope)"
                 : $"UX: browser evidence recorded for {reviewed}/{uxUnits.Count} UI targets; {uxUnits.Count - reviewed} incomplete",
             UxIncomplete = config.UserExperience.Enabled && reviewed < uxUnits.Count,
+            Spend = Spend.Summarize(await ledger.GetAgentCallsAsync(cancellationToken)),
         };
     }
 }
