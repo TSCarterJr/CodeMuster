@@ -112,7 +112,8 @@ public class EngineControlTests
             {
                 ["CODEMUSTER_ENGINE_EVENTS"] = events,
                 ["CODEMUSTER_ENGINE_CONTROL"] = control,
-                ["CODEMUSTER_FAKE_DELAY_MS"] = "300",
+                // Long enough that the run cannot finish every unit before a slow CI runner reads the stop.
+                ["CODEMUSTER_FAKE_DELAY_MS"] = "1500",
             }, "run", "--agent", "fake", "-j", "2");
 
             await WaitForAsync(events, e => Type(e) == "unit_finished", run, guard.Token);
