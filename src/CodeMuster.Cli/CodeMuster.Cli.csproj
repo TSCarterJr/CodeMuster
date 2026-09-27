@@ -15,5 +15,6 @@
 
   <ItemGroup>
     <EmbeddedResource Include="../../skill/SKILL.md" LogicalName="SKILL.md" />
+    <EmbeddedResource Include="MapPage.html" LogicalName="MapPage.html" />
   </ItemGroup>
 </Project>

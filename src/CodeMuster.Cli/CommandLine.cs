@@ -34,7 +34,13 @@ public static class CommandLine
         ["fix"] = new(["agent", "jobs", "attempts", "path", "model", "effort", "include-related"], ["stash", "retry-declined", "allow-failing-tests"], ["agent"]),
         ["hook"] = new([], []),
         ["validate"] = new([], []),
+        ["map"] = new(["depth", "format", "out"], [], null, MapPositionals),
     };
+
+    // map takes nothing (the summary) or a subcommand and its target, so it is checked on its own rather than as one placeholder.
+    private const string MapPositionals = "[callers|callees|flow <target>]";
+
+    private static readonly string[] MapSubcommands = ["callers", "callees", "flow"];
 
     private static readonly string[] Kinds = Enum.GetNames<UnitKind>().Select(name => name.ToLowerInvariant()).Except(["fix", "dependency", "deadcode"]).ToArray();
 
@@ -92,7 +98,15 @@ public static class CommandLine
             typed[name] = spelled;
         }
 
-        CheckPositionals(verb, spec.Positional, positionals);
+        if (verb == "map")
+        {
+            CheckMap(positionals, options, typed);
+        }
+        else
+        {
+            CheckPositionals(verb, spec.Positional, positionals);
+        }
+
         if (verb == "done" && positionals[0].StartsWith(UnitIds.Fix(""), StringComparison.Ordinal))
         {
             // done cannot see whether the file changed, so a hand-typed fix unit would record Fixed over untouched code.
@@ -129,9 +143,29 @@ public static class CommandLine
         if (positionals.Count > 1) throw Mistake(verb, $"unexpected argument \"{positionals[1]}\"");
     }
 
+    private static void CheckMap(List<string> positionals, Dictionary<string, string> options, Dictionary<string, string> typed)
+    {
+        if (positionals.Count == 0)
+        {
+            if (options.GetValueOrDefault("format") == "mermaid") throw Mistake("map", "--format mermaid needs callers, callees or flow");
+            if (options.ContainsKey("depth")) throw Mistake("map", $"{typed["depth"]} needs callers, callees or flow");
+            return;
+        }
+
+        var subcommand = positionals[0];
+        if (!MapSubcommands.Contains(subcommand))
+        {
+            var suggestion = Nearest(subcommand.ToLowerInvariant(), MapSubcommands, 3) is { } near ? $"; did you mean \"{near}\"?" : "";
+            throw Mistake("map", $"unknown subcommand \"{subcommand}\"{suggestion} ({string.Join(", ", MapSubcommands)})");
+        }
+
+        if (positionals.Count == 1) throw Mistake("map", subcommand == "flow" ? "missing <entry point>" : "missing <symbol>");
+        if (positionals.Count > 2) throw Mistake("map", $"unexpected argument \"{positionals[2]}\"");
+    }
+
     private static string? ValueMistake(string verb, string name, string value)
     {
-        if (name is "jobs" or "attempts" or "batch")
+        if (name is "jobs" or "attempts" or "batch" or "depth")
         {
             return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number > 0 ? null : $"must be a positive whole number (got \"{value}\")";
         }
@@ -152,6 +186,7 @@ public static class CommandLine
         ("skill", "for") => SkillInstaller.Harnesses,
         (_, "kind") => Kinds,
         ("scan", "mode") => ["slice", "file"],
+        ("map", "format") => ["text", "mermaid", "json"],
         _ => null,
     };
 
@@ -176,10 +211,10 @@ public static class CommandLine
 
     private static UsageException Mistake(string verb, string problem) => new($"codemuster {verb}: {problem}", HelpText.UsageLine(verb));
 
-    private static string? Nearest(string typed, IEnumerable<string> names)
+    private static string? Nearest(string typed, IEnumerable<string> names, int? limit = null)
     {
         string? best = null;
-        var bestDistance = Math.Max(1, typed.Length / 3) + 1;
+        var bestDistance = limit ?? Math.Max(1, typed.Length / 3) + 1;
         foreach (var name in names)
         {
             var distance = Distance(typed, name);

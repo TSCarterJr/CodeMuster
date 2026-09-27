@@ -591,15 +591,21 @@ public sealed class SqliteLedger : ILedger, IDisposable
         await using var symbols = CreateCommand("SELECT id, path, start_line, end_line, kind, signature, body_hash FROM code_symbols ORDER BY rowid");
         await using var edges = CreateCommand("SELECT from_id, to_id, kind FROM code_edges ORDER BY rowid");
         await using var entries = CreateCommand("SELECT symbol_id, kind, display FROM code_entry_points ORDER BY rowid");
+        var rawEdges = await ReadAllAsync(edges, reader => (From: reader.GetString(0), To: reader.GetString(1), Kind: reader.GetString(2)), cancellationToken);
+        // A newer build may store an edge kind this one does not know; the rest of the map is still worth reading.
+        var unknownKinds = rawEdges.Where(edge => !IsKnownEdgeKind(edge.Kind)).GroupBy(edge => edge.Kind, StringComparer.Ordinal)
+            .Select(group => string.Create(CultureInfo.InvariantCulture, $"{group.Count()} edge(s) of kind '{group.Key}' are unknown to this version of codemuster and were skipped"));
         var map = new CodeMap(
             await ReadAllAsync(symbols, reader => new Symbol(
                 reader.GetString(0), reader.GetString(1), new LineRange(reader.GetInt32(2), reader.GetInt32(3)), reader.GetString(4), reader.GetString(5), reader.GetString(6)), cancellationToken),
-            await ReadAllAsync(edges, reader => new Edge(reader.GetString(0), reader.GetString(1), Enum.Parse<EdgeKind>(reader.GetString(2), ignoreCase: true)), cancellationToken),
+            rawEdges.Where(edge => IsKnownEdgeKind(edge.Kind)).Select(edge => new Edge(edge.From, edge.To, Enum.Parse<EdgeKind>(edge.Kind, ignoreCase: true))).ToList(),
             await ReadAllAsync(entries, reader => new EntryPoint(reader.GetString(0), reader.GetString(1), reader.GetString(2)), cancellationToken),
             headers[0].Resolution,
-            headers[0].Diagnostics);
+            [.. headers[0].Diagnostics, .. unknownKinds]);
         return new StoredCodeMap(headers[0].Head, headers[0].At, map, headers[0].Mapped, headers[0].Failed);
     }
+
+    private static bool IsKnownEdgeKind(string kind) => Enum.TryParse<EdgeKind>(kind, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) && !char.IsAsciiDigit(kind[0]);
 
     /// <summary>Inserts every row through one prepared command whose parameters are created once, because a large repository's map has tens of thousands of rows.</summary>
     private async Task InsertRowsAsync<T>(string sql, IReadOnlyList<T> rows, Func<T, object[]> values, CancellationToken cancellationToken)

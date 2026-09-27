@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeMuster map</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f5;
+  --panel: #ffffff;
+  --fg: #1d1d1f;
+  --muted: #5f6368;
+  --border: #d9d9d6;
+  --node: #ffffff;
+  --node-border: #8a8f98;
+  --root: #fff4d6;
+  --root-border: #b7791f;
+  --selected: #2563eb;
+  --edge: #9aa0a6;
+  --edge-label: #5f6368;
+  --warn-bg: #fff4e5;
+  --warn-fg: #8a4b00;
+  --hover: #eef2ff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181a;
+    --panel: #202124;
+    --fg: #e8eaed;
+    --muted: #9aa0a6;
+    --border: #3c4043;
+    --node: #2a2b2e;
+    --node-border: #6b7078;
+    --root: #3d3220;
+    --root-border: #e0a84a;
+    --selected: #7aa2ff;
+    --edge: #6b7078;
+    --edge-label: #9aa0a6;
+    --warn-bg: #3a2a12;
+    --warn-fg: #f6c77d;
+    --hover: #2c3350;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+header h1 { font-size: 16px; margin: 0; }
+#meta { color: var(--muted); font-size: 12px; }
+#warning { margin: 0; padding: 8px 16px; background: var(--warn-bg); color: var(--warn-fg); font-size: 13px; white-space: pre-wrap; }
+main { display: grid; grid-template-columns: 280px minmax(0, 1fr) 320px; height: calc(100vh - 50px); }
+aside { overflow: auto; padding: 12px 16px; background: var(--panel); }
+#side { border-right: 1px solid var(--border); }
+#details { border-left: 1px solid var(--border); }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 6px; }
+input, select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+#search { width: 100%; }
+.controls { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+.controls label { color: var(--muted); font-size: 12px; }
+#depth { width: 64px; }
+ul { list-style: none; margin: 0; padding: 0; }
+li button { all: unset; display: block; width: 100%; box-sizing: border-box; padding: 4px 6px; border-radius: 4px; cursor: pointer; overflow-wrap: anywhere; }
+li button:hover, li button:focus-visible { background: var(--hover); outline: none; }
+.kind { color: var(--muted); font-size: 12px; }
+#canvas { display: flex; flex-direction: column; min-width: 0; }
+#status { margin: 0; padding: 8px 16px; color: var(--muted); border-bottom: 1px solid var(--border); }
+#status strong { color: var(--fg); }
+#scroll { flex: 1; overflow: auto; }
+svg { display: block; }
+.node rect { fill: var(--node); stroke: var(--node-border); stroke-width: 1; }
+.node.root rect { fill: var(--root); stroke: var(--root-border); stroke-width: 2; }
+.node.selected rect { stroke: var(--selected); stroke-width: 2.5; }
+.node text { fill: var(--fg); font-size: 12px; }
+.node .sub { fill: var(--muted); font-size: 10.5px; }
+.node { cursor: pointer; }
+.node:focus { outline: none; }
+.node:focus rect { stroke: var(--selected); }
+.edge path { fill: none; stroke: var(--edge); stroke-width: 1.3; }
+.edge text { fill: var(--edge-label); font-size: 10px; }
+#arrow path { fill: var(--edge); }
+.empty { color: var(--muted); padding: 24px 16px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-size: 12px; }
+.path { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; }
+.hint { color: var(--muted); }
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; height: auto; }
+  #side, #details { border: 0; border-bottom: 1px solid var(--border); }
+  #scroll { min-height: 60vh; }
+}
+</style>
+</head>
+<body>
+<header><h1>Code map</h1><span id="meta"></span></header>
+<p id="warning" hidden></p>
+<main>
+  <aside id="side">
+    <input id="search" type="search" placeholder="Search symbols and entry points" aria-label="Search symbols and entry points">
+    <div class="controls">
+      <label for="direction">Show</label>
+      <select id="direction"><option value="callees">callees</option><option value="callers">callers</option></select>
+      <label for="depth">depth</label>
+      <input id="depth" type="number" min="1" max="50" value="6">
+    </div>
+    <h2 id="results-title" hidden>Symbols</h2>
+    <ul id="results"></ul>
+    <h2>Entry points</h2>
+    <ul id="entries"></ul>
+  </aside>
+  <section id="canvas">
+    <p id="status"></p>
+    <div id="scroll"><svg id="graph" role="img" aria-label="Call graph"></svg></div>
+  </section>
+  <aside id="details"><p class="hint">Click a node to see its location, signature, callers and callees. Double-click a node to draw the graph from it.</p></aside>
+</main>
+<script id="map-data" type="application/json">__CODEMUSTER_MAP_DATA__</script>
+<script>
+(function () {
+  'use strict';
+  var data = JSON.parse(document.getElementById('map-data').textContent);
+  var NODE_W = 230, NODE_H = 40, GAP_X = 90, GAP_Y = 18, PAD = 24, MAX_RESULTS = 60;
+
+  var byId = new Map();
+  data.symbols.forEach(function (s) { if (!byId.has(s.id)) byId.set(s.id, s); });
+  var outgoing = new Map(), incoming = new Map();
+  function push(map, key, edge) { if (!map.has(key)) map.set(key, []); map.get(key).push(edge); }
+  data.edges.forEach(function (e) { push(outgoing, e.from, e); push(incoming, e.to, e); });
+  var entryBySymbol = new Map();
+  data.entryPoints.forEach(function (ep) { if (!entryBySymbol.has(ep.id)) entryBySymbol.set(ep.id, ep); });
+
+  var state = { root: null, direction: 'callees', depth: 6, entry: null, selected: null, graph: null };
+  var el = function (id) { return document.getElementById(id); };
+
+  function esc(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function name(id) { var s = byId.get(id); return s ? s.name : id; }
+  function where(id) { var s = byId.get(id); return s ? s.path + ':' + s.line : 'not in the map'; }
+  function clip(text, max) { return text.length > max ? text.slice(0, max - 1) + '…' : text; }
+  function lastLine(signature) { var lines = signature.split('\n'); return lines[lines.length - 1].trim(); }
+
+  // Breadth-first from the root, as codemuster map walks: depth and node caps, each node once, and a count of reachable nodes left out.
+  function walk(root, callers, depth, cap) {
+    var next = callers ? incoming : outgoing;
+    var level = new Map([[root, 0]]), order = [root], edges = [], seen = new Set(), queue = [root];
+    for (var q = 0; q < queue.length; q++) {
+      var id = queue[q];
+      if (level.get(id) >= depth) continue;
+      (next.get(id) || []).forEach(function (e) {
+        var other = callers ? e.from : e.to;
+        if (!level.has(other)) {
+          if (order.length >= cap) return;
+          level.set(other, level.get(id) + 1);
+          order.push(other);
+          queue.push(other);
+        }
+        var key = e.from + '\u0000' + e.to + '\u0000' + e.kind;
+        if (!seen.has(key)) { seen.add(key); edges.push(e); }
+      });
+    }
+    var reached = new Set([root]), all = [root];
+    for (var r = 0; r < all.length; r++) {
+      (next.get(all[r]) || []).forEach(function (e) {
+        var other = callers ? e.from : e.to;
+        if (!reached.has(other)) { reached.add(other); all.push(other); }
+      });
+    }
+    return { nodes: order.map(function (id) { return { id: id, level: level.get(id) }; }), edges: edges, truncated: reached.size - order.length };
+  }
+
+  function layout(graph) {
+    var columns = [];
+    graph.nodes.forEach(function (node) {
+      (columns[node.level] = columns[node.level] || []).push(node);
+    });
+    var tallest = 0;
+    columns.forEach(function (column) {
+      column.forEach(function (node, i) {
+        node.x = PAD + node.level * (NODE_W + GAP_X);
+        node.y = PAD + i * (NODE_H + GAP_Y);
+      });
+      tallest = Math.max(tallest, column.length);
+    });
+    return { width: PAD * 2 + columns.length * (NODE_W + GAP_X), height: PAD * 2 + tallest * (NODE_H + GAP_Y) + 40 };
+  }
+
+  function edgePath(a, b) {
+    var ay = a.y + NODE_H / 2, by = b.y + NODE_H / 2;
+    if (a.x < b.x) {
+      var x1 = a.x + NODE_W, x2 = b.x - 4, mid = (x1 + x2) / 2;
+      return { d: 'M' + x1 + ',' + ay + ' C' + mid + ',' + ay + ' ' + mid + ',' + by + ' ' + x2 + ',' + by, lx: mid, ly: (ay + by) / 2 };
+    }
+    if (a.x > b.x) {
+      var sx = a.x, ex = b.x + NODE_W + 4, m = (sx + ex) / 2;
+      return { d: 'M' + sx + ',' + ay + ' C' + m + ',' + (ay + 30) + ' ' + m + ',' + (by + 30) + ' ' + ex + ',' + by, lx: m, ly: (ay + by) / 2 + 30 };
+    }
+    var rx = a.x + NODE_W, bend = rx + 50;
+    if (a === b) {
+      return { d: 'M' + rx + ',' + (ay - 8) + ' C' + bend + ',' + (ay - 30) + ' ' + bend + ',' + (ay + 30) + ' ' + (rx + 4) + ',' + (ay + 8), lx: bend, ly: ay };
+    }
+    return { d: 'M' + rx + ',' + ay + ' C' + bend + ',' + ay + ' ' + bend + ',' + by + ' ' + (rx + 4) + ',' + by, lx: bend, ly: (ay + by) / 2 };
+  }
+
+  function render() {
+    var svg = el('graph');
+    if (!state.root) {
+      svg.setAttribute('width', 0);
+      svg.setAttribute('height', 0);
+      svg.innerHTML = '';
+      el('status').innerHTML = data.entryPoints.length
+        ? 'Pick an entry point on the left, or search for a symbol, to draw its call graph.'
+        : 'This map has no entry points. Search for a symbol to draw its call graph.';
+      return;
+    }
+    var callers = state.direction === 'callers';
+    var graph = walk(state.root, callers, state.depth, data.cap);
+    state.graph = graph;
+    var size = layout(graph);
+    var at = new Map(graph.nodes.map(function (n, i) { n.index = i; return [n.id, n]; }));
+    var parts = ['<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"></path></marker></defs>'];
+    graph.edges.forEach(function (e) {
+      var p = edgePath(at.get(e.from), at.get(e.to));
+      parts.push('<g class="edge"><path d="' + p.d + '" marker-end="url(#arrow)"></path><text x="' + p.lx + '" y="' + (p.ly - 3) + '" text-anchor="middle">' + esc(e.kind) + '</text></g>');
+    });
+    graph.nodes.forEach(function (n) {
+      var s = byId.get(n.id);
+      var classes = 'node' + (n.id === state.root ? ' root' : '') + (n.id === state.selected ? ' selected' : '');
+      var sub = s ? s.path.split('/').pop() + ':' + s.line : 'not in the map';
+      parts.push('<g class="' + classes + '" data-index="' + n.index + '" tabindex="0" transform="translate(' + n.x + ',' + n.y + ')">'
+        + '<title>' + esc(name(n.id) + '\n' + where(n.id)) + '</title>'
+        + '<rect width="' + NODE_W + '" height="' + NODE_H + '" rx="6"></rect>'
+        + '<text x="10" y="17">' + esc(clip(name(n.id), 32)) + '</text>'
+        + '<text class="sub" x="10" y="31">' + esc(clip(sub, 38)) + '</text></g>');
+    });
+    svg.setAttribute('width', size.width);
+    svg.setAttribute('height', size.height);
+    svg.setAttribute('viewBox', '0 0 ' + size.width + ' ' + size.height);
+    svg.innerHTML = parts.join('');
+
+    var title = state.entry
+      ? 'flow <strong>' + esc(state.entry.display) + '</strong> (' + esc(state.entry.kind) + ') from ' + esc(name(state.root))
+      : esc(state.direction) + ' of <strong>' + esc(name(state.root)) + '</strong>';
+    var cut = graph.truncated > 0 ? ' — truncated: ' + graph.truncated + ' more nodes; use --depth or a narrower start' : '';
+    el('status').innerHTML = title + ' — ' + graph.nodes.length + ' nodes, depth ' + state.depth + esc(cut);
+  }
+
+  function setRoot(id, entry, direction) {
+    state.root = id;
+    state.entry = entry || null;
+    if (direction) state.direction = direction;
+    if (state.entry) state.direction = 'callees';
+    el('direction').value = state.direction;
+    state.selected = id;
+    render();
+    showDetails(id);
+  }
+
+  function linkList(edges, callers) {
+    if (!edges.length) return '<p class="hint">none</p>';
+    return '<ul>' + edges.map(function (e) {
+      var other = callers ? e.from : e.to;
+      return '<li><button type="button" data-root="' + esc(other) + '">' + esc(name(other)) + ' <span class="kind">' + esc(e.kind) + '</span></button></li>';
+    }).join('') + '</ul>';
+  }
+
+  function showDetails(id) {
+    var s = byId.get(id);
+    var entry = entryBySymbol.get(id);
+    var html = '<h2>Symbol</h2><p><strong>' + esc(name(id)) + '</strong></p>';
+    if (entry) html += '<p class="kind">entry point: ' + esc(entry.display) + ' (' + esc(entry.kind) + ')</p>';
+    html += '<p class="path">' + esc(where(id)) + '</p>';
+    if (s) {
+      html += '<p class="kind">' + esc(s.kind) + (s.container ? ' in ' + esc(s.container) : '') + '</p>';
+      html += '<pre>' + esc(s.signature) + '</pre>';
+    }
+    html += '<p class="path kind">' + esc(id) + '</p>';
+    html += '<h2>Callers</h2>' + linkList(incoming.get(id) || [], true);
+    html += '<h2>Callees</h2>' + linkList(outgoing.get(id) || [], false);
+    el('details').innerHTML = html;
+  }
+
+  function select(id) {
+    state.selected = id;
+    var nodes = el('graph').querySelectorAll('.node');
+    Array.prototype.forEach.call(nodes, function (g) {
+      g.classList.toggle('selected', state.graph.nodes[+g.getAttribute('data-index')].id === id);
+    });
+    showDetails(id);
+  }
+
+  function nodeFrom(event) {
+    var g = event.target.closest ? event.target.closest('.node') : null;
+    return g && state.graph ? state.graph.nodes[+g.getAttribute('data-index')].id : null;
+  }
+
+  el('graph').addEventListener('click', function (event) { var id = nodeFrom(event); if (id) select(id); });
+  el('graph').addEventListener('dblclick', function (event) { var id = nodeFrom(event); if (id) setRoot(id, null); });
+  el('graph').addEventListener('keydown', function (event) {
+    var id = nodeFrom(event);
+    if (!id) return;
+    if (event.key === 'Enter') setRoot(id, null);
+    if (event.key === ' ') { event.preventDefault(); select(id); }
+  });
+  el('details').addEventListener('click', function (event) {
+    var button = event.target.closest ? event.target.closest('button[data-root]') : null;
+    if (button) setRoot(button.getAttribute('data-root'), null);
+  });
+
+  function entryItems(entries) {
+    return entries.map(function (ep, i) {
+      return '<li><button type="button" data-entry="' + i + '">' + esc(ep.display) + ' <span class="kind">' + esc(ep.kind) + ' · ' + esc(name(ep.id)) + '</span></button></li>';
+    }).join('');
+  }
+
+  var shownEntries = data.entryPoints;
+  function showEntries(entries) {
+    shownEntries = entries;
+    el('entries').innerHTML = entries.length ? entryItems(entries) : '<li class="hint">none</li>';
+  }
+  el('entries').addEventListener('click', function (event) {
+    var button = event.target.closest ? event.target.closest('button[data-entry]') : null;
+    if (!button) return;
+    var ep = shownEntries[+button.getAttribute('data-entry')];
+    state.depth = Math.max(state.depth, 6);
+    el('depth').value = state.depth;
+    setRoot(ep.id, ep);
+  });
+
+  var shownResults = [];
+  el('search').addEventListener('input', function () {
+    var query = this.value.trim().toLowerCase();
+    if (!query) {
+      shownResults = [];
+      el('results').innerHTML = '';
+      el('results-title').hidden = true;
+      showEntries(data.entryPoints);
+      return;
+    }
+    showEntries(data.entryPoints.filter(function (ep) { return ep.display.toLowerCase().indexOf(query) >= 0 || name(ep.id).toLowerCase().indexOf(query) >= 0; }));
+    var matches = [];
+    byId.forEach(function (s) {
+      if (matches.length <= MAX_RESULTS && (s.name.toLowerCase().indexOf(query) >= 0 || s.id.toLowerCase().indexOf(query) >= 0)) matches.push(s);
+    });
+    shownResults = matches.slice(0, MAX_RESULTS);
+    el('results-title').hidden = false;
+    el('results').innerHTML = shownResults.length
+      ? shownResults.map(function (s, i) {
+        return '<li><button type="button" data-result="' + i + '">' + esc(s.name) + ' <span class="kind">' + esc(s.path) + ':' + s.line + '</span></button></li>';
+      }).join('') + (matches.length > MAX_RESULTS ? '<li class="hint">more matches; type more of the name</li>' : '')
+      : '<li class="hint">no symbols match</li>';
+  });
+  el('results').addEventListener('click', function (event) {
+    var button = event.target.closest ? event.target.closest('button[data-result]') : null;
+    if (button) setRoot(shownResults[+button.getAttribute('data-result')].id, null);
+  });
+
+  el('direction').addEventListener('change', function () {
+    state.direction = this.value;
+    state.entry = null;
+    if (state.root) { render(); showDetails(state.selected || state.root); }
+  });
+  el('depth').addEventListener('change', function () {
+    var depth = parseInt(this.value, 10);
+    if (!(depth > 0)) { this.value = state.depth; return; }
+    state.depth = depth;
+    if (state.root) render();
+  });
+
+  var short = data.commit.length > 7 ? data.commit.slice(0, 7) : data.commit;
+  el('meta').textContent = 'commit ' + short + ' · scanned ' + data.scannedAt + ' · ' + byId.size + ' symbols, ' + data.edges.length + ' edges';
+  if (data.partial) {
+    var warning = el('warning');
+    warning.hidden = false;
+    warning.textContent = 'Partial map: some symbols or edges may be missing.'
+      + (data.failedLanguages.length ? ' Failed languages: ' + data.failedLanguages.join(', ') + '.' : '')
+      + (data.diagnostics.length ? '\n' + data.diagnostics.join('\n') : '');
+  }
+  showEntries(data.entryPoints);
+  if (data.view) {
+    state.depth = data.view.depth;
+    el('depth').value = state.depth;
+    var entry = data.view.entry ? data.entryPoints.filter(function (ep) { return ep.id === data.view.root && ep.display === data.view.entry; })[0] : null;
+    setRoot(data.view.root, entry, data.view.direction);
+  } else {
+    render();
+  }
+})();
+</script>
+</body>
+</html>

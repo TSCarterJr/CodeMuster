@@ -22,6 +22,7 @@ public static class HelpText
           verify     Run only the verification pass
           status     Show coverage and remaining work
           report     Render findings and coverage as Markdown
+          map        Show callers, callees and flows from the stored code map
 
         Fix
           fix        Fix confirmed findings and make local commits, one file per worker
@@ -210,6 +211,25 @@ public static class HelpText
               --include-refuted  Include findings the verification pass refuted
 
             Unverified, unsure, and fixed findings remain visible with their recorded state.
+            """,
+        "map" => """
+            usage: codemuster map [callers <symbol> | callees <symbol> | flow <entry point>] [--depth N] [--format text|mermaid|json] [--out <file>]
+
+            Read the code map the last scan stored. Never scans; run codemuster scan first.
+              map                   Summary: commit, counts by language and edge kind, entry points
+              map callers <symbol>  Who calls the symbol, with edge kind, path:line and signature
+              map callees <symbol>  What the symbol calls
+              map flow <entry>      The call tree from an entry point, such as "GET /quotes"
+              --depth N             Edges to walk (default: 1 for callers/callees, 6 for flow)
+              --format <format>     text (default), mermaid (a flowchart), or json
+              --out <file>          Write to a file; a .html file is one self-contained interactive page
+
+            <symbol> is an exact id, Type.Method, a method or function name, or part of one; when several
+            symbols match, map lists them and exits 2. <entry> is matched by its display, ignoring case,
+            or by its symbol id. Walks stop at 300 nodes and say how many they left out; cycles are shown once.
+            map --out map.html without a subcommand writes a page that lists entry points to draw.
+
+            Example: codemuster map flow "GET /quotes" --format mermaid
             """,
         "skill" => """
             usage: codemuster skill install --for <agent> [--global]

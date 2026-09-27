@@ -79,6 +79,25 @@ public class SqliteLedgerCodeMapTests
     }
 
     [Fact]
+    public async Task GetCodeMap_SkipsAnEdgeKindThisBuildDoesNotKnow_AndSaysSoInTheDiagnostics()
+    {
+        using var temp = new TempDirectory();
+        using (var writer = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None))
+        {
+            await writer.ReplaceCodeMapAsync(First(), CancellationToken.None);
+        }
+
+        await RawSqlite.ExecuteAsync(temp.DatabasePath, "UPDATE code_edges SET kind = 'teleport' WHERE rowid IN (SELECT rowid FROM code_edges ORDER BY rowid LIMIT 2)");
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+        var stored = await ledger.GetCodeMapAsync(CancellationToken.None);
+
+        Assert.NotNull(stored);
+        Assert.Equal(First().Map.Edges.Skip(2), stored.Map.Edges);
+        Assert.Contains("2 edge(s) of kind 'teleport' are unknown to this version of codemuster and were skipped", stored.Map.Diagnostics);
+        Assert.True(stored.IsPartial);
+    }
+
+    [Fact]
     public async Task ReplaceCodeMap_StoresEachSymbolsContainer_AndNoSourceText()
     {
         using var temp = new TempDirectory();

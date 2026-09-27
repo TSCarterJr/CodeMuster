@@ -145,6 +145,20 @@ A lens's globs select where its instructions apply; `exclude` removes files from
 The report includes verification verdicts and recorded fix outcomes. Refuted findings are
 hidden unless you use `--include-refuted`.
 
+## Explore the code map
+
+Every `scan` stores the call graph it mapped. `map` reads it without scanning again:
+
+```sh
+codemuster map                                  # summary and entry points
+codemuster map flow "GET /quotes"               # the call tree from an entry point
+codemuster map callers QuoteService.ListQuotes  # who calls a method (--depth N walks further)
+codemuster map callees ListForTenant --format mermaid
+codemuster map --out map.html                   # one offline, interactive page
+```
+
+`--format json` prints a machine-readable graph. Walks stop at 300 nodes and say when they were cut.
+
 ## Fix confirmed findings
 
 First configure the repository's validation command. For example, add this property to the

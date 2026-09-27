@@ -210,10 +210,43 @@ public class CommandLineTests
     [InlineData("doctor")]
     [InlineData("validate")]
     [InlineData("hook")]
+    [InlineData("map")]
+    [InlineData("map --format json")]
+    [InlineData("map --out map.html")]
+    [InlineData("map callers QuoteService.ListQuotes --depth 2 --format mermaid --out a.md")]
+    [InlineData("map callees ListQuotes")]
+    [InlineData("map flow GET_/quotes --depth 3 --format json")]
     public void Parse_AcceptsEveryOptionTheCommandReads(string arguments)
     {
         var command = CommandLine.Parse(arguments.Split(' '));
 
         Assert.Equal(arguments.Split(' ')[0], command.Verb);
+    }
+
+    [Fact]
+    public void Parse_Map_KeepsTheSubcommandAndItsTarget()
+    {
+        var command = CommandLine.Parse(["map", "flow", "GET /quotes", "--depth", "3"]);
+
+        Assert.Equal(["flow", "GET /quotes"], command.Positionals);
+        Assert.Equal("3", command.Options["depth"]);
+    }
+
+    [Theory]
+    [InlineData("map callers", "codemuster map: missing <symbol>")]
+    [InlineData("map flow", "codemuster map: missing <entry point>")]
+    [InlineData("map calls Foo", "codemuster map: unknown subcommand \"calls\"; did you mean \"callers\"? (callers, callees, flow)")]
+    [InlineData("map flow a b", "codemuster map: unexpected argument \"b\"")]
+    [InlineData("map --format mermaid", "codemuster map: --format mermaid needs callers, callees or flow")]
+    [InlineData("map --depth 2", "codemuster map: --depth needs callers, callees or flow")]
+    [InlineData("map callers Foo --depth 0", "codemuster map: --depth must be a positive whole number (got \"0\")")]
+    [InlineData("map flow Foo --format svg", "codemuster map: --format must be one of text, mermaid, json (got \"svg\")")]
+    [InlineData("map callers Foo --path src", "codemuster map: unknown option --path (options: --depth, --format, --out)")]
+    public void Parse_MapMistakes_NameTheProblem(string arguments, string message)
+    {
+        var error = Assert.Throws<UsageException>(() => CommandLine.Parse(arguments.Split(' ')));
+
+        Assert.Equal(message, error.Message);
+        Assert.StartsWith("usage: codemuster map ", error.Usage);
     }
 }

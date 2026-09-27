@@ -342,6 +342,51 @@ In `.codemuster/ledger.db`, `findings.fix_status` and `fix_reason` are separate 
 declined IDs under `Declined:`. Those IDs can be compared with ledger rows when investigating
 recording problems. Inspect a live ledger read-only; do not change its rows during a run.
 
+## Code map
+
+`scan` stores the call graph it mapped (D60). `map` reads that stored map and never scans (D62),
+so it answers immediately and reflects the commit of the last mapping scan. Before any scan it
+exits 2 with `error: no code map yet; run codemuster scan`.
+
+```sh
+codemuster map
+codemuster map flow "GET /quotes"
+codemuster map callers QuoteRepository.FindForTenant --depth 3
+codemuster map callees QuoteService.ListQuotes --format json
+codemuster map flow "GET /quotes" --format mermaid --out quotes.md
+codemuster map --out map.html
+```
+
+- `map` prints the commit and scan time, symbol counts by language, edge counts by kind, the
+  entry points, a warning when a mapper failed (the map is partial), and the other forms.
+  `--format json` prints the same as JSON.
+- `map callers <symbol>` and `map callees <symbol>` list the direct callers or callees, each
+  with its edge kind (`call`, `bound`, `implements`, `overrides`), `path:line` and signature.
+  `--depth N` (default 1) walks further and prints the tree.
+- `map flow <entry point>` prints the call tree from an entry point, matched by its display
+  ignoring case (`"GET /quotes"`, `/quotes`) or by its symbol id; `--depth` defaults to 6.
+
+`<symbol>` is an exact symbol id, `Type.Method` (`QuoteService.ListQuotes`), a method or function
+name (`ListForTenant`), or part of one. When several symbols match, `map` lists them with their
+ids and exits 2; rerun it with a more exact name or one of the ids.
+
+`--format mermaid` prints a `flowchart TD` that GitHub and most documentation tools render; node
+ids are stable (`n0`, `n1`, ...), edges are labelled with their kind, and a flow's entry point is
+drawn as its own node. `--format json` prints `{nodes: [{id, name, path, line, kind, container}],
+edges: [{from, to, kind}], truncated}` plus the root, direction and depth.
+
+`--out <file>` writes to a file instead of stdout. A file ending in `.html` becomes one
+self-contained page with the map embedded and its drawing code written into the page: no
+external scripts, fonts or network access, so it works offline and can be attached anywhere. It
+draws the graph left to right by depth, searches symbols and entry points, shows a node's
+`path:line`, signature, callers and callees on click, and redraws from a node on double-click.
+It follows the system's light or dark setting. `map --out map.html` without a subcommand lists
+the entry points to pick from.
+
+Walks visit each symbol once, so cycles and recursion are shown once (`(see above)` in text).
+They stop at the depth and at 300 nodes, and every format says how many reachable nodes were
+left out: `truncated: N more nodes; use --depth or a narrower start`.
+
 ## Retries, cancellation, and recovery
 
 ### A worker fails
@@ -480,6 +525,7 @@ and manage them.
 | `validate` | No options; runs configured final build/tests |
 | `hook` | No options; used by installed agent hooks |
 | `report` | `--out <file>`, `--include-refuted` |
+| `map` | `callers <symbol>`, `callees <symbol>` or `flow <entry point>`; `--depth N`, `--format text\|mermaid\|json`, `--out <file>` (`.html` writes an interactive page) |
 | `next` | `--batch N`, `--out <file>`, `--path <path>`, `--kind file\|slice\|orphan\|verify\|ux` |
 | `done <unit>` | Required `--fingerprint <fp>` and `--findings <json-file>` |
 | `skill install` | Required `--for claude\|codex\|gemini\|opencode`, optional `--global` |
@@ -656,8 +702,9 @@ scan was at, and the mapper diagnostics. When a language's mapper fails, the map
 the other mappers returned and records the failed language and its diagnostic, so it reads
 as partial. Source text is never stored. The map is not a unit: it does not change coverage,
 `status`, `next`, `run` or fingerprints. Opening an older ledger upgrades it to schema 8 with
-its rows kept; older CLI versions then ask for an update rather than opening it. No command
-reads the map yet.
+its rows kept; older CLI versions then ask for an update rather than opening it. `map` reads it
+(see [Code map](#code-map)). An edge kind a newer build stored and this one does not know is
+skipped when the map is read, with a diagnostic, so the map reads as partial instead of failing.
 
 Yarn Classic uses `yarn audit --json`; Yarn 2+ uses `yarn npm audit --all --recursive --json`.
 Yarn 4.9.0's real JSON output and command behavior have been exercised. Dependency repairs

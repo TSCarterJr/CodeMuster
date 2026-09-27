@@ -200,6 +200,8 @@ public static class Program
                 return validation.Passed ? 0 : 1;
             case "fix":
                 return await FixAsync(command, repoRoot, ledger, tree, clock, config, cancellationToken);
+            case "map":
+                return await MapAsync(command, ledger, cancellationToken);
             default:
                 var markdown = await new Report(ledger, config, command.Flags.Contains("include-refuted")).RunAsync(cancellationToken);
                 if (command.Options.TryGetValue("out", out var reportPath))
@@ -421,6 +423,37 @@ public static class Program
             Console.Write(text);
         }
 
+        return 0;
+    }
+
+    private static async Task<int> MapAsync(Command command, SqliteLedger ledger, CancellationToken cancellationToken)
+    {
+        var outPath = command.Options.GetValueOrDefault("out");
+        var page = outPath is not null && outPath.EndsWith(".html", StringComparison.OrdinalIgnoreCase);
+        var format = command.Options.GetValueOrDefault("format") switch
+        {
+            "mermaid" => MapFormat.Mermaid,
+            "json" => MapFormat.Json,
+            _ => MapFormat.Text,
+        };
+        int? depth = command.Options.TryGetValue("depth", out var value) ? int.Parse(value, CultureInfo.InvariantCulture) : null;
+        var request = new MapRequest(command.Positionals.ElementAtOrDefault(0), command.Positionals.ElementAtOrDefault(1), depth, format, page);
+        var result = await new CodeMapQuery(ledger).RunAsync(request, cancellationToken);
+        if (result.ExitCode != 0)
+        {
+            Console.Error.WriteLine("error: " + result.Error);
+            return result.ExitCode;
+        }
+
+        var output = page ? MapPage.Render(result.Output) : result.Output;
+        if (outPath is null)
+        {
+            Console.Write(output);
+            return 0;
+        }
+
+        await WriteOptionFileAsync("out", outPath, output, cancellationToken);
+        Console.WriteLine($"wrote map to {outPath}");
         return 0;
     }
 
