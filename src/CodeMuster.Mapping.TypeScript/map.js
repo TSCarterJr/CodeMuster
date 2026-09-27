@@ -18,7 +18,7 @@ process.stdin.on('end', () => {
         return;
       }
 
-      programs.push({ tsconfig, ts: loaded.ts });
+      programs.push({ tsconfig, ts: loaded.ts, module: loaded.module });
     }
 
     process.stdout.write(JSON.stringify(mapRepo(request, programs)));
@@ -87,7 +87,7 @@ function loadTypeScript(repoRoot, tsconfig, paths) {
     }
 
     if (typeof ts.createProgram === 'function') {
-      return { ts };
+      return { ts, module: candidate.file };
     }
 
     version ??= ts.version;
@@ -126,7 +126,7 @@ function resolvePackage(name, paths) {
 const SCRIPT = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 
 // D64: with no tsconfig.json or jsconfig.json, one program over every included script, reading JavaScript without type-checking it.
-function createProgram(ts, repoRoot, tsconfig, included) {
+function createProgram(ts, repoRoot, tsconfig, included, parse) {
   if (tsconfig === null) {
     const rootNames = included.filter((file) => SCRIPT.test(file)).map((file) => path.join(repoRoot, file));
     report(`loading ${rootNames.length} files without a tsconfig.json or jsconfig.json`);
@@ -140,14 +140,14 @@ function createProgram(ts, repoRoot, tsconfig, included) {
       module: ts.ModuleKind.ESNext,
       moduleResolution: ts.ModuleResolutionKind.Bundler ?? ts.ModuleResolutionKind.NodeJs,
     };
-    return { program: ts.createProgram({ rootNames, options }), errors: [] };
+    return { program: ts.createProgram({ rootNames, options, host: parse(options) }), errors: [] };
   }
 
   report(`loading ${tsconfig}`);
   const configPath = path.join(repoRoot, tsconfig);
   const config = ts.readConfigFile(configPath, ts.sys.readFile);
   const parsed = ts.parseJsonConfigFileContent(config.config || {}, ts.sys, path.dirname(configPath), undefined, configPath);
-  return { program: ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options }), errors: [config.error, ...parsed.errors] };
+  return { program: ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options, host: parse(parsed.options) }), errors: [config.error, ...parsed.errors] };
 }
 
 function mapRepo(request, programs) {
@@ -162,9 +162,42 @@ function mapRepo(request, programs) {
   const httpCalls = [];
   let resolved = 0;
   let unresolved = 0;
+  const sourceFiles = new Map();
+  const registries = new Map();
+  let parsedFiles = 0;
 
-  for (const { tsconfig, ts } of programs) {
-    const { program, errors } = createProgram(ts, repoRoot, tsconfig, request.paths);
+  for (const [index, { tsconfig, ts, module }] of programs.entries()) {
+    // D66: a file several tsconfigs include is parsed once. A SourceFile is reused only by the same typescript module, for the same parse
+    // options, and under the compiler-options key tsserver's DocumentRegistry shares files by, so binding sees what it would have seen alone.
+    const parse = (options) => {
+      if (!registries.has(module)) {
+        registries.set(module, typeof ts.createDocumentRegistry === 'function' ? ts.createDocumentRegistry() : undefined);
+      }
+
+      const registry = registries.get(module);
+      const settings = registry === undefined ? `program ${index}` : registry.getKeyForCompilationSettings(options);
+      const host = ts.createCompilerHost(options);
+      const getSourceFile = host.getSourceFile;
+      host.getSourceFile = (fileName, version, onError, shouldCreateNewSourceFile) => {
+        const parsing = typeof version === 'object' && version !== null
+          ? [version.languageVersion, version.impliedNodeFormat, version.jsDocParsingMode].join(',')
+          : String(version);
+        const key = [module, settings, parsing, fileName].join('\n');
+        if (!shouldCreateNewSourceFile && sourceFiles.has(key)) {
+          return sourceFiles.get(key);
+        }
+
+        parsedFiles++;
+        const sourceFile = getSourceFile.call(host, fileName, version, onError, shouldCreateNewSourceFile);
+        if (sourceFile !== undefined) {
+          sourceFiles.set(key, sourceFile);
+        }
+
+        return sourceFile;
+      };
+      return host;
+    };
+    const { program, errors } = createProgram(ts, repoRoot, tsconfig, request.paths, parse);
     [...errors, ...program.getOptionsDiagnostics(), ...program.getGlobalDiagnostics(), ...program.getSyntacticDiagnostics()]
       .filter((diagnostic) => diagnostic !== undefined)
       .forEach((diagnostic) => {
@@ -210,7 +243,7 @@ function mapRepo(request, programs) {
     }
   }
 
-  return {
+  const map = {
     symbols: [...symbols.values()].sort((a, b) => ordinal(a.id, b.id)),
     edges: [...edges.values()].filter((edge) => symbols.has(edge.to)).sort((a, b) => ordinal(a.from, b.from) || ordinal(a.to, b.to)),
     entry_points: [...entryPoints.values()].filter((entry) => symbols.has(entry.symbol_id)).sort((a, b) => ordinal(a.symbol_id, b.symbol_id) || ordinal(a.display, b.display)),
@@ -225,6 +258,7 @@ function mapRepo(request, programs) {
     diagnostics: [...diagnostics].sort(ordinal),
     http_calls: httpCalls.sort((a, b) => ordinal(a.path, b.path) || a.line - b.line || ordinal(a.from, b.from)),
   };
+  return request.debug === true ? { ...map, parsed_files: parsedFiles } : map;
 }
 
 function createMapper(ts, checker, repoRoot) {
