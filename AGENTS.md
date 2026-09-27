@@ -2,6 +2,20 @@
 
 ## Current task status
 
+- 2026-09-27, claude: Implemented everything Tim and Claude discussed on 2026-09-26/27, on
+  main after 0.3.6 (not released): the code map (MAP1-3), spend tracking (COST1), JavaScript
+  mapping (JS1), middle-out impact review (MAP4, refined by D71 so pending impact units are
+  never dropped), simplify lens and duplicate units (SIMPLIFY1, DUP0, DUP1), architecture and
+  api review units (IA1), doctor --fix (DOCTOR1), performance (PERF3-7: C# doctor/scan on this
+  repo ~30 s -> ~18 s under load, fixture scan 11.1 s -> 7.3 s, no-change rescan 11.2 s -> 0.63 s),
+  the hidden engine interface for the hosted service (ENGINE1-2), and a skill update (SKILL2).
+  Decisions D60-D71; docs/cloud-strategy.md records the hosted-service plan. Lanes ran in
+  hand-made worktrees and were cherry-picked; each task's checklist row gives its failing-first
+  evidence (COST1 and some wave-A tests were proven against stubs, not strictly written first).
+  All 1,961 .NET and 72 npm tests pass on Windows; a Windows-only timing flake in ENGINE2's stop
+  test was widened. One real call per harness (Tim approved) grounded the usage parsers; Gemini's
+  success shape remains documented-only. Caveat: DUP0's commit also carries COST1's final
+  "unpriced" status fix. Both stashes preserved.
 - 2026-09-25, claude: Released 0.3.6 at Tim's request. main fast-forwarded
   cfb0aa9..11a91fd after release/0.3.6 passed the three-OS test workflow and a
   second dry run (0.3.6-dev.2). Tag v0.3.6 ran release 36211987569: validation on
