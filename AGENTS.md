@@ -2,6 +2,10 @@
 
 ## Current task status
 
+- 2026-09-27, claude: REL037 released 0.3.7 at Tim's request: release/0.3.7 passed three-OS CI
+  and dry run 36339171230; main fast-forwarded to 5376b43; tag v0.3.7 ran release 36339982756
+  (validation, six builds, three smokes, npm publication of all seven packages, GitHub release
+  with 9 assets). A fresh npm install -g codemuster@0.3.7 here reports 0.3.7. Do not move the tag.
 - 2026-09-27, claude: Implemented everything Tim and Claude discussed on 2026-09-26/27, on
   main after 0.3.6 (not released): the code map (MAP1-3), spend tracking (COST1), JavaScript
   mapping (JS1), middle-out impact review (MAP4, refined by D71 so pending impact units are

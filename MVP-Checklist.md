@@ -397,4 +397,4 @@ Tim asked on 2026-09-27 to implement everything discussed that day: JavaScript m
 
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
-| REL037 | Release 0.3.7: date the CHANGELOG, plugin manifests at 0.3.7, three-OS CI and a `release.yml` dry run, then push `main` and tag `v0.3.7`. | `[~]` | claude 2026-09-27 | Tim asked on 2026-09-27 to commit, push and release. |
+| REL037 | Release 0.3.7: date the CHANGELOG, plugin manifests at 0.3.7, three-OS CI and a `release.yml` dry run, then push `main` and tag `v0.3.7`. | `[x]` | claude 2026-09-27 | Tim asked on 2026-09-27 to commit, push and release. `release/0.3.7` passed the test workflow on Linux, Windows and macOS and the dry run 36339171230 (six builds, installed-package smoke on win-x64, linux-x64, darwin-arm64). `main` fast-forwarded to `5376b43`, tag `v0.3.7`, release run 36339982756 passed validation, builds and smoke and published all seven npm packages and the GitHub release (9 assets); all seven reached the registry within about seven minutes. A fresh `npm install -g codemuster@0.3.7` on Tim's Windows machine reports 0.3.7, reuses an unchanged map, and draws the page-to-API flow. |
