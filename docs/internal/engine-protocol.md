@@ -153,4 +153,4 @@ changed, before the CLI writes it.
 
 | v | since | change |
 | --- | --- | --- |
-| 1 | after 0.3.6 | first version |
+| 1 | 0.3.7 | first version |

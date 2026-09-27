@@ -4,7 +4,11 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
-## Unreleased
+## 0.3.7 - 2026-09-27
+
+The ledger moves to schema 8 the first time 0.3.7 opens it, and CodeMuster 0.3.6 and earlier
+then refuse that ledger, so back up `.codemuster` if you may need to roll back. Use
+`npm install -g codemuster@0.3.7` once to receive the launcher as well as the native binary.
 
 - Spend tracking: every agent call that `run`, `verify` and `fix` make is recorded with its
   input, output and cache tokens, the model that answered, and its cost, including failed calls,
@@ -68,8 +72,8 @@ start with 0.2.8.
   whether anything upstream or downstream now breaks or misuses it. New `codemuster impact` lists
   those units and what each change reaches, and `impact --since <ref>` does the same for the
   symbols in files committed since a ref, without a model call. On by default; `"impact": false`
-  turns it off. A pending impact unit is retired by the next scan that finds its symbol
-  unchanged, so run it before scanning again.
+  turns it off. An impact unit waits until it is analyzed: a later scan that finds its symbol
+  unchanged keeps it, and a further change keeps the version it was first planned against.
 - Duplicate review: each `scan` groups methods and functions (at least 6 lines, in one language,
   outside excluded and generated files) whose bodies are the same once names and literals are
   set aside, and plans one `duplicate` unit per group of up to 12 copies. The agent decides
@@ -84,7 +88,7 @@ start with 0.2.8.
   about inconsistent naming, verbs, error shapes, pagination and missing authorization. Each costs
   one agent call and reruns only when its files or their structure change. On by default;
   `"architecture_review": false` turns both off. The ledger now also stores the UI structure
-  with the code map (a new table in the still unreleased schema 8).
+  with the code map.
 - A `scan` with nothing to map again is faster: when no mapped file and no project, build or
   package file changed since the last complete map, and CodeMuster's mappers are the same build,
   the scan reuses the stored map instead of loading MSBuild and the TypeScript compiler, and says
