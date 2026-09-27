@@ -164,6 +164,11 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             planned = [.. planned, .. ImpactReview.Plan(await ledger.GetCodeMapAsync(cancellationToken), linked.Map, included)];
         }
 
+        if (config.Duplicates && active.Count > 0)
+        {
+            planned = [.. planned, .. DuplicateReview.Plan(mapped.Map, included)];
+        }
+
         DeadCodeScan? deadCode = null;
         if (config.DeadCode)
         {

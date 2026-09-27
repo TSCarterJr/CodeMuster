@@ -296,6 +296,7 @@ Edit the existing `.codemuster/config.json`; keep lenses that are already useful
 | `vulnerabilities` | `true` | Run ecosystem dependency audit tools during scanning. |
 | `dead_code` | `false` | Record conservative static usage assessments and report-only unused candidates during scan. |
 | `impact` | `true` | Plan an `impact` unit for each symbol whose body or signature changed since the previous scan. See [Impact review](#impact-review). |
+| `duplicates` | `true` | Plan a `duplicate` unit for each group of repeated code. See [Duplicate review](#duplicate-review). |
 | `user_experience` | Disabled | UI-only browser review settings: `enabled`, optional HTTP(S) `base_url`, and `include`/`exclude` globs. See [application reviews](application-reviews.md). |
 | `exclude` | `[]` | Additional repo-relative exclusion globs. |
 | `test_command` | `[]` | Program and arguments to run once before fixing and after each fix attempt; empty means no configured validation. |
@@ -539,6 +540,26 @@ codemuster impact
 codemuster impact --since main --format json
 ```
 
+## Duplicate review
+
+Both mappers record a normalized body hash for every method and function: the code with every
+identifier and literal replaced, so copies that differ only in names or values match (D68).
+Each `scan` plans one `duplicate` unit per group of at least two symbols with the same normalized
+hash, in one language, each at least 6 lines long and in an included file (so excluded and
+generated files never count). Copies in C# and TypeScript never group together. The unit id is
+`duplicate:<normalized hash>`; when one hash has groups in two languages each id also names its
+language. A unit holds at most 12 copies, the first by path; the pack says how many there are in
+all when it is capped.
+
+The pack shows every copy with its `path:lines` and body and asks whether they should be
+consolidated, where the shared version should live and what it would look like. Findings use
+category `simplification` and severity `low`, one per copy, so `report` lists them under
+Simplifications and `fix` repairs them only with `--include simplification`. Duplication that is
+appropriate (tests, generated DTOs, deliberately separate domains) gets no finding. A unit
+reruns when a copy it holds changes or its set of copies changes, and is retired when the group
+disappears. `"duplicates": false` turns duplicate units off; run only them with
+`codemuster run --agent <name> --kind duplicate`.
+
 ## Retries, cancellation, and recovery
 
 ### A worker fails
@@ -671,7 +692,7 @@ and manage them.
 | `scan` | `--mode slice` (default), `--mode file` |
 | `status` | No options |
 | `estimate` | `--path <path>` |
-| `run --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--kind file\|slice\|orphan\|verify\|ux\|impact`, `--force` |
+| `run --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--kind file\|slice\|orphan\|verify\|ux\|impact\|duplicate`, `--force` |
 | `verify --agent <name>` | Same as `run`, without `--kind` |
 | `fix --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--stash`, `--retry-declined`, `--allow-failing-tests`, `--include-related <files>`, `--include simplification` |
 | `validate` | No options; runs configured final build/tests |
@@ -679,7 +700,7 @@ and manage them.
 | `report` | `--out <file>`, `--include-refuted` |
 | `map` | `callers <symbol>`, `callees <symbol>` or `flow <entry point>`; `--depth N`, `--format text\|mermaid\|json`, `--out <file>` (`.html` writes an interactive page) |
 | `impact` | `--since <ref>`, `--format text\|json` |
-| `next` | `--batch N`, `--out <file>`, `--path <path>`, `--kind file\|slice\|orphan\|verify\|ux\|impact` |
+| `next` | `--batch N`, `--out <file>`, `--path <path>`, `--kind file\|slice\|orphan\|verify\|ux\|impact\|duplicate` |
 | `done <unit>` | Required `--fingerprint <fp>` and `--findings <json-file>` |
 | `skill install` | Required `--for claude\|codex\|gemini\|opencode`, optional `--global` |
 | `update` | `--check` to check without installing; handled by the npm launcher |

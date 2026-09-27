@@ -29,6 +29,9 @@ public static class UnitIds
     /// <summary>Id of the impact unit for a changed symbol (D67).</summary>
     public static string Impact(string symbolId) => "impact:" + symbolId;
 
+    /// <summary>Id of the duplicate unit for a normalized body hash (D68); the language is added only when the hash has copies in more than one language.</summary>
+    public static string Duplicate(string normalizedHash, string? language = null) => "duplicate:" + normalizedHash + (language is null ? "" : ":" + language);
+
     /// <summary>Id of the slice unit that starts at an entry point's symbol.</summary>
     public static string Slice(string entrySymbolId) => "slice:" + entrySymbolId;
 }

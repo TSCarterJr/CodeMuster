@@ -70,6 +70,12 @@ start with 0.2.8.
   symbols in files committed since a ref, without a model call. On by default; `"impact": false`
   turns it off. A pending impact unit is retired by the next scan that finds its symbol
   unchanged, so run it before scanning again.
+- Duplicate review: each `scan` groups methods and functions (at least 6 lines, in one language,
+  outside excluded and generated files) whose bodies are the same once names and literals are
+  set aside, and plans one `duplicate` unit per group of up to 12 copies. The agent decides
+  whether and where to consolidate them and reports `simplification` findings, which `report`
+  lists under Simplifications and `fix` repairs only with `--include simplification`. On by
+  default; `"duplicates": false` turns it off.
 
 ## 0.3.6 - 2026-09-25
 

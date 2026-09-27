@@ -21,4 +21,6 @@ public enum UnitKind
     DeadCode,
     /// <summary>One symbol whose body or signature changed since the stored map, with its callers up to their entry points and its callees (D67).</summary>
     Impact,
+    /// <summary>A group of symbols in one language with the same normalized body hash, to judge whether they should be consolidated (D68).</summary>
+    Duplicate,
 }

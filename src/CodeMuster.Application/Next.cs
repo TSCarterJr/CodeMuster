@@ -82,8 +82,8 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
             var targets = unit.Kind == UnitKind.Fix ? Targets(current, sourceUnits, unit.Key) : [];
             var prior = unit.Kind == UnitKind.Verify ? current.FirstOrDefault(f => UnitIds.Verify(f.Id) == unit.Id) : null;
             var requiresBrowser = unit.Kind == UnitKind.Ux || prior is not null && ReviewEligibility.RequiresBrowser(prior.Finding, sourceUnits.GetValueOrDefault(prior.UnitId));
-            var markdown = unit.Kind == UnitKind.Impact
-                ? await RenderImpactAsync(unit, unitMembers, cancellationToken)
+            var markdown = unit.Kind == UnitKind.Impact ? await RenderImpactAsync(unit, unitMembers, cancellationToken)
+                : unit.Kind == UnitKind.Duplicate ? await RenderDuplicateAsync(unit, unitMembers, cancellationToken)
                 : Render(unit, await SelectAsync(unitMembers, unit.Kind, cancellationToken), finding, targets, prior, uiPaths,
                     prior is null ? null : receipts.GetValueOrDefault(prior.UnitId)?.EvidenceJson, requiresBrowser);
             var failure = unit.Status == UnitStatus.Failed
@@ -267,6 +267,18 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
             .Concat(members.Where(IsCallee).Select(m => new Part(m, m.Signature ?? "", true, "callee, shown as its signature")))
             .ToList();
         return RenderReview(unit, ImpactReview.LensId, ImpactReview.Instructions, ImpactReview.Sections(unit, previous, current, previousText, reach), parts);
+    }
+
+    private async Task<string> RenderDuplicateAsync(Unit unit, IReadOnlyList<UnitMember> members, CancellationToken cancellationToken)
+    {
+        var map = (await ledger.GetCodeMapAsync(cancellationToken))?.Map ?? new CodeMap([], [], [], new ResolutionStats(0, 0, []), []);
+        var included = (await ledger.GetFilesAsync(cancellationToken)).Where(f => f.DeletedAt is null && f.ExcludedReason is null).Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+        var total = DuplicateReview.Groups(map, included).FirstOrDefault(g => g.Id == unit.Id)?.Copies.Count ?? members.Count;
+        var symbols = map.Symbols.DistinctBy(s => s.Id, StringComparer.Ordinal).ToDictionary(s => s.Id, StringComparer.Ordinal);
+        var parts = (await SelectAsync(members, unit.Kind, cancellationToken))
+            .Select((part, i) => part with { Note = string.Create(CultureInfo.InvariantCulture, $"copy {i + 1} of {members.Count}") })
+            .ToList();
+        return RenderReview(unit, DuplicateReview.LensId, DuplicateReview.Instructions, DuplicateReview.Sections(members, total, symbols), parts);
     }
 
     private static void AppendFiles(List<string> lines, IReadOnlyList<Part> parts)

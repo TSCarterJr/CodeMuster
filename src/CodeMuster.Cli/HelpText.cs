@@ -120,6 +120,8 @@ public static class HelpText
 
             Also runs dependency audit tools when vulnerabilities is enabled in config.
             Optional dead_code records static candidates; user_experience.enabled queues UI browser reviews.
+            Also plans impact units for symbols changed since the previous scan and duplicate units for
+            groups of repeated code; "impact": false and "duplicates": false turn them off.
             Uses no agent calls. Run scan again after changing code or configuration.
             Next: codemuster estimate, then codemuster run --agent codex -j 4.
             """,
@@ -152,7 +154,7 @@ public static class HelpText
               --batch N      Number of packs to read (default: 1)
               --out <file>   Write packs to a file instead of stdout
               --path <path>  Select units touching a repo-relative file or folder
-              --kind <kind>  Select file, slice, orphan, verify, ux, or impact work
+              --kind <kind>  Select file, slice, orphan, verify, ux, impact, or duplicate work
 
             Follow each pack's response schema and done command. Reading does not reserve work.
             Do not run independent writers against the same ledger.
@@ -169,7 +171,7 @@ public static class HelpText
         "run" => "usage: codemuster run --agent <name> [options]\n\n"
             + "Analyze pending units, then verify their findings when verification is enabled.\n\n"
             + AgentOptions + "\n"
-            + "  --kind <kind>  Limit work to file, slice, orphan, verify, ux, or impact\n"
+            + "  --kind <kind>  Limit work to file, slice, orphan, verify, ux, impact, or duplicate\n"
             + "  --force        Re-run completed units in the selected scope\n\n"
             + "Repeat the command to resume unfinished work. Use fix to edit code.\n"
             + "Browser work stays incomplete without model calls here; use next --kind ux in a browser-capable session.\n"

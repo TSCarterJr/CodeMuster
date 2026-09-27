@@ -175,7 +175,9 @@ When a later `scan` finds a method or function whose body or signature changed, 
 `impact` unit: `run` shows the agent the old and new text, the callers up to their endpoints and
 pages, and the callees, and asks whether anything now breaks. `codemuster impact` lists those
 units and what each change reaches; `codemuster impact --since main` does the same for the
-symbols in files committed since a ref, without a model call.
+symbols in files committed since a ref, without a model call. Each scan also groups methods and
+functions whose bodies are the same apart from names and literals into `duplicate` units that ask
+whether and where to consolidate them.
 
 ## Fix confirmed findings
 
