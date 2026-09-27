@@ -45,10 +45,11 @@ start with 0.2.8.
   package, such as an ASP.NET `wwwroot/js/site.js`, stay whole-file units with a note instead of
   failing the map or `doctor`.
 - `doctor --fix` offers to run the setup commands `doctor` finds: `git init` and a first
-  commit, `dotnet restore`, and the package manager's install where `typescript` is missing. It
-  asks before each one on a terminal, `--yes` runs them all, and redirected or CI runs only print
-  them; it then checks again. Without the .NET SDK, `doctor` now says so and links to the download
-  page instead of showing a raw error. It never installs the .NET SDK, Node.js or Git.
+  commit, `dotnet restore`, and the package manager's install where `typescript` is missing
+  (`npm i -D typescript` or its pnpm or yarn form for JavaScript with no config). It asks before
+  each one on a terminal, `--yes` runs them all, and redirected or CI runs only print them; it
+  then checks again. Without the .NET SDK, `doctor` now says so and links to the download page
+  instead of showing a raw error. It never installs the .NET SDK, Node.js or Git.
 - New configurations carry a `simplify` lens that flags comments restating the code,
   commented-out code, stale comments and needless complexity. `report` lists these findings in
   their own Simplifications section, and `fix` repairs them only with `--include simplification`.

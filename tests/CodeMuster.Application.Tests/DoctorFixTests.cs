@@ -103,6 +103,27 @@ public class DoctorFixTests
         Assert.Equal(["npm ci"], Rendered(report));
     }
 
+    [Theory]
+    [InlineData("run npm i -D typescript", null, "npm i -D typescript", "")]
+    [InlineData("run npm i -D typescript --prefix web", null, "cd web && npm i -D typescript", "web")]
+    [InlineData("add typescript as a dev dependency of the repository with its package manager", "pnpm-lock.yaml", "pnpm add -D typescript", "")]
+    [InlineData("add typescript as a dev dependency of web with its package manager", "web/yarn.lock", "cd web && yarn add -D typescript", "web")]
+    [InlineData("add typescript as a dev dependency of web with its package manager", null, "cd web && npm i -D typescript", "web")]
+    public async Task MissingTypeScriptForTheDefaultProgram_AddsTypescriptAsADevDependency_WhereTheMapperSaid(string hint, string? lockfile, string expected, string folder)
+    {
+        runner.OnPath.UnionWith(["pnpm", "yarn"]);
+        tree.Files.RemoveAll(f => f.Path == "web/tsconfig.json");
+        tree.Add("package.json", "{}");
+        if (lockfile is not null) tree.Add(lockfile, "");
+        typescript.Map = MapWith(0, "typescript was not found for the JavaScript and TypeScript files; " + hint);
+
+        var report = await RunAsync();
+
+        var fix = Assert.Single(report.Fixes);
+        Assert.Equal(expected, fix.Render());
+        Assert.Equal(folder, fix.Folder);
+    }
+
     [Fact]
     public async Task MissingTypeScriptPackage_WithNoPackageJson_OffersNothing()
     {

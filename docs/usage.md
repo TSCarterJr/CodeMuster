@@ -42,7 +42,9 @@ suggested restore or dependency-install commands if mapping is not ready, or let
 `git commit -m "Initial commit"`) when the folder is not a repository or has no commit yet,
 `dotnet restore` for each unrestored solution or project, and the package manager's install
 (`npm ci` with a `package-lock.json`, `pnpm install` or `yarn install` with their lockfile when
-the tool is on PATH, otherwise `npm install`) where the `typescript` package is missing. On a
+the tool is on PATH, otherwise `npm install`) where the `typescript` package is missing. With no
+`tsconfig.json` or `jsconfig.json` it adds `typescript` as a dev dependency where the mapper
+says (`npm i -D typescript`, `pnpm add -D typescript` or `yarn add -D typescript`). On a
 terminal it shows each command and asks before running it; `--yes` runs them all; redirected
 or CI runs only print them. It then checks again and prints the new result. Without the .NET SDK,
 `doctor` says so and links to https://dotnet.microsoft.com/download; it never installs the SDK.

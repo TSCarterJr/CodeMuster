@@ -13,6 +13,11 @@ public sealed class Doctor(ISourceTree tree, IReadOnlyList<ICodeMapper> mappers,
     private static readonly Regex Unrestored = new(@"is not restored; run dotnet restore (?<target>.+)$", RegexOptions.CultureInvariant);
     private static readonly Regex TypeScriptMissing = new(@"typescript was not found for (?<tsconfig>[^;]+);", RegexOptions.CultureInvariant);
 
+    // With no tsconfig or jsconfig, map.js maps a default program and names where typescript should be added as a dev dependency (D64).
+    private static readonly Regex DefaultProgramHint = new(
+        @"typescript was not found for the JavaScript and TypeScript files; (?:run npm i -D typescript(?: --prefix (?<npm>\S+))?$|add typescript as a dev dependency of (?:the repository|(?<other>.+?)) with its package manager)",
+        RegexOptions.CultureInvariant);
+
     /// <summary>Runs git, then each mapper in order, and reports what each one needs.</summary>
     public async Task<DoctorReport> RunAsync(CancellationToken cancellationToken)
     {
@@ -94,11 +99,20 @@ public sealed class Doctor(ISourceTree tree, IReadOnlyList<ICodeMapper> mappers,
         var restores = Matches(probes, Languages.CSharp, Unrestored, "target")
             .Select(target => new DoctorFix("", [["dotnet", "restore", target]]));
         var installs = Matches(probes, Languages.TypeScript, TypeScriptMissing, "tsconfig")
+            .Where(tsconfig => tsconfig.EndsWith(".json", StringComparison.Ordinal))
             .Select(tsconfig => PackageFolder(Folder(tsconfig), tracked))
             .OfType<string>()
             .Distinct(StringComparer.Ordinal)
             .Select(folder => new DoctorFix(folder, [Install(folder, tracked)]));
-        return [.. restores, .. installs];
+        var devDependencies = probes.Where(probe => probe.Name == Languages.TypeScript)
+            .SelectMany(probe => probe.Problems)
+            .Select(problem => DefaultProgramHint.Match(problem))
+            .Where(match => match.Success)
+            .Select(match => match.Groups["npm"].Success
+                ? new DoctorFix(match.Groups["npm"].Value, [["npm", "i", "-D", "typescript"]])
+                : new DoctorFix(match.Groups["other"].Value, [AddTypeScript(match.Groups["other"].Value, tracked)]))
+            .DistinctBy(fix => fix.Render(), StringComparer.Ordinal);
+        return [.. restores, .. installs, .. devDependencies];
     }
 
     private static IEnumerable<string> Matches(IReadOnlyList<DoctorProbe> probes, string language, Regex pattern, string group) =>
@@ -133,6 +147,11 @@ public sealed class Doctor(ISourceTree tree, IReadOnlyList<ICodeMapper> mappers,
         : tracked.Contains(In(folder, "pnpm-lock.yaml")) && commands?.IsOnPath("pnpm") == true ? ["pnpm", "install"]
         : tracked.Contains(In(folder, "yarn.lock")) && commands?.IsOnPath("yarn") == true ? ["yarn", "install"]
         : ["npm", "install"];
+
+    private string[] AddTypeScript(string folder, IReadOnlySet<string> tracked) =>
+        tracked.Contains(In(folder, "pnpm-lock.yaml")) && commands?.IsOnPath("pnpm") == true ? ["pnpm", "add", "-D", "typescript"]
+        : tracked.Contains(In(folder, "yarn.lock")) && commands?.IsOnPath("yarn") == true ? ["yarn", "add", "-D", "typescript"]
+        : ["npm", "i", "-D", "typescript"];
 
     private static string In(string folder, string name) => folder.Length == 0 ? name : folder + "/" + name;
 

@@ -41,6 +41,21 @@ public class DoctorCommandTests
     }
 
     [Fact]
+    public async Task DoctorFix_OnAFreshCloneOfTheMixedFixture_OffersTheRestoreAndTheInstallTheMappersName()
+    {
+        using var repo = TempRepo.FromFixture("mixed-repo");
+
+        var result = await CliProcess.RunAsync(repo.Root, "doctor", "--fix");
+
+        Assert.Equal(1, result.ExitCode);
+        var output = result.Stdout.ReplaceLineEndings("\n");
+        Assert.Contains("  src/MixedRepo.Api/MixedRepo.Api.csproj is not restored; run dotnet restore MixedRepo.sln\n", output);
+        Assert.Contains("typescript was not found for web/tsconfig.json; run npm ci --prefix web\n", output);
+        Assert.Contains("would run: dotnet restore MixedRepo.sln\nwould run: cd web && npm ci\n", output);
+        Assert.False(Directory.Exists(Path.Combine(repo.Root, "web", "node_modules")));
+    }
+
+    [Fact]
     public async Task Doctor_AndScan_LeaveLooseJavaScriptWholeFile_WithANote_WhenNoTypescriptPackageIsInstalled()
     {
         const string note = "javascript: not mapped (no tsconfig, jsconfig or typescript package); files are reviewed whole. Add typescript as a dev dependency to map them";
