@@ -49,6 +49,11 @@ start with 0.2.8.
   asks before each one on a terminal, `--yes` runs them all, and redirected or CI runs only print
   them; it then checks again. Without the .NET SDK, `doctor` now says so and links to the download
   page instead of showing a raw error. It never installs the .NET SDK, Node.js or Git.
+- New configurations carry a `simplify` lens that flags comments restating the code,
+  commented-out code, stale comments and needless complexity. `report` lists these findings in
+  their own Simplifications section, and `fix` repairs them only with `--include simplification`.
+  Existing configurations are not changed, because a new lens re-audits every unit; add the lens
+  yourself to use it.
 
 ## 0.3.6 - 2026-09-25
 

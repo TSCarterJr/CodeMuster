@@ -5,7 +5,7 @@ using CodeMuster.Domain;
 namespace CodeMuster.Application;
 
 /// <summary>Records the model's response for one unit: validates it against the unit, then stores an analysis with its findings, or for a verify unit the verdict on its finding.</summary>
-public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdentity? by = null, IFileSystem? fileSystem = null, string repoRoot = "", ISourceTree? tree = null, IContentHasher? hasher = null)
+public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdentity? by = null, IFileSystem? fileSystem = null, string repoRoot = "", ISourceTree? tree = null, IContentHasher? hasher = null, bool includeSimplification = false)
 {
     /// <summary>Stores the response for <paramref name="unitId"/> when it still has <paramref name="fingerprint"/>. An analysis must cite only member paths; it retires the verify units of the findings it replaces before recording, then gives each finding it records a pending verify unit unless verification is off.</summary>
     public async Task<DoneResult> RunAsync(string unitId, string fingerprint, string responseJson, CancellationToken cancellationToken)
@@ -128,7 +128,7 @@ public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdent
         var sources = (await ledger.GetUnitsAsync(cancellationToken)).ToDictionary(u => u.Id, StringComparer.Ordinal);
         var mine = current
             .Where(f => f.Finding.Path == unit.Key && f.Verification?.Verdict == Verdict.Confirmed && f.Fix?.State != FixState.Fixed
-                && ReviewEligibility.CanAutoFix(f, sources.GetValueOrDefault(f.UnitId), config))
+                && ReviewEligibility.CanAutoFix(f, sources.GetValueOrDefault(f.UnitId), config, includeSimplification))
             .Select(f => f.Id)
             .ToHashSet();
         var cited = response.Addressed.Concat(response.Declined.Select(d => d.Finding)).ToList();

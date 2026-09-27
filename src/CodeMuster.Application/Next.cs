@@ -5,7 +5,7 @@ using CodeMuster.Domain;
 namespace CodeMuster.Application;
 
 /// <summary>Hands out the next units that need work, each as one markdown pack (D01). A verify unit's pack asks the model to refute its finding instead of auditing (D27).</summary>
-public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool interactive = true, UnitKind? kind = null, string? path = null, IProgress<string>? notes = null)
+public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool interactive = true, UnitKind? kind = null, string? path = null, IProgress<string>? notes = null, bool includeSimplification = false)
 {
     private const string FixInstructions =
         "Fix the confirmed findings below in the file under Files. Change only what a finding calls for, keep the file's existing style, "
@@ -154,7 +154,7 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
     private IReadOnlyList<FixTarget> Targets(IReadOnlyList<UnitFinding> current, IReadOnlyDictionary<string, Unit> sources, string path) =>
         current
             .Where(f => f.Finding.Path == path && f.Verification?.Verdict == Verdict.Confirmed && f.Fix?.State != FixState.Fixed
-                && ReviewEligibility.CanAutoFix(f, sources.GetValueOrDefault(f.UnitId), config))
+                && ReviewEligibility.CanAutoFix(f, sources.GetValueOrDefault(f.UnitId), config, includeSimplification))
             .OrderBy(f => f.Finding.LineStart)
             .Select(f => new FixTarget(f.Id, f.Finding, f.Verification?.Reason, f.Fix))
             .ToList();

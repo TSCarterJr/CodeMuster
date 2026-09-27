@@ -26,7 +26,9 @@ public class IntelligentConfigCommandTests
         Assert.Contains("backup", result.Stdout);
         Assert.Equal(original, File.ReadAllText(Assert.Single(Directory.GetFiles(Path.Combine(repo.Root, ".codemuster"), "config.backup-*.json"))));
         Assert.False(File.Exists(Path.Combine(repo.Root, ".codemuster", "ledger.db")));
-        Assert.Equal(2, JsonNode.Parse(File.ReadAllText(configPath))!["lenses"]!.AsArray().Count);
+        Assert.Equal(
+            ["default", "simplify", "api-security"],
+            JsonNode.Parse(File.ReadAllText(configPath))!["lenses"]!.AsArray().Select(lens => (string)lens!["id"]!));
 
         var repeated = await CliProcess.RunAsync(repo.Root, environment, "intelligent-config", "--agent", "fake");
         Assert.Equal(0, repeated.ExitCode);

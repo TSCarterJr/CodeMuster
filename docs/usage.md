@@ -286,7 +286,7 @@ Edit the existing `.codemuster/config.json`; keep lenses that are already useful
 
 | Key | Default | Meaning |
 |---|---|---|
-| `lenses` | One `default` lens | Named audit instructions with an `id`, `instructions`, and optional `globs` and `languages`. |
+| `lenses` | `default` and `simplify` | Named audit instructions with an `id`, `instructions`, and optional `globs` and `languages`. |
 | `automation` | `update` | Automatic plugin workflow: `off`, `update`, `review`, or `review_and_fix`. |
 | `slice_token_budget` | `24000` | Approximate amount of full code in a slice before farther members are reduced to signatures. |
 | `resolution_threshold` | `0.9` | Required fraction of resolved calls for slice coverage to be considered complete. |
@@ -297,6 +297,15 @@ Edit the existing `.codemuster/config.json`; keep lenses that are already useful
 | `exclude` | `[]` | Additional repo-relative exclusion globs. |
 | `test_command` | `[]` | Program and arguments to run once before fixing and after each fix attempt; empty means no configured validation. |
 | `prices` | Not set | Per-model prices in US dollars per million tokens that override or extend the bundled price table. See [Spend](#spend). |
+
+`init` writes two lenses into a new configuration: `default`, which looks for defects, and
+`simplify`, which flags comments that restate the code, commented-out code, stale comments that
+contradict the code, and needless complexity such as redundant conditionals, re-implemented
+standard library calls, and wrappers that add nothing. It never flags a comment that explains
+why. Its findings use category `simplification` and severity `low`; `report` lists them in their
+own Simplifications section after the defects, and `fix` repairs them only with
+`--include simplification`. An existing configuration is never changed: adding a lens re-audits
+every unit, so add the `simplify` lens yourself when you want it.
 
 A glob without a slash matches file names anywhere. Use `vendor/**` to exclude a directory.
 Built-in exclusions cover generated files, migrations, lockfiles, binaries, and non-code files.
@@ -623,7 +632,7 @@ and manage them.
 | `estimate` | `--path <path>` |
 | `run --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--kind file\|slice\|orphan\|verify`, `--force` |
 | `verify --agent <name>` | Same as `run`, without `--kind` |
-| `fix --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--stash`, `--retry-declined`, `--allow-failing-tests`, `--include-related <files>` |
+| `fix --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--stash`, `--retry-declined`, `--allow-failing-tests`, `--include-related <files>`, `--include simplification` |
 | `validate` | No options; runs configured final build/tests |
 | `hook` | No options; used by installed agent hooks |
 | `report` | `--out <file>`, `--include-refuted` |

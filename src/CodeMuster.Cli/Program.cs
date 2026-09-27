@@ -298,6 +298,7 @@ public static class Program
         {
             RelatedFiles = command.Options.TryGetValue("include-related", out var related) ? related.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(RepoPath.Normalize).ToArray() : [],
             AllowFailingTests = command.Flags.Contains("allow-failing-tests"),
+            IncludeSimplification = command.Options.GetValueOrDefault("include") == Config.SimplificationCategory,
         };
         if (options.RelatedFiles.Count > 0)
         {

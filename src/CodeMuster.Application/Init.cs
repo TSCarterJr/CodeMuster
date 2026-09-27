@@ -2,7 +2,7 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
 
-/// <summary>Sets a repo up (D24): writes the default config once and makes sure the ledger is gitignored, touching nothing else.</summary>
+/// <summary>Sets a repo up (D24): writes the new-repository config (default and simplify lenses) once and makes sure the ledger is gitignored, touching nothing else.</summary>
 public sealed class Init(IFileSystem fileSystem, ISourceTree tree)
 {
     /// <summary>Repo-relative path of the ledger, the file that must never be committed.</summary>
@@ -21,7 +21,7 @@ public sealed class Init(IFileSystem fileSystem, ISourceTree tree)
         var configCreated = !fileSystem.FileExists(configPath);
         if (configCreated)
         {
-            await fileSystem.WriteAllTextAsync(configPath, ConfigJson.Serialize(Config.Default) + "\n", cancellationToken);
+            await fileSystem.WriteAllTextAsync(configPath, ConfigJson.Serialize(Config.NewRepository) + "\n", cancellationToken);
         }
 
         if (await tree.IsIgnoredAsync(LedgerPath, cancellationToken))

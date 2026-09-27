@@ -132,7 +132,9 @@ units and processes verification work when enabled. Repeat `run` to resume unfin
 Use `--path src` with `next`, `estimate`, `run`, `verify`, or `fix` to work on one part of a repository.
 A lens's globs select where its instructions apply; `exclude` removes files from the scan.
 The report includes verification verdicts and recorded fix outcomes. Refuted findings are
-hidden unless you use `--include-refuted`.
+hidden unless you use `--include-refuted`. New configurations also carry a `simplify` lens for
+comments that restate the code, commented-out code and needless complexity; the report lists its
+findings separately, and `fix` repairs them only with `--include simplification`.
 
 Every agent call is recorded with its tokens, the model that answered and its cost, including
 failed and rejected attempts. `status` shows the total, `report` breaks it down by model, unit

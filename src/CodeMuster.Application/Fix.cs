@@ -12,11 +12,11 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
     {
         if (options.RelatedFiles.Count > 0 && (options.Parallelism != 1 || string.IsNullOrWhiteSpace(options.Path)))
             throw new ArgumentException("related-file recovery requires one --path file and -j 1");
-        var eligible = (await EligibleFindingsAsync(cancellationToken)).Where(f => f.Verification?.Verdict == Verdict.Confirmed && f.Fix?.State != FixState.Fixed
+        var eligible = (await EligibleFindingsAsync(options.IncludeSimplification, cancellationToken)).Where(f => f.Verification?.Verdict == Verdict.Confirmed && f.Fix?.State != FixState.Fixed
             && (options.Path is null || f.Finding.Path == options.Path || f.Finding.Path.StartsWith(options.Path.TrimEnd('/') + "/", StringComparison.Ordinal))).ToList();
         if (eligible.Count == 0)
         {
-            await PlanAsync(cancellationToken);
+            await PlanAsync(cancellationToken, options.IncludeSimplification);
             return new FixResult(0, 0, 0, []);
         }
         await CheckBrowserSourcesAsync(eligible, cancellationToken);
@@ -63,10 +63,10 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
             throw new InvalidOperationException("the working tree still has tracked changes after stashing; no fixes were started");
         }
 
-        await PlanAsync(cancellationToken);
+        await PlanAsync(cancellationToken, options.IncludeSimplification);
         if (options.RetryDeclined)
         {
-            var declinedPaths = (await EligibleFindingsAsync(cancellationToken))
+            var declinedPaths = (await EligibleFindingsAsync(options.IncludeSimplification, cancellationToken))
                 .Where(f => f.Verification?.Verdict == Verdict.Confirmed && f.Fix?.State == FixState.Declined)
                 .Select(f => f.Finding.Path).ToHashSet(StringComparer.Ordinal);
             var reopen = (await ledger.GetUnitsAsync(cancellationToken))
@@ -80,7 +80,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
 
     private async Task<FixResult> RunParallelAsync(IAgentAdapter adapter, FixOptions options, IProgress<string>? notes, IWorkspace repository, CancellationToken cancellationToken)
     {
-        var eligible = (await EligibleFindingsAsync(cancellationToken))
+        var eligible = (await EligibleFindingsAsync(options.IncludeSimplification, cancellationToken))
             .Where(f => f.Verification?.Verdict == Verdict.Confirmed && f.Fix?.State != FixState.Fixed).ToList();
         var targets = eligible
             .GroupBy(f => f.Finding.Path)
@@ -93,8 +93,8 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         await CheckBrowserSourcesAsync(eligible.Where(f => options.Path is null || f.Finding.Path == options.Path || f.Finding.Path.StartsWith(options.Path.TrimEnd('/') + "/", StringComparison.Ordinal)), cancellationToken);
         var editor = fileFixer ?? throw new InvalidOperationException("parallel fix needs isolated file workers");
         if (tests is not null && !options.AllowFailingTests) await CheckBaselineAsync(tests, repository, notes, cancellationToken);
-        var next = new Next(ledger, tree!, config ?? Config.Default, interactive: false, UnitKind.Fix, options.Path);
-        var done = new Done(ledger, clock!, config ?? Config.Default, adapter.Identity);
+        var next = new Next(ledger, tree!, config ?? Config.Default, interactive: false, UnitKind.Fix, options.Path, includeSimplification: options.IncludeSimplification);
+        var done = new Done(ledger, clock!, config ?? Config.Default, adapter.Identity, includeSimplification: options.IncludeSimplification);
         var calls = new CallRecorder(ledger, clock!, config ?? Config.Default, adapter.Identity, "fix");
         var attempts = new Dictionary<string, int>(StringComparer.Ordinal);
         var running = new Dictionary<Task<ParallelAttempt>, UnitPack>();
@@ -255,7 +255,7 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
             }
 
             var cited = response.Addressed.Concat(response.Declined.Select(d => d.Finding)).ToList();
-            var current = (await EligibleFindingsAsync(cancellationToken))
+            var current = (await EligibleFindingsAsync(options.IncludeSimplification, cancellationToken))
                 .Where(finding => finding.Finding.Path == pack.Key && finding.Verification?.Verdict == Verdict.Confirmed && finding.Fix?.State != FixState.Fixed)
                 .ToList();
             var currentTargets = current.Select(finding => finding.Id).ToHashSet();
@@ -427,10 +427,10 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
             Timestamps.Format(clock!.UtcNow), false, null, error, identity), [], cancellationToken);
     }
 
-    /// <summary>Creates or refreshes a fix unit for every file with a confirmed finding, and retires fix units whose findings are gone. A unit already fixed against the file's current content keeps its Done status, unless a confirmed finding it never answered has since been recorded for that file.</summary>
-    public async Task<FixPlan> PlanAsync(CancellationToken cancellationToken)
+    /// <summary>Creates or refreshes a fix unit for every file with a confirmed finding, and retires fix units whose findings are gone. Simplification findings count only when <paramref name="includeSimplification"/> is set (D68). A unit already fixed against the file's current content keeps its Done status, unless a confirmed finding it never answered has since been recorded for that file.</summary>
+    public async Task<FixPlan> PlanAsync(CancellationToken cancellationToken, bool includeSimplification = false)
     {
-        var confirmed = (await EligibleFindingsAsync(cancellationToken))
+        var confirmed = (await EligibleFindingsAsync(includeSimplification, cancellationToken))
             .Where(f => f.Verification?.Verdict == Verdict.Confirmed)
             .ToList();
         var unresolved = confirmed.Where(f => f.Fix?.State != FixState.Fixed).ToList();
@@ -478,11 +478,11 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         return new FixPlan(units.Count, confirmed.Count(f => files.ContainsKey(f.Finding.Path)), units.Count(u => u.Status != UnitStatus.Done));
     }
 
-    private async Task<IReadOnlyList<UnitFinding>> EligibleFindingsAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<UnitFinding>> EligibleFindingsAsync(bool includeSimplification, CancellationToken cancellationToken)
     {
         var sources = (await ledger.GetUnitsAsync(cancellationToken)).ToDictionary(unit => unit.Id, StringComparer.Ordinal);
         return (await ledger.GetCurrentFindingsAsync(cancellationToken))
-            .Where(finding => ReviewEligibility.CanAutoFix(finding, sources.GetValueOrDefault(finding.UnitId), config ?? Config.Default))
+            .Where(finding => ReviewEligibility.CanAutoFix(finding, sources.GetValueOrDefault(finding.UnitId), config ?? Config.Default, includeSimplification))
             .ToList();
     }
 

@@ -62,6 +62,27 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     /// <summary>One lens named <c>default</c> that applies to every file.</summary>
     public static readonly Config Default = new([new Lens("default", DefaultInstructions, [], [])]);
 
+    /// <summary>The category the <see cref="Simplify"/> lens asks for, reported apart from defects and fixed only on request (D68).</summary>
+    public const string SimplificationCategory = "simplification";
+
+    /// <summary>The built-in lens that finds code which could be simpler (D68); new configurations carry it after the default lens.</summary>
+    public static readonly Lens Simplify = new(
+        "simplify",
+        "Look only for code that could be simpler without changing what it does. Flag comments that restate the code next to them "
+        + "(such as `string name; // the user's name`), commented-out code, stale comments that contradict the code, and needless complexity: "
+        + "redundant conditionals, re-implementations of standard library calls, and wrappers that add nothing. "
+        + "Never flag a comment that explains why the code is the way it is. "
+        + "Report each finding with category \"simplification\" and severity \"low\", cite its exact lines, and say what the simpler form is.",
+        [],
+        []);
+
+    /// <summary>What <c>init</c> writes for a repository with no configuration: the default lens, then <see cref="Simplify"/>. Existing configurations are never changed, because a new lens re-audits every unit.</summary>
+    public static readonly Config NewRepository = Default with { Lenses = [.. Default.Lenses, Simplify] };
+
+    /// <summary>True for a finding the <see cref="Simplify"/> lens reports, whatever its case or surrounding spaces.</summary>
+    public static bool IsSimplification(Finding finding) =>
+        string.Equals(finding.Category.Trim(), SimplificationCategory, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Every lens that applies to at least one of the files, ordered by id.</summary>
     public IReadOnlyList<Lens> LensesFor(IEnumerable<(string Path, string Language)> files)
     {

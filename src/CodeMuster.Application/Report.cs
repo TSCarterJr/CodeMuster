@@ -4,7 +4,7 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
 
-/// <summary>Renders the ledger as markdown: the coverage header, current findings grouped by severity with their verdicts, and the inventory of every unit except verify units, whose verdicts show under their findings (D11, D12). Refuted findings are left out unless <paramref name="includeRefuted"/> is set (D27).</summary>
+/// <summary>Renders the ledger as markdown: the coverage header, current findings grouped by severity with their verdicts, simplification findings in their own section after them (D68), and the inventory of every unit except verify units, whose verdicts show under their findings (D11, D12). Refuted findings are left out unless <paramref name="includeRefuted"/> is set (D27).</summary>
 public sealed class Report(ILedger ledger, Config config, bool includeRefuted = false)
 {
     /// <summary>Builds the report; lines are joined with LF and the text ends with one newline.</summary>
@@ -19,8 +19,10 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
         var provenance = await ledger.GetProvenanceAsync(cancellationToken);
         var dependencies = current.Where(f => f.Finding.Category == DependencyFindings.Category).ToList();
         var code = current.Where(f => f.Finding.Category != DependencyFindings.Category).ToList();
-        var findings = code.Where(f => includeRefuted || f.Verification?.Verdict != Verdict.Refuted).ToList();
-        var refuted = code.Count - findings.Count;
+        var shown = code.Where(f => includeRefuted || f.Verification?.Verdict != Verdict.Refuted).ToList();
+        var refuted = code.Count - shown.Count;
+        var findings = shown.Where(f => !Config.IsSimplification(f.Finding)).ToList();
+        var simplifications = shown.Where(f => Config.IsSimplification(f.Finding)).ToList();
         var fingerprints = units.ToDictionary(u => u.Id, u => u.Fingerprint);
         var at = status.HeadCommit is null ? "no scan yet" : status.HeadCommit[..Math.Min(7, status.HeadCommit.Length)];
 
@@ -62,25 +64,36 @@ public sealed class Report(ILedger ledger, Config config, bool includeRefuted = 
             lines.Add("");
             lines.Add(string.Create(CultureInfo.InvariantCulture, $"### {Name(severity)} ({group.Count})"));
             lines.Add("");
-            foreach (var (_, unitId, fingerprint, finding, verification, fix) in group)
+            group.ForEach(AddFinding);
+        }
+
+        if (simplifications.Count > 0)
+        {
+            lines.Add("");
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"## Simplifications ({simplifications.Count})"));
+            lines.Add("");
+            simplifications.OrderBy(f => f.Finding.Path, StringComparer.Ordinal).ThenBy(f => f.Finding.LineStart).ToList().ForEach(AddFinding);
+        }
+
+        void AddFinding(UnitFinding entry)
+        {
+            var (_, unitId, fingerprint, finding, verification, fix) = entry;
+            var verdict = verification is null ? "unverified" : Name(verification.Verdict);
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"- `{FindingLocation.Of(finding)}` [{finding.LensId}, confidence {finding.Confidence:0.00}, {verdict}] {Inline(finding.Claim)}"));
+            lines.Add("  " + Inline(finding.Evidence));
+            if (verification is not null)
             {
-                var verdict = verification is null ? "unverified" : Name(verification.Verdict);
-                lines.Add(string.Create(CultureInfo.InvariantCulture, $"- `{FindingLocation.Of(finding)}` [{finding.LensId}, confidence {finding.Confidence:0.00}, {verdict}] {Inline(finding.Claim)}"));
-                lines.Add("  " + Inline(finding.Evidence));
-                if (verification is not null)
-                {
-                    lines.Add($"  {verdict}: {Inline(verification.Reason)}");
-                }
+                lines.Add($"  {verdict}: {Inline(verification.Reason)}");
+            }
 
-                if (fix is not null)
-                {
-                    lines.Add($"  fix: {Name(fix.State)}; {Inline(fix.Reason)}");
-                }
+            if (fix is not null)
+            {
+                lines.Add($"  fix: {Name(fix.State)}; {Inline(fix.Reason)}");
+            }
 
-                if (fingerprints[unitId] != fingerprint)
-                {
-                    lines.Add("  (stale: unit changed since this analysis)");
-                }
+            if (fingerprints[unitId] != fingerprint)
+            {
+                lines.Add("  (stale: unit changed since this analysis)");
             }
         }
 

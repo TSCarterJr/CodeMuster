@@ -17,9 +17,10 @@ public static class ReviewEligibility
         && (!RequiresBrowser(finding.Finding, source)
             || source is { Status: UnitStatus.Done } && source.Fingerprint == finding.Fingerprint);
 
-    /// <summary>Also requires browser scope and lens settings to match the source review that authorized a repair.</summary>
-    public static bool CanAutoFix(UnitFinding finding, Unit? source, Config config) =>
+    /// <summary>Also requires browser scope and lens settings to match the source review that authorized a repair, and leaves simplification findings out unless <paramref name="includeSimplification"/> is set (D68).</summary>
+    public static bool CanAutoFix(UnitFinding finding, Unit? source, Config config, bool includeSimplification = false) =>
         CanAutoFix(finding, source)
+        && (includeSimplification || !Config.IsSimplification(finding.Finding))
         && (!RequiresBrowser(finding.Finding, source)
             || config.UserExperience.Applies(finding.Finding.Path)
                 && source?.LensHash == Config.HashOf(config.LensesFor([(finding.Finding.Path, Languages.FromPath(finding.Finding.Path))])));

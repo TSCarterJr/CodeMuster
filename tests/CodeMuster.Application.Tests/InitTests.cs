@@ -26,7 +26,7 @@ public class InitTests
 
         Assert.True(result.ConfigCreated);
         Assert.Equal(GitignoreOutcome.Appended, result.Gitignore);
-        Assert.Equal(ConfigJson.Serialize(Config.Default) + "\n", fileSystem.Files[ConfigPath]);
+        Assert.Equal(ConfigJson.Serialize(Config.NewRepository) + "\n", fileSystem.Files[ConfigPath]);
         Assert.Equal(".codemuster/ledger.db\n.codemuster/ledger.db-*\n", fileSystem.Files[GitignorePath]);
         Assert.Equal(1, confirmations);
     }

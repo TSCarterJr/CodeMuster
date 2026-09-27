@@ -11,6 +11,9 @@ public sealed record FixOptions(int MaxAttempts = 3, string? Path = null, bool S
     /// <summary>Additional existing tracked files explicitly allowed in a serial recovery worker.</summary>
     public IReadOnlyList<string> RelatedFiles { get; init; } = [];
 
+    /// <summary>Also repairs confirmed simplification findings, which fix otherwise leaves alone (D68).</summary>
+    public bool IncludeSimplification { get; init; }
+
     /// <summary>Skips running test_command on the unmodified tree before the first repair, for suites that fail there on purpose.</summary>
     public bool AllowFailingTests { get; init; }
 

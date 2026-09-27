@@ -31,7 +31,7 @@ public static class CommandLine
         ["verify"] = new(["agent", "jobs", "attempts", "path", "model", "effort"], ["force"], ["agent"]),
         ["report"] = new(["out"], ["include-refuted"]),
         ["skill"] = new(["for"], ["global"], ["for"], "install"),
-        ["fix"] = new(["agent", "jobs", "attempts", "path", "model", "effort", "include-related"], ["stash", "retry-declined", "allow-failing-tests"], ["agent"]),
+        ["fix"] = new(["agent", "jobs", "attempts", "path", "model", "effort", "include-related", "include"], ["stash", "retry-declined", "allow-failing-tests"], ["agent"]),
         ["hook"] = new([], []),
         ["validate"] = new([], []),
         ["map"] = new(["depth", "format", "out"], [], null, MapPositionals),
@@ -187,6 +187,7 @@ public static class CommandLine
         ("skill", "for") => SkillInstaller.Harnesses,
         (_, "kind") => Kinds,
         ("scan", "mode") => ["slice", "file"],
+        ("fix", "include") => [Config.SimplificationCategory],
         ("map", "format") => ["text", "mermaid", "json"],
         _ => null,
     };
