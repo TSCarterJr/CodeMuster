@@ -5,10 +5,27 @@ using CodeMuster.Domain;
 namespace CodeMuster.Application;
 
 /// <summary>Fixes what the audit confirmed: one unit per file with confirmed findings, one fresh agent call each, and one commit per changed file. Parallel workers edit in isolation (D40).</summary>
-public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock = null, Config? config = null, IWorkspace? workspace = null, ITestRunner? tests = null, IFileFixer? fileFixer = null, IContentHasher? hasher = null)
+public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock = null, Config? config = null, IWorkspace? workspace = null, ITestRunner? tests = null, IFileFixer? fileFixer = null, IContentHasher? hasher = null, IEngineEvents? events = null)
 {
     /// <summary>Plans and fixes confirmed findings. With consent, saves tracked local changes and restores them afterward, including on failure or cancellation. With a test runner, first requires the unmodified tree to pass it, before any agent call, unless the options allow failing tests.</summary>
     public async Task<FixResult> RunAsync(IAgentAdapter adapter, FixOptions options, IProgress<string>? notes, CancellationToken cancellationToken)
+    {
+        events.Started("fix", options.Parallelism, adapter.Identity);
+        FixResult? result = null;
+        try
+        {
+            result = await FixAsync(adapter, options, notes, cancellationToken);
+            return result;
+        }
+        finally
+        {
+            events.Emit("run_summary", ("command", "fix"), ("units", result?.Units ?? 0), ("fixed", result?.Fixed ?? 0), ("declined", result?.Declined ?? 0),
+                ("gave_up", result?.GaveUp.Count ?? 0), ("skipped", result?.Skipped.Count ?? 0), ("cancelled", cancellationToken.IsCancellationRequested),
+                ("failed", result is null && !cancellationToken.IsCancellationRequested));
+        }
+    }
+
+    private async Task<FixResult> FixAsync(IAgentAdapter adapter, FixOptions options, IProgress<string>? notes, CancellationToken cancellationToken)
     {
         if (options.RelatedFiles.Count > 0 && (options.Parallelism != 1 || string.IsNullOrWhiteSpace(options.Path)))
             throw new ArgumentException("related-file recovery requires one --path file and -j 1");
@@ -88,6 +105,8 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
         var selected = (await ledger.NextAsync(int.MaxValue, UnitKind.Fix, options.Path, cancellationToken))
             .Where(unit => targets.ContainsKey(unit.Key)).ToList();
         var fingerprints = selected.ToDictionary(u => u.Id, u => u.Fingerprint, StringComparer.Ordinal);
+        var keys = selected.ToDictionary(u => u.Id, u => u.Key, StringComparer.Ordinal);
+        var slots = new Dictionary<string, (int Worker, DateTimeOffset StartedAt)>(StringComparer.Ordinal);
         var pending = new Queue<string>(selected.Select(u => u.Id));
         if (pending.Count == 0) return new FixResult(0, 0, 0, []);
         await CheckBrowserSourcesAsync(eligible.Where(f => options.Path is null || f.Finding.Path == options.Path || f.Finding.Path.StartsWith(options.Path.TrimEnd('/') + "/", StringComparison.Ordinal)), cancellationToken);
@@ -123,11 +142,15 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                         await ledger.SkipUnitAsync(unitId, fingerprints[unitId], ex.Message, cancellationToken);
                         skipped.Add(unitId);
                         notes?.Report("skipped: " + ex.Message);
+                        events.Skipped(unitId, UnitKind.Fix, keys[unitId], ex.Message);
                         continue;
                     }
 
                     attempts[pack.UnitId] = attempts.GetValueOrDefault(pack.UnitId) + 1;
                     notes?.Report(string.Create(CultureInfo.InvariantCulture, $"fixing {pack.Key}, {targets[pack.Key].Count} finding(s) (attempt {attempts[pack.UnitId]}/{options.MaxAttempts})"));
+                    var worker = EngineStream.FreeWorker(slots.Values.Select(slot => slot.Worker));
+                    slots[pack.UnitId] = (worker, clock!.UtcNow);
+                    events.UnitStarted(pack.UnitId, UnitKind.Fix, pack.Key, worker, attempts[pack.UnitId]);
                     running.Add(EditAsync(pack), pack);
                 }
 
@@ -137,12 +160,14 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                 running.Remove(completed);
                 var attempt = await completed;
                 FixResponse? response = null;
+                AgentCall? spent = null;
                 if (attempt.Edit is { } edit)
                 {
                     if (draining)
                     {
-                        await calls.RecordAsync(unit.UnitId, UnitKind.Fix, edit.Usage, false, CancellationToken.None);
+                        spent = await calls.RecordAsync(unit.UnitId, UnitKind.Fix, edit.Usage, false, CancellationToken.None);
                         notes?.Report($"{unit.Key} finished after the run stopped; its repair was not applied and its worker is retained at {edit.Worktree}");
+                        Finished(unit, "not_applied", $"repair retained unapplied at {edit.Worktree}", spent);
                         continue;
                     }
 
@@ -152,11 +177,12 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
-                        await calls.RecordAsync(unit.UnitId, UnitKind.Fix, edit.Usage, false, CancellationToken.None);
+                        spent = await calls.RecordAsync(unit.UnitId, UnitKind.Fix, edit.Usage, false, CancellationToken.None);
                         draining = true;
                         pending.Clear();
                         gaveUp.Add(unit.UnitId);
                         notes?.Report(string.Create(CultureInfo.InvariantCulture, $"stopped starting repairs after {unit.Key} could not be integrated; the {running.Count} running worker(s) will finish and their repairs are retained unapplied"));
+                        Finished(unit, "integration_failed", ex.Message, spent);
                         continue;
                     }
                     finally
@@ -164,13 +190,13 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                         await editor.ReleaseAsync(edit, CancellationToken.None);
                     }
 
-                    await calls.RecordAsync(unit.UnitId, UnitKind.Fix, edit.Usage, response is not null, CancellationToken.None);
+                    spent = await calls.RecordAsync(unit.UnitId, UnitKind.Fix, edit.Usage, response is not null, CancellationToken.None);
                 }
 
                 if (attempt.Error is { } workerError)
                 {
                     await RecordFailureAsync(unit, workerError, adapter.Identity, cancellationToken);
-                    if (attempt.Paid is { } usage) await calls.RecordAsync(unit.UnitId, UnitKind.Fix, usage, false, cancellationToken);
+                    if (attempt.Paid is { } usage) spent = await calls.RecordAsync(unit.UnitId, UnitKind.Fix, usage, false, cancellationToken);
                 }
 
                 if (response is null)
@@ -195,6 +221,8 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                         pending.Enqueue(unit.UnitId);
                         notes?.Report($"queued retry for {unit.Key}");
                     }
+
+                    Finished(unit, "rejected", attempt.Error ?? "the repair was rejected", spent);
                 }
                 else
                 {
@@ -202,6 +230,8 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                     fixedCount += response.Addressed.Count;
                     declined += response.Declined.Count;
                     notes?.Report($"finished {unit.Key}");
+                    Finished(unit, "recorded", string.Create(CultureInfo.InvariantCulture, $"fixed {response.Addressed.Count} finding(s), declined {response.Declined.Count}"), spent);
+                    events.Emit("fix_outcome", ("unit", unit.UnitId), ("path", unit.Key), ("fixed", response.Addressed.ToArray()), ("declined", response.Declined.Select(d => d.Finding).ToArray()));
                 }
             }
 
@@ -220,6 +250,14 @@ public sealed class Fix(ILedger ledger, ISourceTree? tree = null, IClock? clock 
                 {
                 }
             }));
+        }
+
+        void Finished(UnitPack unit, string outcome, string message, AgentCall? spent)
+        {
+            var (_, startedAt) = slots[unit.UnitId];
+            slots.Remove(unit.UnitId);
+            events.UnitFinished(unit.UnitId, UnitKind.Fix, unit.Key, attempts[unit.UnitId], outcome, message, gaveUp.Contains(unit.UnitId),
+                EngineStream.Milliseconds(startedAt, clock!.UtcNow), spent);
         }
 
         async Task<ParallelAttempt> EditAsync(UnitPack pack)

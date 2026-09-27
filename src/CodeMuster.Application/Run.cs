@@ -4,7 +4,7 @@ using CodeMuster.Domain;
 namespace CodeMuster.Application;
 
 /// <summary>Drives one headless agent over every unit that needs work (D10): hands out packs through <see cref="Next"/>, records each response through <see cref="Done"/>, retries failed attempts, and stops cleanly on cancellation. Adapter calls run in a rolling pool (D66): a slot takes the next unit as soon as its call ends. Only the adapter calls run concurrently; the ledger holds one connection, so every ledger call is made by the loop that starts and finishes units. <paramref name="notes"/> hears about each attempt as it starts, since the first result of a long run can be minutes away.</summary>
-public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config config, IAgentAdapter adapter, IProgress<RunProgress> progress, IProgress<string>? notes = null)
+public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config config, IAgentAdapter adapter, IProgress<RunProgress> progress, IProgress<string>? notes = null, IEngineEvents? events = null)
 {
     private int workers;
     private TaskCompletionSource wake = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -24,14 +24,16 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
         var total = 0;
         var next = new Next(ledger, tree, config, interactive: false, options.Kind, options.Path);
         var done = new Done(ledger, clock, config, adapter.Identity);
-        var calls = new CallRecorder(ledger, clock, config, adapter.Identity, options.Kind == UnitKind.Verify ? "verify" : "run");
+        var command = options.Kind == UnitKind.Verify ? "verify" : "run";
+        var calls = new CallRecorder(ledger, clock, config, adapter.Identity, command);
         var attempts = new Dictionary<string, int>(StringComparer.Ordinal);
         // In start order, so when several calls have ended the oldest is recorded first and none waits behind newer ones.
-        var running = new List<(Task<Attempt> Call, UnitPack Pack)>();
+        var running = new List<(Task<Attempt> Call, UnitPack Pack, int Worker, DateTimeOffset StartedAt)>();
         var gaveUp = new List<string>();
         var skipped = new List<string>();
         var completed = 0;
         using var calling = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        events.Started(command, options.Parallelism, adapter.Identity);
 
         try
         {
@@ -72,13 +74,24 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                     continue;
                 }
 
-                var (call, pack) = running[index];
+                var (call, pack, _, startedAt) = running[index];
                 running.RemoveAt(index);
                 var attempt = await call;
                 cancellationToken.ThrowIfCancellationRequested();
                 var result = attempt.Failure ?? await done.RunAsync(pack.UnitId, pack.Fingerprint, ResponseText.ExtractJson(attempt.Text), cancellationToken);
-                if (attempt.Paid is { } paid) await calls.RecordAsync(pack.UnitId, pack.Kind, paid, result.Outcome == DoneOutcome.Recorded, cancellationToken);
-                Record(pack.UnitId, pack.Kind, pack.Key, result);
+                var spent = attempt.Paid is { } paid ? await calls.RecordAsync(pack.UnitId, pack.Kind, paid, result.Outcome == DoneOutcome.Recorded, cancellationToken) : null;
+                var report = Record(pack.UnitId, pack.Kind, pack.Key, result);
+                events.UnitFinished(pack.UnitId, pack.Kind, pack.Key, report.Attempt, EngineStream.Name(result.Outcome), report.Message,
+                    gaveUp.Contains(pack.UnitId), EngineStream.Milliseconds(startedAt, clock.UtcNow), spent);
+                foreach (var finding in result.Findings)
+                {
+                    events.Emit("finding_recorded", ("unit", pack.UnitId), ("path", finding.Path), ("line", finding.LineStart), ("severity", finding.Severity.ToString().ToLowerInvariant()), ("category", finding.Category));
+                }
+
+                if (result.Verdict is { } verdict)
+                {
+                    events.Emit("verify_outcome", ("unit", pack.UnitId), ("key", pack.Key), ("verdict", verdict.ToString().ToLowerInvariant()));
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -89,6 +102,7 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
         {
             await calling.CancelAsync();
             await Task.WhenAll(running.Select(entry => entry.Call));
+            events.Emit("run_summary", ("command", command), ("completed", completed), ("gave_up", gaveUp.Count), ("skipped", skipped.Count), ("cancelled", cancellationToken.IsCancellationRequested));
         }
 
         async Task StartAsync(Unit unit)
@@ -104,27 +118,32 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                 skipped.Add(unit.Id);
                 progress.Report(new RunProgress(unit.Id, unit.Kind, unit.Key, 0, DoneOutcome.Skipped,
                     "skipped: " + ex.Message, completed, total));
+                events.Skipped(unit.Id, unit.Kind, unit.Key, ex.Message);
                 return;
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                Record(unit.Id, unit.Kind, unit.Key, new DoneResult(DoneOutcome.Rejected, ex.Message));
+                var report = Record(unit.Id, unit.Kind, unit.Key, new DoneResult(DoneOutcome.Rejected, ex.Message));
+                events.Emit("unit_not_started", ("unit", unit.Id), ("kind", EngineStream.Name(unit.Kind)), ("key", unit.Key), ("attempt", report.Attempt), ("reason", report.Message), ("gave_up", gaveUp.Contains(unit.Id)));
                 return;
             }
 
             if (pack.RequiresBrowser)
             {
+                const string BrowserOnly = "browser evidence required: use codemuster next --kind ux (or verify) in a browser-capable agent session, then done; source review alone cannot complete this unit";
                 gaveUp.Add(pack.UnitId);
-                progress.Report(new RunProgress(pack.UnitId, pack.Kind, pack.Key, 0, DoneOutcome.Rejected,
-                    "browser evidence required: use codemuster next --kind ux (or verify) in a browser-capable agent session, then done; source review alone cannot complete this unit", completed, total));
+                progress.Report(new RunProgress(pack.UnitId, pack.Kind, pack.Key, 0, DoneOutcome.Rejected, BrowserOnly, completed, total));
+                events.Emit("unit_not_started", ("unit", pack.UnitId), ("kind", EngineStream.Name(pack.Kind)), ("key", pack.Key), ("attempt", 0), ("reason", BrowserOnly), ("gave_up", true));
                 return;
             }
 
             notes?.Report($"starting {Name(pack.Kind)} {pack.Key}");
-            running.Add((CallAsync(pack.Markdown, calling.Token), pack));
+            var worker = EngineStream.FreeWorker(running.Select(entry => entry.Worker));
+            events.UnitStarted(pack.UnitId, pack.Kind, pack.Key, worker, attempts.GetValueOrDefault(pack.UnitId) + 1);
+            running.Add((CallAsync(pack.Markdown, calling.Token), pack, worker, clock.UtcNow));
         }
 
-        void Record(string unitId, UnitKind kind, string key, DoneResult result)
+        RunProgress Record(string unitId, UnitKind kind, string key, DoneResult result)
         {
             var attempt = attempts.GetValueOrDefault(unitId) + 1;
             attempts[unitId] = attempt;
@@ -139,7 +158,9 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                 message = string.Create(CultureInfo.InvariantCulture, $"gave up after {attempt} attempt(s): {result.Message}");
             }
 
-            progress.Report(new RunProgress(unitId, kind, key, attempt, result.Outcome, message, completed, total));
+            var report = new RunProgress(unitId, kind, key, attempt, result.Outcome, message, completed, total);
+            progress.Report(report);
+            return report;
         }
     }
 

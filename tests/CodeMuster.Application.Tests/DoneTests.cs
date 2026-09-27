@@ -125,7 +125,7 @@ public class DoneTests
 
         var result = await RunAsync(verify.Id, verify.Fingerprint, VerifyResponseJson.Serialize(response));
 
-        Assert.Equal(new DoneResult(DoneOutcome.Recorded, $"recorded {name}"), result);
+        Assert.Equal(new DoneResult(DoneOutcome.Recorded, $"recorded {name}") { Verdict = verdict }, result);
         Assert.Equal(response, ledger.Verifications[1]);
         Assert.Equal(
             verify with { Status = UnitStatus.Done, Summary = $"{name}: Line 19 settles it.", SummaryHash = verify.Fingerprint, LensHash = Config.HashOf(Config.Default.Lenses) },

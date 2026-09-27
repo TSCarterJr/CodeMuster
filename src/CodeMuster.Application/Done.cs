@@ -80,7 +80,7 @@ public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdent
             await AddVerifyUnitsAsync(unit, members, cancellationToken);
         }
 
-        return new DoneResult(DoneOutcome.Recorded, string.Create(CultureInfo.InvariantCulture, $"recorded {findings.Count} finding(s)"));
+        return new DoneResult(DoneOutcome.Recorded, string.Create(CultureInfo.InvariantCulture, $"recorded {findings.Count} finding(s)")) { Findings = findings };
     }
 
     private async Task<DoneResult> RecordVerdictAsync(Unit unit, IReadOnlyList<UnitFinding> current, Analysis analysis, string responseJson, CancellationToken cancellationToken)
@@ -109,7 +109,7 @@ public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdent
         }
         var verdict = response.Verdict.ToString().ToLowerInvariant();
         await ledger.RecordVerificationAsync(analysis with { Summary = $"{verdict}: {response.Reason}" }, finding.Id, response, cancellationToken);
-        return new DoneResult(DoneOutcome.Recorded, $"recorded {verdict}");
+        return new DoneResult(DoneOutcome.Recorded, $"recorded {verdict}") { Verdict = response.Verdict };
 
         bool MatchesOriginalObservation(Finding observed)
         {

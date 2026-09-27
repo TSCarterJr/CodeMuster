@@ -1,3 +1,5 @@
+using CodeMuster.Domain;
+
 namespace CodeMuster.Application;
 
 /// <summary>What <see cref="Done"/> did with a response.</summary>
@@ -19,4 +21,11 @@ public enum DoneOutcome
 /// <summary>The outcome of <see cref="Done"/> and a one-line message for the console.</summary>
 /// <param name="Outcome">What happened.</param>
 /// <param name="Message">Why, in one line.</param>
-public sealed record DoneResult(DoneOutcome Outcome, string Message);
+public sealed record DoneResult(DoneOutcome Outcome, string Message)
+{
+    /// <summary>The findings an analysis recorded; empty for any other outcome or unit kind.</summary>
+    public IReadOnlyList<Finding> Findings { get; init; } = [];
+
+    /// <summary>The verdict a verification recorded, or null.</summary>
+    public Verdict? Verdict { get; init; }
+}

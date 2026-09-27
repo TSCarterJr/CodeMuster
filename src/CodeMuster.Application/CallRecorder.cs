@@ -8,10 +8,12 @@ internal sealed class CallRecorder(ILedger ledger, IClock clock, Config config, 
     private readonly PriceTable prices = PriceTable.For(config);
     private readonly string run = verb + " " + Timestamps.Format(clock.UtcNow);
 
-    public Task RecordAsync(string? unitId, UnitKind? kind, AgentUsage usage, bool succeeded, CancellationToken cancellationToken)
+    public async Task<AgentCall> RecordAsync(string? unitId, UnitKind? kind, AgentUsage usage, bool succeeded, CancellationToken cancellationToken)
     {
         var (cost, source) = prices.Cost(by, usage);
-        return ledger.RecordAgentCallAsync(new AgentCall(Timestamps.Format(clock.UtcNow), run, unitId, kind, by, usage, succeeded, cost, source), cancellationToken);
+        var call = new AgentCall(Timestamps.Format(clock.UtcNow), run, unitId, kind, by, usage, succeeded, cost, source);
+        await ledger.RecordAgentCallAsync(call, cancellationToken);
+        return call;
     }
 
     /// <summary>The usage of a failed call when the harness ran, or null when it never started, so nothing was spent.</summary>

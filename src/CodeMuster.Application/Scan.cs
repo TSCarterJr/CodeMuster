@@ -12,8 +12,11 @@ namespace CodeMuster.Application;
 /// Only the stored map carries the UI-to-API join (D61): its <see cref="EdgeKind.Http"/> edges and diagnostics never reach slices, fingerprints or the result's diagnostics, and one progress line summarizes it when the mappers found an HTTP call.
 /// Each step is reported to <paramref name="progress"/> as it starts or finishes, with mapper steps under their language.
 /// </summary>
-public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config, IReadOnlyList<ICodeMapper>? mappers = null, string repoRoot = "", IProgress<string>? progress = null, IDependencyAuditor? auditor = null)
+public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher, IClock clock, Config config, IReadOnlyList<ICodeMapper>? mappers = null, string repoRoot = "", IProgress<string>? progress = null, IDependencyAuditor? auditor = null, IEngineEvents? events = null)
 {
+    // Every step also reaches the engine stream (D65) when there is one.
+    private readonly IProgress<string>? progress = EngineStream.Tee(progress, events);
+
     /// <summary>Runs one scan, in slice mode when mappers were given.</summary>
     public async Task<ScanResult> RunAsync(CancellationToken cancellationToken)
     {
@@ -126,7 +129,11 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
                 units.Count(u => u.Kind == UnitKind.File),
                 mapped.ResolutionRate,
                 mapped.Map.Diagnostics);
-        return new ScanResult(head, included.Count, excluded, created, units.Count(u => u.Status == UnitStatus.Stale), total, sliceMode, vulnerabilities);
+        var result = new ScanResult(head, included.Count, excluded, created, units.Count(u => u.Status == UnitStatus.Stale), total, sliceMode, vulnerabilities);
+        events.Emit("scan_summary", ("head", result.HeadCommit), ("files_included", result.FilesIncluded), ("files_excluded", result.FilesExcluded),
+            ("units_created", result.UnitsCreated), ("units_stale", result.UnitsStale), ("units_total", result.UnitsTotal),
+            ("slices", sliceMode?.Slices), ("orphans", sliceMode?.Orphans), ("resolution_rate", sliceMode?.ResolutionRate), ("vulnerable_packages", vulnerabilities?.Packages));
+        return result;
     }
 
     private async Task<IEnumerable<PlannedUnit>> PlanVerifyUnitsAsync(IReadOnlyList<PlannedUnit> planned, CancellationToken cancellationToken)
