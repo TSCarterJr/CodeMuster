@@ -537,10 +537,12 @@ change (changed return values or meaning, new exceptions or nulls, changed param
 UI still calls, callees now used incorrectly)? Findings use the usual schema with lens
 `impact`, cite lines in the changed symbol or a caller, get a verify unit, and can be fixed.
 
-An impact unit lives until the next scan: once analyzed it stays done, and when its symbol
-changes again it goes stale and is compared with the newer map. A scan that finds the symbol
-unchanged retires it, even if it was never run, so run pending impact units before scanning
-again. `"impact": false` in `.codemuster/config.json` turns impact units off. Run only them with
+An impact unit waits until it is analyzed. A later scan that finds its symbol unchanged keeps it
+pending, and if the symbol changes again before the review, the unit keeps the version it was
+first planned against, so the pack shows everything that changed since the last review. Once
+analyzed it stays done; when its symbol changes again it goes stale and is compared with the
+newer map, and a scan that finds a done unit's symbol unchanged retires it. A unit whose symbol
+was deleted is retired. `"impact": false` in `.codemuster/config.json` turns impact units off. Run only them with
 `codemuster run --agent <name> --kind impact`.
 
 `codemuster impact` reads the stored map and never scans or calls a model. It lists the impact

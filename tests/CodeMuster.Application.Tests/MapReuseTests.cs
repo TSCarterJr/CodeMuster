@@ -155,7 +155,7 @@ public class MapReuseTests
     }
 
     [Fact]
-    public async Task APendingImpactUnit_IsRetiredByAReusingScan_AsByAFullOne()
+    public async Task APendingImpactUnit_IsKeptByAReusingScan_AsByAFullOne()
     {
         var reused = new Repo();
         var remapped = new Repo();
@@ -173,6 +173,6 @@ public class MapReuseTests
 
         Assert.Equal(4, reused.MapperCalls);
         Assert.Equal(remapped.Dump(), reused.Dump());
-        Assert.Equal(UnitStatus.Retired, reused.Ledger.Units.Single(u => u.Kind == UnitKind.Impact).Status);
+        Assert.Equal(UnitStatus.Pending, reused.Ledger.Units.Single(u => u.Kind == UnitKind.Impact).Status);
     }
 }

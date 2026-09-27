@@ -96,11 +96,44 @@ public class ImpactTests
     }
 
     [Fact]
-    public async Task UnchangedRescan_RetiresTheImpactUnit_AndAChangeAgainPlansItAgainstTheNewBase()
+    public async Task UnchangedRescan_KeepsAPendingImpactUnit_UntilItIsAnalyzed()
     {
         await ScanChangingAsync(ListForTenant, s => s with { BodyHash = "body:changed" });
         var planned = Assert.Single(Live(UnitKind.Impact));
 
+        Edit(MoneyPath);
+        await ScanAsync();
+
+        var kept = Assert.Single(Live(UnitKind.Impact));
+        Assert.Equal(planned.Id, kept.Id);
+        Assert.Equal(UnitStatus.Pending, kept.Status);
+    }
+
+    [Fact]
+    public async Task APendingImpactUnit_ChangedAgain_KeepsItsFirstBaseline()
+    {
+        await ScanChangingAsync(ListForTenant, s => s with { BodyHash = "body:changed" });
+
+        const string third = "3333333333333333333333333333333333333333";
+        tree.HeadCommit = third;
+        csharp.Map = csharp.Map with { Symbols = csharp.Map.Symbols.Select(s => s.Id == ListForTenant ? s with { BodyHash = "body:again" } : s).ToList() };
+        Edit(RepositoryPath);
+        await ScanAsync();
+
+        var again = Assert.Single(Live(UnitKind.Impact));
+        Assert.Equal(UnitStatus.Pending, again.Status);
+        Assert.Contains(ledger.Members, m => m.UnitId == again.Id && m.Symbol == $"{ListForTenant}@{First}");
+        Assert.DoesNotContain(ledger.Members, m => m.UnitId == again.Id && m.Symbol == $"{ListForTenant}@{Second}");
+    }
+
+    [Fact]
+    public async Task UnchangedRescan_RetiresADoneImpactUnit_AndAChangeAgainPlansItAgainstTheNewBase()
+    {
+        await ScanChangingAsync(ListForTenant, s => s with { BodyHash = "body:changed" });
+        var planned = Assert.Single(Live(UnitKind.Impact));
+        Assert.Equal(DoneOutcome.Recorded, (await new Done(ledger, clock, Config.Default).RunAsync(planned.Id, planned.Fingerprint, """{ "summary": "Callers still fine.", "findings": [] }""", CancellationToken.None)).Outcome);
+
+        Edit(MoneyPath);
         await ScanAsync();
 
         Assert.Empty(Live(UnitKind.Impact));
@@ -115,6 +148,19 @@ public class ImpactTests
         var again = Assert.Single(Live(UnitKind.Impact));
         Assert.Equal(UnitStatus.Pending, again.Status);
         Assert.Contains(ledger.Members, m => m.UnitId == again.Id && m.Symbol == $"{ListForTenant}@{Second}");
+    }
+
+    [Fact]
+    public async Task APendingImpactUnit_Retires_WhenItsSymbolIsDeleted()
+    {
+        await ScanChangingAsync(ListForTenant, s => s with { BodyHash = "body:changed" });
+        var planned = Assert.Single(Live(UnitKind.Impact));
+
+        csharp.Map = csharp.Map with { Symbols = csharp.Map.Symbols.Where(s => s.Id != ListForTenant).ToList(), Edges = csharp.Map.Edges.Where(e => e.From != ListForTenant && e.To != ListForTenant).ToList() };
+        Edit(RepositoryPath);
+        await ScanAsync();
+
+        Assert.Equal(UnitStatus.Retired, ledger.Units.Single(u => u.Id == planned.Id).Status);
     }
 
     [Fact]

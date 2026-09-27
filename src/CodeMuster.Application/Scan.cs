@@ -72,6 +72,17 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         var verified = (await ledger.GetMembersAsync(
             planned.Where(p => p.Kind == UnitKind.Verify && existingUnits.GetValueOrDefault(p.Id)?.Status == UnitStatus.Done).Select(p => p.Id).ToList(),
             cancellationToken)).ToLookup(m => m.UnitId, StringComparer.Ordinal);
+        // An impact unit nobody has analyzed yet keeps waiting (D67): a later scan that sees its symbol unchanged does not retire it,
+        // and a further change keeps the baseline it was first planned against, so the pack still shows everything since the last review.
+        var awaiting = existingUnits.Values.Where(u => u.Kind == UnitKind.Impact && u.Status is UnitStatus.Pending or UnitStatus.Failed or UnitStatus.Skipped)
+            .Select(u => u.Id).ToHashSet(StringComparer.Ordinal);
+        var baselines = (await ledger.GetMembersAsync(planned.Where(p => awaiting.Contains(p.Id)).Select(p => p.Id).ToList(), cancellationToken))
+            .Where(m => m.Distance < 0).ToDictionary(m => m.UnitId, StringComparer.Ordinal);
+        planned = [.. planned.Select(p => baselines.TryGetValue(p.Id, out var baseline)
+            ? p with { Members = [.. p.Members.Select(m => m.Distance < 0 ? baseline : m)] }
+            : p)];
+        var symbols = linked.Map.Symbols.Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
+
         var units = new List<Unit>(planned.Count);
         var created = 0;
         foreach (var plan in planned)
@@ -98,6 +109,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         var retired = existingUnits.Values
             .Where(u => u.Status != UnitStatus.Retired && !produced.Contains(u.Id))
             .Where(u => u.Kind != UnitKind.Dependency || !live.TryGetValue(u.Key, out var fingerprint) || u.Fingerprint != fingerprint)
+            .Where(u => !awaiting.Contains(u.Id) || !symbols.Contains(u.Id[UnitIds.Impact("").Length..]))
             .Select(u => u with { Status = UnitStatus.Retired })
             .ToList();
         if (retired.Count > 0)
