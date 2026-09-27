@@ -118,7 +118,8 @@ public class SliceScanTests
         var result = await ScanAsync();
 
         Assert.Equal(new[] { ControllerGetQuote, ControllerListQuotes, ExecuteAsync }.Select(UnitIds.Slice).Order(StringComparer.Ordinal), IdsWith(UnitStatus.Stale));
-        Assert.Equal((3, 0), (result.UnitsStale, result.UnitsCreated));
+        Assert.Equal((3, 1), (result.UnitsStale, result.UnitsCreated));
+        Assert.Equal([UnitIds.Impact(MoneyFormat)], IdsWith(UnitStatus.Pending));
         Assert.Equal(8, IdsWith(UnitStatus.Done).Count());
     }
 
@@ -148,7 +149,8 @@ public class SliceScanTests
         var result = await ScanAsync();
 
         Assert.Equal(new[] { UnitIds.Orphan(ServicePath) }, IdsWith(UnitStatus.Stale));
-        Assert.Equal((1, 0), (result.UnitsStale, result.UnitsCreated));
+        Assert.Equal((1, 1), (result.UnitsStale, result.UnitsCreated));
+        Assert.Equal([UnitIds.Impact(ArchiveQuote)], IdsWith(UnitStatus.Pending));
     }
 
     [Fact]

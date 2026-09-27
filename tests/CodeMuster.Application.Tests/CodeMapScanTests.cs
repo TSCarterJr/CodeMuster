@@ -56,7 +56,7 @@ public class CodeMapScanTests
     }
 
     [Fact]
-    public async Task Scan_StoresExactlyTheMappersMap_AtTheScannedCommit_WithoutReadingIt()
+    public async Task Scan_StoresExactlyTheMappersMap_AtTheScannedCommit_ReadingItOnlyToFindChangedSymbols()
     {
         csharp.Map = CSharp() with { Resolution = new ResolutionStats(17, 3, ["GetService"]) };
         typescript.Map = TypeScript() with { Resolution = new ResolutionStats(11, 1, ["fetch"]), Diagnostics = ["typescript: no jsx factory"] };
@@ -65,7 +65,7 @@ public class CodeMapScanTests
 
         var stored = Assert.IsType<StoredCodeMap>(ledger.CodeMap);
         Assert.Equal(1, ledger.CodeMapWrites);
-        Assert.Equal(0, ledger.CodeMapReads);
+        Assert.Equal(1, ledger.CodeMapReads);
         Assert.Equal((ledger.Runs[^1].HeadCommit, ledger.Runs[^1].StartedAt), (stored.HeadCommit, stored.ScannedAt));
         Assert.Equal(csharp.Map.Symbols.Concat(typescript.Map.Symbols), stored.Map.Symbols);
         Assert.Equal(csharp.Map.Edges.Concat(typescript.Map.Edges), stored.Map.Edges);

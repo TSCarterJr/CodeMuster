@@ -19,4 +19,6 @@ public enum UnitKind
     Ux,
     /// <summary>Static reachability assessments for one source file; candidates do not authorize deletion.</summary>
     DeadCode,
+    /// <summary>One symbol whose body or signature changed since the stored map, with its callers up to their entry points and its callees (D67).</summary>
+    Impact,
 }

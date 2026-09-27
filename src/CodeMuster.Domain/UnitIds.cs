@@ -26,6 +26,9 @@ public static class UnitIds
     /// <summary>Id of static reachability analysis for a source path.</summary>
     public static string DeadCode(string path) => "dead_code:" + path;
 
+    /// <summary>Id of the impact unit for a changed symbol (D67).</summary>
+    public static string Impact(string symbolId) => "impact:" + symbolId;
+
     /// <summary>Id of the slice unit that starts at an entry point's symbol.</summary>
     public static string Slice(string entrySymbolId) => "slice:" + entrySymbolId;
 }

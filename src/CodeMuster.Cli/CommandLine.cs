@@ -35,6 +35,7 @@ public static class CommandLine
         ["hook"] = new([], []),
         ["validate"] = new([], []),
         ["map"] = new(["depth", "format", "out"], [], null, MapPositionals),
+        ["impact"] = new(["since", "format"], []),
     };
 
     // map takes nothing (the summary) or a subcommand and its target, so it is checked on its own rather than as one placeholder.
@@ -189,6 +190,7 @@ public static class CommandLine
         ("scan", "mode") => ["slice", "file"],
         ("fix", "include") => [Config.SimplificationCategory],
         ("map", "format") => ["text", "mermaid", "json"],
+        ("impact", "format") => ["text", "json"],
         _ => null,
     };
 

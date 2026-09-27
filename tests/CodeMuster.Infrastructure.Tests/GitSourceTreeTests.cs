@@ -131,6 +131,27 @@ public sealed class GitSourceTreeTests : IDisposable
         Assert.Equal(ModifiedReadme, await _tree.ReadFileAsync("docs/read me.md", CancellationToken.None));
     }
 
+    [Fact]
+    public async Task ReadFileAtCommit_returns_the_committed_content_or_null_when_the_commit_lacks_the_file()
+    {
+        var first = _repo.Run("rev-list", "--max-parents=0", "HEAD").Trim();
+
+        Assert.Equal("class B {}\n", await _tree.ReadFileAtCommitAsync(first, "src/a/b.cs", CancellationToken.None));
+        Assert.Equal("class B { int X; }\n", await _tree.ReadFileAtCommitAsync("HEAD", "src/a/b.cs", CancellationToken.None));
+        Assert.Equal("class Naive {}\n", await _tree.ReadFileAtCommitAsync("HEAD", "src/c/naïve.cs", CancellationToken.None));
+        Assert.Null(await _tree.ReadFileAtCommitAsync(first, "src/c/naïve.cs", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ChangedSince_lists_committed_changes_between_the_ref_and_HEAD_only()
+    {
+        Assert.Equal(["src/a/b.cs"], await _tree.ChangedSinceAsync("HEAD~1", CancellationToken.None));
+        Assert.Equal(
+            ["docs/old name.md", "docs/read me.md", "src/a/b.cs", "src/a/staged.cs", "src/c/naïve.cs"],
+            (await _tree.ChangedSinceAsync("HEAD~2", CancellationToken.None)).Order(StringComparer.Ordinal));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _tree.ChangedSinceAsync("no-such-ref", CancellationToken.None));
+    }
+
     private static string? NullIfEmpty(string value)
     {
         var trimmed = value.Trim();

@@ -115,8 +115,8 @@ public class CommandLineTests
     [InlineData("fix --agent fake -j -1", "codemuster fix: -j must be a positive whole number (got \"-1\")")]
     [InlineData("fix --agent fake --attempts=0", "codemuster fix: --attempts must be a positive whole number (got \"0\")")]
     [InlineData("next --batch 1.5", "codemuster next: --batch must be a positive whole number (got \"1.5\")")]
-    [InlineData("next --kind bogus", "codemuster next: --kind must be one of file, slice, orphan, verify, ux (got \"bogus\")")]
-    [InlineData("run --agent fake --kind fix", "codemuster run: --kind must be one of file, slice, orphan, verify, ux (got \"fix\")")]
+    [InlineData("next --kind bogus", "codemuster next: --kind must be one of file, slice, orphan, verify, ux, impact (got \"bogus\")")]
+    [InlineData("run --agent fake --kind fix", "codemuster run: --kind must be one of file, slice, orphan, verify, ux, impact (got \"fix\")")]
     [InlineData("scan --mode files", "codemuster scan: --mode must be one of slice, file (got \"files\")")]
     [InlineData("skill install --for gpt5", "codemuster skill: --for must be one of claude, codex, gemini, opencode (got \"gpt5\")")]
     [InlineData("init --no-skills --for claude", "codemuster init: --for cannot be used with --no-skills")]
@@ -221,6 +221,8 @@ public class CommandLineTests
     [InlineData("map callers QuoteService.ListQuotes --depth 2 --format mermaid --out a.md")]
     [InlineData("map callees ListQuotes")]
     [InlineData("map flow GET_/quotes --depth 3 --format json")]
+    [InlineData("impact")]
+    [InlineData("impact --since HEAD~1 --format json")]
     public void Parse_AcceptsEveryOptionTheCommandReads(string arguments)
     {
         var command = CommandLine.Parse(arguments.Split(' '));
@@ -253,5 +255,17 @@ public class CommandLineTests
 
         Assert.Equal(message, error.Message);
         Assert.StartsWith("usage: codemuster map ", error.Usage);
+    }
+
+    [Theory]
+    [InlineData("impact --since", "codemuster impact: --since needs a value")]
+    [InlineData("impact --format mermaid", "codemuster impact: --format must be one of text, json (got \"mermaid\")")]
+    [InlineData("impact HEAD~1", "codemuster impact: unexpected argument \"HEAD~1\"")]
+    public void Parse_ImpactMistakes_NameTheProblem(string arguments, string message)
+    {
+        var error = Assert.Throws<UsageException>(() => CommandLine.Parse(arguments.Split(' ')));
+
+        Assert.Equal(message, error.Message);
+        Assert.Equal("usage: codemuster impact [--since <ref>] [--format text|json]; see codemuster impact --help", error.Usage);
     }
 }

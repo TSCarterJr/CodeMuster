@@ -25,6 +25,9 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     /// <summary>Whether scan reports conservative unused-code candidates from supported call maps.</summary>
     public bool DeadCode { get; init; }
 
+    /// <summary>Whether scan plans an <c>impact</c> unit for each symbol whose body or signature changed since the stored map (D67).</summary>
+    public bool Impact { get; init; } = true;
+
     /// <summary>Per-model prices that override or extend the bundled price table (D63); null when the repository sets none.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<ModelPrice>? Prices { get; init; }

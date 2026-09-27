@@ -20,7 +20,7 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
         + "A defect in code nothing can reach cannot happen: answer refuted when the repository shows nothing calls that code, "
         + "and count code reached through dependency injection, reflection, routing, or a library's public API as reachable.";
 
-    private sealed record Part(UnitMember Member, string Text, bool Outlined);
+    private sealed record Part(UnitMember Member, string Text, bool Outlined, string? Note = null);
 
     /// <summary>Builds a pack for up to <paramref name="batch"/> units; empty when nothing needs work.</summary>
     public async Task<IReadOnlyList<UnitPack>> RunAsync(int batch, CancellationToken cancellationToken)
@@ -82,8 +82,10 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
             var targets = unit.Kind == UnitKind.Fix ? Targets(current, sourceUnits, unit.Key) : [];
             var prior = unit.Kind == UnitKind.Verify ? current.FirstOrDefault(f => UnitIds.Verify(f.Id) == unit.Id) : null;
             var requiresBrowser = unit.Kind == UnitKind.Ux || prior is not null && ReviewEligibility.RequiresBrowser(prior.Finding, sourceUnits.GetValueOrDefault(prior.UnitId));
-            var markdown = Render(unit, await SelectAsync(unitMembers, unit.Kind, cancellationToken), finding, targets, prior, uiPaths,
-                prior is null ? null : receipts.GetValueOrDefault(prior.UnitId)?.EvidenceJson, requiresBrowser);
+            var markdown = unit.Kind == UnitKind.Impact
+                ? await RenderImpactAsync(unit, unitMembers, cancellationToken)
+                : Render(unit, await SelectAsync(unitMembers, unit.Kind, cancellationToken), finding, targets, prior, uiPaths,
+                    prior is null ? null : receipts.GetValueOrDefault(prior.UnitId)?.EvidenceJson, requiresBrowser);
             var failure = unit.Status == UnitStatus.Failed
                 ? failures.LastOrDefault(a => a.UnitId == unit.Id && a.Fingerprint == unit.Fingerprint)
                 : null;
@@ -162,23 +164,7 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
     private string Render(Unit unit, IReadOnlyList<Part> parts, Finding? finding, IReadOnlyList<FixTarget> targets, UnitFinding? prior, IReadOnlyList<string> uiPaths, string? receipt, bool requiresBrowser)
     {
         var lenses = config.LensesFor(parts.Select(p => (p.Member.Path, Languages.FromPath(p.Member.Path))));
-        var outlined = parts.Count(p => p.Outlined);
-        var lines = new List<string>
-        {
-            "# CodeMuster unit",
-            "",
-            $"- unit: {unit.Id}",
-            $"- kind: {unit.Kind.ToString().ToLowerInvariant()}",
-            $"- key: {unit.Key}",
-            $"- fingerprint: {unit.Fingerprint}",
-            $"- lenses: {string.Join(", ", lenses.Select(l => l.Id))}",
-        };
-        if (outlined > 0)
-        {
-            lines.Add(string.Create(CultureInfo.InvariantCulture, $"- outlined: {outlined} of {parts.Count} members"));
-        }
-
-        lines.Add("");
+        var lines = Header(unit, lenses.Select(l => l.Id), parts);
         lines.Add("## Instructions");
         if (unit.Kind == UnitKind.Ux)
         {
@@ -221,7 +207,70 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
             lines.Add("");
         }
         lines.Add("## Files");
+        AppendFiles(lines, parts);
+        AppendResponse(lines, unit, finding, requiresBrowser);
+        return string.Join('\n', lines) + "\n";
+    }
 
+    private static List<string> Header(Unit unit, IEnumerable<string> lensIds, IReadOnlyList<Part> parts)
+    {
+        var outlined = parts.Count(p => p.Outlined && p.Note is null);
+        var lines = new List<string>
+        {
+            "# CodeMuster unit",
+            "",
+            $"- unit: {unit.Id}",
+            $"- kind: {unit.Kind.ToString().ToLowerInvariant()}",
+            $"- key: {unit.Key}",
+            $"- fingerprint: {unit.Fingerprint}",
+            $"- lenses: {string.Join(", ", lensIds)}",
+        };
+        if (outlined > 0)
+        {
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"- outlined: {outlined} of {parts.Count} members"));
+        }
+
+        lines.Add("");
+        return lines;
+    }
+
+    // A review kind with its own question (D67 to D69): the header, the kind's instructions and sections, the files, and the fixed findings response (D11).
+    private string RenderReview(Unit unit, string lensId, string instructions, IReadOnlyList<string> sections, IReadOnlyList<Part> parts)
+    {
+        var lines = Header(unit, [lensId], parts);
+        lines.AddRange(["## Instructions", "", instructions]);
+        lines.AddRange(sections);
+        lines.AddRange(["", "## Files"]);
+        AppendFiles(lines, parts);
+        AppendResponse(lines, unit, null, false);
+        return string.Join('\n', lines) + "\n";
+    }
+
+    private async Task<string> RenderImpactAsync(Unit unit, IReadOnlyList<UnitMember> members, CancellationToken cancellationToken)
+    {
+        var previous = members.FirstOrDefault(m => m.Distance < 0);
+        var current = members.FirstOrDefault(m => m.Distance == 0);
+        var map = (await ledger.GetCodeMapAsync(cancellationToken))?.Map ?? new CodeMap([], [], [], new ResolutionStats(0, 0, []), []);
+        var reach = ImpactReview.Walk(map, unit.Id[UnitIds.Impact("").Length..]);
+        var callers = reach.Callers.Select(c => c.Symbol.Id).ToHashSet(StringComparer.Ordinal);
+        var callees = reach.Callees.Select(c => c.Id).Where(id => !callers.Contains(id)).ToHashSet(StringComparer.Ordinal);
+        var previousText = previous?.Symbol is { } symbol
+            ? await tree.ReadFileAtCommitAsync(ImpactReview.SplitPrevious(symbol).Commit, previous.Path, cancellationToken)
+            : null;
+        bool IsCallee(UnitMember m) => m.Distance > 0 && callees.Contains(m.Symbol ?? "");
+        var parts = (await SelectAsync(members.Where(m => m.Distance >= 0 && !IsCallee(m)).ToList(), unit.Kind, cancellationToken))
+            .Select(part => part with
+            {
+                Note = part.Member.Distance == 0 ? "changed symbol, current text"
+                    : string.Create(CultureInfo.InvariantCulture, $"caller, {part.Member.Distance} call{(part.Member.Distance == 1 ? "" : "s")} up"),
+            })
+            .Concat(members.Where(IsCallee).Select(m => new Part(m, m.Signature ?? "", true, "callee, shown as its signature")))
+            .ToList();
+        return RenderReview(unit, ImpactReview.LensId, ImpactReview.Instructions, ImpactReview.Sections(unit, previous, current, previousText, reach), parts);
+    }
+
+    private static void AppendFiles(List<string> lines, IReadOnlyList<Part> parts)
+    {
         foreach (var part in parts)
         {
             var member = part.Member;
@@ -244,9 +293,10 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
                     ? string.Create(CultureInfo.InvariantCulture, $"line {range.StartLine}")
                     : string.Create(CultureInfo.InvariantCulture, $"lines {range.StartLine}-{range.EndLine}");
                 var header = member.Signature?.IndexOf('\n') is > 0 and var end ? member.Signature[..end] : null;
-                lines.Add(part.Outlined ? span + ", outlined to its signature to fit the token budget"
-                    : header is null ? span
-                    : $"{span}, inside `{header}`");
+                var shown = part.Note is { } note ? $"{span}, {note}" : span;
+                lines.Add(part.Outlined ? shown + (part.Note is null ? ", outlined to its signature to fit the token budget" : "")
+                    : header is null ? shown
+                    : $"{shown}, inside `{header}`");
                 lines.Add("");
             }
 
@@ -254,7 +304,10 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
             lines.Add(part.Text);
             lines.Add(fence);
         }
+    }
 
+    private void AppendResponse(List<string> lines, Unit unit, Finding? finding, bool requiresBrowser)
+    {
         lines.Add("");
         lines.Add("## Response");
         lines.Add("");
@@ -283,7 +336,5 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
         {
             lines.Add(rule + " Print the JSON and nothing else; the driver records it for you.");
         }
-
-        return string.Join('\n', lines) + "\n";
     }
 }

@@ -8,7 +8,8 @@ namespace CodeMuster.Application;
 /// A current finding keeps its verify unit while the code of the unit that reported it is unchanged since that analysis (D27), unless verification is off (D28);
 /// a check that verify completed over whole files whose content is unchanged stays done in the reporting unit's form.
 /// With at least one mapper the scan runs in slice mode: the mappers map the repository at <paramref name="repoRoot"/> and units are slices, orphans, and file units (D25). Without mappers every included file is one file unit.
-/// In slice mode the scan also replaces the stored code map with what the mappers returned, including a failed mapper's diagnostic, at the scanned commit (D60); planning never reads the stored map, and a file-mode scan leaves it as it was.
+/// In slice mode the scan also replaces the stored code map with what the mappers returned, including a failed mapper's diagnostic, at the scanned commit (D60); a file-mode scan leaves it as it was.
+/// Slices never read the stored map; with impact review on (D67) the scan reads it once, before replacing it, to plan an impact unit for each symbol whose body or signature changed.
 /// Only the stored map carries the UI-to-API join (D61): its <see cref="EdgeKind.Http"/> edges and diagnostics never reach slices, fingerprints or the result's diagnostics, and one progress line summarizes it when the mappers found an HTTP call.
 /// Each step is reported to <paramref name="progress"/> as it starts or finishes, with mapper steps under their language.
 /// </summary>
@@ -158,6 +159,11 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         }
 
         List<PlannedUnit> planned = [.. SliceBuilder.Build(mapped, included), .. UxReview.Plan(included, config.UserExperience)];
+        if (config.Impact && active.Count > 0)
+        {
+            planned = [.. planned, .. ImpactReview.Plan(await ledger.GetCodeMapAsync(cancellationToken), linked.Map, included)];
+        }
+
         DeadCodeScan? deadCode = null;
         if (config.DeadCode)
         {

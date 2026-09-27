@@ -24,10 +24,10 @@ public sealed record PlannedUnit(string Id, UnitKind Kind, string Key, Fidelity 
         return new PlannedUnit(id, UnitKind.Fix, path, Fidelity.Full, [new UnitMember(id, path, null, contentHash, 0)]);
     }
 
-    /// <summary>The verify unit for <paramref name="finding"/>: the members of the unit that reported it, so it goes stale with that code, keyed by the lines the finding cites.</summary>
+    /// <summary>The verify unit for <paramref name="finding"/>: the members of the unit that reported it, so it goes stale with that code, keyed by the lines the finding cites. An impact unit's previous version (distance -1, D67) is left out: it is not current code.</summary>
     public static PlannedUnit Verify(UnitFinding finding, IReadOnlyList<UnitMember> members, Fidelity fidelity)
     {
         var id = UnitIds.Verify(finding.Id);
-        return new PlannedUnit(id, UnitKind.Verify, FindingLocation.Of(finding.Finding), fidelity, members.Select(m => m with { UnitId = id }).ToList());
+        return new PlannedUnit(id, UnitKind.Verify, FindingLocation.Of(finding.Finding), fidelity, members.Where(m => m.Distance >= 0).Select(m => m with { UnitId = id }).ToList());
     }
 }

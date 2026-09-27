@@ -157,6 +157,12 @@ codemuster map --out map.html                   # one offline, interactive page
 
 `--format json` prints a machine-readable graph. Walks stop at 300 nodes and say when they were cut.
 
+When a later `scan` finds a method or function whose body or signature changed, it plans an
+`impact` unit: `run` shows the agent the old and new text, the callers up to their endpoints and
+pages, and the callees, and asks whether anything now breaks. `codemuster impact` lists those
+units and what each change reaches; `codemuster impact --since main` does the same for the
+symbols in files committed since a ref, without a model call.
+
 ## Fix confirmed findings
 
 First configure the repository's validation command. For example, add this property to the

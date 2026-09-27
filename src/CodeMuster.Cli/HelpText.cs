@@ -23,6 +23,7 @@ public static class HelpText
           status     Show coverage and remaining work
           report     Render findings and coverage as Markdown
           map        Show callers, callees and flows from the stored code map
+          impact     Show what changed symbols reach: callers, entry points and pages
 
         Fix
           fix        Fix confirmed findings and make local commits, one file per worker
@@ -151,7 +152,7 @@ public static class HelpText
               --batch N      Number of packs to read (default: 1)
               --out <file>   Write packs to a file instead of stdout
               --path <path>  Select units touching a repo-relative file or folder
-              --kind <kind>  Select file, slice, orphan, verify, or ux work
+              --kind <kind>  Select file, slice, orphan, verify, ux, or impact work
 
             Follow each pack's response schema and done command. Reading does not reserve work.
             Do not run independent writers against the same ledger.
@@ -168,7 +169,7 @@ public static class HelpText
         "run" => "usage: codemuster run --agent <name> [options]\n\n"
             + "Analyze pending units, then verify their findings when verification is enabled.\n\n"
             + AgentOptions + "\n"
-            + "  --kind <kind>  Limit work to file, slice, orphan, verify, or ux\n"
+            + "  --kind <kind>  Limit work to file, slice, orphan, verify, ux, or impact\n"
             + "  --force        Re-run completed units in the selected scope\n\n"
             + "Repeat the command to resume unfinished work. Use fix to edit code.\n"
             + "Browser work stays incomplete without model calls here; use next --kind ux in a browser-capable session.\n"
@@ -244,6 +245,22 @@ public static class HelpText
             map --out map.html without a subcommand writes a page that lists entry points to draw.
 
             Example: codemuster map flow "GET /quotes" --format mermaid
+            """,
+        "impact" => """
+            usage: codemuster impact [--since <ref>] [--format text|json]
+
+            Show the blast radius of changed code from the stored code map. Never scans or calls a model.
+              impact                 The impact units the last scan planned (one per symbol whose body or
+                                     signature changed since the scan before it), each with its callers,
+                                     entry points and UI pages
+              --since <ref>          Instead, the mapped symbols in files committed since <ref>
+                                     (git diff --name-only <ref> HEAD; uncommitted edits are not listed)
+              --format <format>      text (default) or json
+
+            codemuster run --kind impact asks the agent whether each change breaks or misuses anything
+            upstream or downstream. Turn impact units off with "impact": false in .codemuster/config.json.
+
+            Example: codemuster impact --since main
             """,
         "skill" => """
             usage: codemuster skill install --for <agent> [--global]

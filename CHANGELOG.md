@@ -61,6 +61,15 @@ start with 0.2.8.
   while the code is mapped, with npm, pnpm and yarn audits side by side (a fixture scan went from
   11.1 s to 7.3 s); and `run` and `verify` start the next unit as soon as a worker is free instead
   of waiting for the slowest unit of each batch. Maps, units and fingerprints are unchanged.
+- Impact review: when a `scan` finds a method or function whose body or signature changed since
+  the previous scan, it plans an `impact` unit. Its pack shows the old text (from Git at the
+  previous scan's commit) and the new text, the callers up to 4 calls up (following UI calls into
+  the API), the callees as signatures, and the endpoints and pages that reach the change, and asks
+  whether anything upstream or downstream now breaks or misuses it. New `codemuster impact` lists
+  those units and what each change reaches, and `impact --since <ref>` does the same for the
+  symbols in files committed since a ref, without a model call. On by default; `"impact": false`
+  turns it off. A pending impact unit is retired by the next scan that finds its symbol
+  unchanged, so run it before scanning again.
 
 ## 0.3.6 - 2026-09-25
 

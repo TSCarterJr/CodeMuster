@@ -295,6 +295,7 @@ Edit the existing `.codemuster/config.json`; keep lenses that are already useful
 | `verify` | `true` | Create a verification pass for reported findings. |
 | `vulnerabilities` | `true` | Run ecosystem dependency audit tools during scanning. |
 | `dead_code` | `false` | Record conservative static usage assessments and report-only unused candidates during scan. |
+| `impact` | `true` | Plan an `impact` unit for each symbol whose body or signature changed since the previous scan. See [Impact review](#impact-review). |
 | `user_experience` | Disabled | UI-only browser review settings: `enabled`, optional HTTP(S) `base_url`, and `include`/`exclude` globs. See [application reviews](application-reviews.md). |
 | `exclude` | `[]` | Additional repo-relative exclusion globs. |
 | `test_command` | `[]` | Program and arguments to run once before fixing and after each fix attempt; empty means no configured validation. |
@@ -500,6 +501,44 @@ Walks visit each symbol once, so cycles and recursion are shown once (`(see abov
 They stop at the depth and at 300 nodes, and every format says how many reachable nodes were
 left out: `truncated: N more nodes; use --depth or a narrower start`.
 
+## Impact review
+
+Slices go stale when code they hold changes, but they are then reviewed cold. An impact unit asks
+the targeted question instead (D67). When a `scan` finds a symbol whose body or signature changed
+since the map the previous scan stored, it plans one `impact` unit for it (id
+`impact:<symbol id>`). New and deleted symbols are not impact targets; their files' own units
+cover them. The unit holds:
+
+- the symbol's previous text, read from Git at the commit the previous scan mapped (if that scan
+  mapped uncommitted edits, the committed text may differ, and the pack says so), and its
+  current text;
+- its callers, walked up every edge kind including the `http` edges from UI calls to endpoints,
+  at most 4 calls up and 40 symbols, each with its body so the call sites are visible;
+- its direct callees, shown as signatures;
+- the entry points and UI pages that reach it, however far up, and what the caps left out.
+
+The agent answers one question: does anything upstream or downstream now break or misuse the
+change (changed return values or meaning, new exceptions or nulls, changed parameters, routes the
+UI still calls, callees now used incorrectly)? Findings use the usual schema with lens
+`impact`, cite lines in the changed symbol or a caller, get a verify unit, and can be fixed.
+
+An impact unit lives until the next scan: once analyzed it stays done, and when its symbol
+changes again it goes stale and is compared with the newer map. A scan that finds the symbol
+unchanged retires it, even if it was never run, so run pending impact units before scanning
+again. `"impact": false` in `.codemuster/config.json` turns impact units off. Run only them with
+`codemuster run --agent <name> --kind impact`.
+
+`codemuster impact` reads the stored map and never scans or calls a model. It lists the impact
+units from the last scan with their status, callers, entry points and pages. With
+`--since <ref>` it lists every mapped symbol in the files `git diff --name-only <ref> HEAD`
+reports, the same way, marking the ones with an impact unit; uncommitted edits are not listed.
+`--format json` prints the same data. Before any scan it exits 2.
+
+```sh
+codemuster impact
+codemuster impact --since main --format json
+```
+
 ## Retries, cancellation, and recovery
 
 ### A worker fails
@@ -632,14 +671,15 @@ and manage them.
 | `scan` | `--mode slice` (default), `--mode file` |
 | `status` | No options |
 | `estimate` | `--path <path>` |
-| `run --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--kind file\|slice\|orphan\|verify`, `--force` |
+| `run --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--kind file\|slice\|orphan\|verify\|ux\|impact`, `--force` |
 | `verify --agent <name>` | Same as `run`, without `--kind` |
 | `fix --agent <name>` | `-j N`, `--attempts N`, `--path <path>`, `--model <id>`, `--effort <level>`, `--stash`, `--retry-declined`, `--allow-failing-tests`, `--include-related <files>`, `--include simplification` |
 | `validate` | No options; runs configured final build/tests |
 | `hook` | No options; used by installed agent hooks |
 | `report` | `--out <file>`, `--include-refuted` |
 | `map` | `callers <symbol>`, `callees <symbol>` or `flow <entry point>`; `--depth N`, `--format text\|mermaid\|json`, `--out <file>` (`.html` writes an interactive page) |
-| `next` | `--batch N`, `--out <file>`, `--path <path>`, `--kind file\|slice\|orphan\|verify\|ux` |
+| `impact` | `--since <ref>`, `--format text\|json` |
+| `next` | `--batch N`, `--out <file>`, `--path <path>`, `--kind file\|slice\|orphan\|verify\|ux\|impact` |
 | `done <unit>` | Required `--fingerprint <fp>` and `--findings <json-file>` |
 | `skill install` | Required `--for claude\|codex\|gemini\|opencode`, optional `--global` |
 | `update` | `--check` to check without installing; handled by the npm launcher |

@@ -105,6 +105,9 @@ public sealed class CodeMapQuery(ILedger ledger)
         });
     }
 
+    /// <summary>A symbol's short name: type and member for C# (<c>QuoteService.ListQuotes</c>), the name after '#' for TypeScript.</summary>
+    public static string ShortName(Symbol symbol) => MapIndex.ShortName(symbol);
+
     private static MapResult Ok(string output) => new(0, output, "");
 
     private static MapResult Fail(string error) => new(2, "", error);

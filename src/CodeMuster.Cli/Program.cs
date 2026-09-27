@@ -204,6 +204,17 @@ public static class Program
                 return await FixAsync(command, repoRoot, ledger, tree, clock, config, events, control, cancellationToken);
             case "map":
                 return await MapAsync(command, ledger, cancellationToken);
+            case "impact":
+                var impact = await new ImpactQuery(ledger, tree).RunAsync(command.Options.GetValueOrDefault("since"),
+                    command.Options.GetValueOrDefault("format") == "json" ? MapFormat.Json : MapFormat.Text, cancellationToken);
+                if (impact.ExitCode != 0)
+                {
+                    Console.Error.WriteLine("error: " + impact.Error);
+                    return impact.ExitCode;
+                }
+
+                Console.Write(impact.Output);
+                return 0;
             default:
                 var markdown = await new Report(ledger, config, command.Flags.Contains("include-refuted")).RunAsync(cancellationToken);
                 if (command.Options.TryGetValue("out", out var reportPath))

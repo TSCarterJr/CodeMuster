@@ -57,6 +57,18 @@ public sealed class GitSourceTree(string repoRoot) : ISourceTree
     public Task<string> ReadFileAsync(string path, CancellationToken cancellationToken) =>
         File.ReadAllTextAsync(Path.Combine(repoRoot, path), cancellationToken);
 
+    public async Task<string?> ReadFileAtCommitAsync(string commit, string path, CancellationToken cancellationToken)
+    {
+        var (exitCode, output, _) = await GitProcess.RunAllowingFailureAsync(repoRoot, ["show", commit + ":" + path], null, cancellationToken).ConfigureAwait(false);
+        return exitCode == 0 ? output : null;
+    }
+
+    public async Task<IReadOnlyList<string>> ChangedSinceAsync(string since, CancellationToken cancellationToken)
+    {
+        var output = await GitProcess.RunAsync(repoRoot, ["-c", "core.quotePath=false", "diff", "--name-only", "-z", since, "HEAD", "--"], null, cancellationToken).ConfigureAwait(false);
+        return output.Split('\0', StringSplitOptions.RemoveEmptyEntries).Select(RepoPath.Normalize).ToList();
+    }
+
     public async Task<bool> IsIgnoredAsync(string path, CancellationToken cancellationToken)
     {
         string[] arguments = ["check-ignore", "-v", "-z", "--stdin"];

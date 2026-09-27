@@ -173,5 +173,9 @@ public class DoctorTests
         public Task<string> ReadFileAsync(string path, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<bool> IsIgnoredAsync(string path, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<string?> ReadFileAtCommitAsync(string commit, string path, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<string>> ChangedSinceAsync(string since, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }
