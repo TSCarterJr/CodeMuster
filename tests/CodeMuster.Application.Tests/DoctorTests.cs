@@ -55,7 +55,7 @@ public class DoctorTests
             "csharp: loaded-but-empty in 9.8 s\n" +
             "  no symbols came back; check that the solution builds with dotnet build\n" +
             "typescript: loaded-but-empty in 1.2 s\n" +
-            "  no symbols came back; check that a tracked tsconfig.json includes the TypeScript files\n" +
+            "  no symbols came back; check that a tracked tsconfig.json or jsconfig.json includes the TypeScript and JavaScript files\n" +
             "not ready",
             report.Render());
     }
@@ -79,6 +79,19 @@ public class DoctorTests
             report.Render());
         Assert.Single(csharp.Calls);
         Assert.Single(typescript.Calls);
+    }
+
+    [Fact]
+    public async Task AMapperIsProbed_WhenAnyOfItsLanguagesHasAnIncludedFile()
+    {
+        var scripts = new FakeCodeMapper(Languages.TypeScript, MapWith(1)) { Languages = [Languages.TypeScript, Languages.JavaScript] };
+        tree.Files.RemoveAll(f => f.Path.StartsWith("web/", StringComparison.Ordinal));
+        tree.Add("web/server.js", "const app = 1;");
+
+        var report = await new Doctor(tree, [csharp, scripts], clock, RepoRoot).RunAsync(CancellationToken.None);
+
+        Assert.Equal("git: working\ncsharp: working in 9.8 s, 2 symbol(s)\ntypescript: working in 0.0 s, 1 symbol(s)\nready", report.Render());
+        Assert.Single(scripts.Calls);
     }
 
     [Fact]

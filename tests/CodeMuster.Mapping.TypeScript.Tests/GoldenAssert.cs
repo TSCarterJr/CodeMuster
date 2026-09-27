@@ -4,11 +4,11 @@ namespace CodeMuster.Mapping.TypeScript.Tests;
 
 internal static class GoldenAssert
 {
-    public static CodeMap Golden() => CodeMapJson.Parse(File.ReadAllText(TestPaths.Golden));
+    public static CodeMap Golden(string fixture = "mixed-repo") => CodeMapJson.Parse(File.ReadAllText(TestPaths.GoldenFor(fixture)));
 
-    public static void Matches(CodeMap actual)
+    public static void Matches(CodeMap actual, string fixture = "mixed-repo")
     {
-        var golden = Golden();
+        var golden = Golden(fixture);
 
         Assert.Equal(Sorted(golden.Symbols), Sorted(actual.Symbols));
         Assert.Equal(Sorted(golden.Edges), Sorted(actual.Edges));

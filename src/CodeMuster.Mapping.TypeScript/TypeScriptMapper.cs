@@ -12,19 +12,21 @@ public sealed class TypeScriptMapper : ICodeMapper
 
     private readonly Func<string> _node;
 
-    // Resolved only when a tsconfig.json needs mapping, so a machine without Node.js can still map C#.
+    // Resolved only when there is TypeScript or JavaScript to map, so a machine without Node.js can still map C#.
     public TypeScriptMapper(Func<string> node)
     {
         _node = node;
     }
 
-    public string Language => Languages.TypeScript;
+    public string Language => Domain.Languages.TypeScript;
+
+    public IReadOnlyList<string> Languages { get; } = [Domain.Languages.TypeScript, Domain.Languages.JavaScript];
 
     public async Task<CodeMap> MapAsync(string repoRoot, IReadOnlyList<string> paths, IProgress<string>? progress, CancellationToken cancellationToken)
     {
         List<string> normalized = [.. paths.Select(RepoPath.Normalize)];
-        List<string> tsconfigs = [.. normalized.Where(path => Path.GetFileName(path) == "tsconfig.json").Order(StringComparer.Ordinal)];
-        if (tsconfigs.Count == 0)
+        List<string> tsconfigs = [.. normalized.Where(path => Path.GetFileName(path) is "tsconfig.json" or "jsconfig.json").Order(StringComparer.Ordinal)];
+        if (tsconfigs.Count == 0 && !normalized.Any(path => Languages.Contains(Domain.Languages.FromPath(path))))
         {
             return new CodeMap([], [], [], new ResolutionStats(0, 0, []), []);
         }

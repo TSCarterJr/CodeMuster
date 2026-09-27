@@ -48,6 +48,31 @@ folder has its own `package-lock.json` that is an npm command such as
 says to add the package with that project's package manager, since `--prefix` on a workspace
 member would write a second lockfile there.
 
+The same mapper maps JavaScript (D64). Each `tsconfig.json` or `jsconfig.json` is one program; a
+`jsconfig.json` allows JavaScript by default. A repository with neither gets one default program
+over its included `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts` and `.tsx` files that reads JavaScript
+without type-checking it. JavaScript functions, function-valued top-level consts, class methods and
+pages (`pages/` and `app/**/page.jsx`) become symbols and entry points exactly as in TypeScript.
+A JavaScript-only repository still needs Node.js and a `typescript` package, because the mapper
+uses the repository's own compiler (D08): without one, mapping fails, its JavaScript files stay
+whole-file units at low fidelity, and `doctor` prints the fix, `run npm i -D typescript` when the
+repository root (or else the nearest folder above a script with a `package.json`) has a `package-lock.json`, otherwise
+`add typescript as a dev dependency of <folder> with its package manager`. This also applies to a
+C# repository with a few scripts such as `wwwroot/js/site.js`; exclude them in `"exclude"` if you
+do not want them mapped.
+
+Express, Koa and Fastify routes become `http` entry points in either language:
+`app.get("/users", handler)`, `router.post(...)`, `.put`, `.patch`, `.delete`, `.all` and `.use`
+(the last two as `ANY`) on an `express()` app, an `express.Router()`, a Koa `new Router()` or a
+`fastify()` instance declared at the top of a file. The route must be a top-level statement with a
+literal path; the last argument is the handler. A handler that is a mapped function is the entry
+point; an inline handler becomes its own symbol named after the route, such as
+`routes/users.js#GET /:id`. `app.use("/api/users", usersRouter)` (or Koa's `router.routes()`)
+puts that prefix in front of the router's routes, including routers imported with `require`, and
+`:id`, `:id?` and `*rest` are shown as `{id}`, `{id?}` and `{*rest}`, so a route displays as
+`GET /api/users/{id}` and the UI-to-API links below match it. Routes registered inside a function
+(`function register(app) { app.get(...) }`) or on a Fastify plugin's parameter are not read.
+
 `init` offers a comma-separated choice of `claude`, `codex`, and `gemini` and installs each
 selected project's skill and change hook. `--for all` selects all; `--for none` or `--no-skills`
 skips integration. `--yes` skips prompts and selects all unless you specify `--for` or
@@ -70,7 +95,7 @@ names each settings file it changed and says when a skill and hook were already 
 `status`, `report`, `next`, `run`, `fix` and `verify` compare the tracked files scan reads with the last
 completed scan and name what changed, for example
 `web/lib/index.ts changed since the last scan; run codemuster scan to refresh coverage`.
-Those are the files scan reviews, the `.sln`, `.slnx`, `.csproj` and `tsconfig.json` files the
+Those are the files scan reviews, the `.sln`, `.slnx`, `.csproj`, `tsconfig.json` and `jsconfig.json` files the
 mappers load, and, while the vulnerability audit is on, each `package.json`.
 `scan` acknowledges the content it started with. Read-only commands, staging or committing
 unchanged content, other excluded files (lockfiles, documentation, files marked
@@ -272,7 +297,7 @@ Matching is case-insensitive for extensions, at any directory depth:
 | Databases | `.db`, `.db3`, `.sqlite`, `.sqlite3`, `.mdb`, `.accdb`, `.dbf`, and SQLite journal/WAL/shared-memory companions |
 
 Source files, scripts, SQL scripts, HTML, stylesheets and executable templates remain eligible.
-Solution/project files and `tsconfig.json` remain available as mapper inputs without becoming
+Solution/project files, `tsconfig.json` and `jsconfig.json` remain available as mapper inputs without becoming
 AI review units. Dependency manifests and lockfiles remain available to ecosystem vulnerability
 audits; repository `exclude` globs still apply to those checks.
 
@@ -780,8 +805,8 @@ The stored map also links the UI to the API (D61). The TypeScript mapper reads e
 instance call whose URL it can fold from literals, templates, `+` and constants: the method
 comes from the call (GET when none is given, ANY when it is chosen at runtime), each `${...}`
 becomes a parameter segment, and the origin, query string and fragment are dropped. Scan matches
-each call to a C# `http` entry point by method and route, segment by segment, and stores an edge
-of kind `http` from the calling function to the action. Calls that match no endpoint, URLs built
+each call to an `http` entry point (a C# action, or a JavaScript or TypeScript route) by method and route, segment by segment, and stores an edge
+of kind `http` from the calling function to the action or route handler. Calls that match no endpoint, URLs built
 at runtime, and (when any call was found) endpoints no call reaches are stored as map diagnostics
 starting with `http: `; they are not findings and do not make the map partial. Scan prints one
 progress line on stderr such as `linked 1 UI call to an endpoint; 1 call and 1 endpoint

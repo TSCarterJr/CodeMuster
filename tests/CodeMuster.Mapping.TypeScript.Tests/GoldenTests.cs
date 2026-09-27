@@ -4,10 +4,12 @@ namespace CodeMuster.Mapping.TypeScript.Tests;
 
 public class GoldenTests
 {
-    [Fact]
-    public void Golden_is_a_consistent_code_map()
+    [Theory]
+    [InlineData("mixed-repo")]
+    [InlineData("express-js")]
+    public void Golden_is_a_consistent_code_map(string fixture)
     {
-        var golden = GoldenAssert.Golden();
+        var golden = GoldenAssert.Golden(fixture);
         var ids = golden.Symbols.Select(symbol => symbol.Id).ToHashSet(StringComparer.Ordinal);
 
         Assert.Equal(golden.Symbols.Count, ids.Count);

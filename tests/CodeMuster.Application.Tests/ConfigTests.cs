@@ -172,6 +172,7 @@ public class ConfigTests
         Assert.True(config.AffectsScan("App.sln", linguistGenerated: false));
         Assert.True(config.AffectsScan("src/Api/Api.csproj", linguistGenerated: false));
         Assert.True(config.AffectsScan("web/tsconfig.json", linguistGenerated: false));
+        Assert.True(config.AffectsScan("site/jsconfig.json", linguistGenerated: false));
         Assert.True(config.AffectsScan("web/package.json", linguistGenerated: false));
         Assert.False((config with { Vulnerabilities = false }).AffectsScan("web/package.json", linguistGenerated: false));
         Assert.False(config.AffectsScan("web/package-lock.json", linguistGenerated: false));

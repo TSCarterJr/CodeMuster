@@ -22,7 +22,7 @@ public sealed class Doctor(ISourceTree tree, IReadOnlyList<ICodeMapper> mappers,
         var settings = config ?? Config.Default;
         var paths = files.Where(f => settings.IsMappingInput(f.Path, settings.ExcludedReason(f.Path, f.LinguistGenerated))).Select(f => f.Path).ToList();
         var probes = new List<DoctorProbe> { new("git", ProbeState.Working, null, 0, []) };
-        foreach (var mapper in mappers.Where(m => paths.Any(path => Languages.FromPath(path) == m.Language)))
+        foreach (var mapper in mappers.Where(m => paths.Any(path => m.Languages.Contains(Languages.FromPath(path)))))
         {
             probes.Add(await ProbeAsync(mapper, paths, cancellationToken));
         }
@@ -48,6 +48,6 @@ public sealed class Doctor(ISourceTree tree, IReadOnlyList<ICodeMapper> mappers,
     }
 
     private static string EmptyHint(string language) => language == Languages.TypeScript
-        ? "no symbols came back; check that a tracked tsconfig.json includes the TypeScript files"
+        ? "no symbols came back; check that a tracked tsconfig.json or jsconfig.json includes the TypeScript and JavaScript files"
         : "no symbols came back; check that the solution builds with dotnet build";
 }

@@ -24,9 +24,15 @@ public class TypeScriptMapperTests
     }
 
     [Fact]
-    public async Task Without_a_tsconfig_json_returns_an_empty_map_and_never_starts_node()
+    public void Covers_typescript_and_javascript()
     {
-        var map = await new TypeScriptMapper(() => throw new InvalidOperationException("node was looked up")).MapAsync(TestPaths.MixedRepo, ["web/tsconfig.base.json", "web/lib/api.ts"], null, CancellationToken.None);
+        Assert.Equal([Languages.TypeScript, Languages.JavaScript], new TypeScriptMapper(TestPaths.Node).Languages);
+    }
+
+    [Fact]
+    public async Task Without_a_config_or_a_script_file_returns_an_empty_map_and_never_starts_node()
+    {
+        var map = await new TypeScriptMapper(() => throw new InvalidOperationException("node was looked up")).MapAsync(TestPaths.MixedRepo, ["web/tsconfig.base.json", "web/package.json", "README.md"], null, CancellationToken.None);
 
         Assert.Empty(map.Symbols);
         Assert.Empty(map.Edges);
@@ -144,6 +150,31 @@ public class TypeScriptMapperTests
         Assert.StartsWith("TypeScript mapping failed: config reader broke", error.Message);
         Assert.DoesNotContain("codemuster-ts-", error.Message);
         Assert.DoesNotContain('\n', error.Message);
+    }
+
+    [Fact]
+    public async Task A_javascript_repository_without_a_typescript_package_names_the_npm_command_that_adds_it()
+    {
+        using var temp = new TempFolder();
+        temp.Copy(Path.Combine(TestPaths.RepoRoot, "fixtures", "express-js"), ".", "node_modules");
+        temp.Write("package-lock.json", """{ "name": "express-js", "lockfileVersion": 3, "packages": {} }""");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None));
+
+        Assert.Equal("TypeScript mapping failed: typescript was not found for the JavaScript and TypeScript files; run npm i -D typescript", error.Message);
+    }
+
+    [Fact]
+    public async Task A_javascript_folder_without_a_lockfile_is_told_to_add_typescript_with_its_package_manager()
+    {
+        using var temp = new TempFolder();
+        temp.Write("site/package.json", """{ "name": "site", "private": true }""");
+        temp.Write("site/app.js", "function main() {\n  return 1;\n}\n");
+
+        // Scan excludes package.json as data, so the mapper finds it on disk.
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, ["site/app.js"], null, CancellationToken.None));
+
+        Assert.Equal("TypeScript mapping failed: typescript was not found for the JavaScript and TypeScript files; add typescript as a dev dependency of site with its package manager", error.Message);
     }
 
     private static TempFolder WebWithTypeScript7()

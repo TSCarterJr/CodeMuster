@@ -15,7 +15,20 @@ internal static class TestPaths
 
     public static string MixedRepo => Path.Combine(RepoRoot, "fixtures", "mixed-repo");
 
-    public static string Golden => Path.Combine(RepoRoot, "tests", "CodeMuster.Mapping.TypeScript.Tests", "golden", "mixed-repo.json");
+    public static string Golden => GoldenFor("mixed-repo");
+
+    public static string GoldenFor(string fixture) => Path.Combine(RepoRoot, "tests", "CodeMuster.Mapping.TypeScript.Tests", "golden", fixture + ".json");
+
+    public static string TypeScriptPackage => Path.Combine(MixedRepoWithTypeScript(), "web", "node_modules", "typescript");
+
+    /// <summary>A copy of fixtures/express-js with the mixed-repo's typescript package installed at its root, as npm ci would.</summary>
+    public static TempFolder ExpressJsWithTypeScript()
+    {
+        var temp = new TempFolder();
+        temp.Copy(Path.Combine(RepoRoot, "fixtures", "express-js"), ".", "node_modules");
+        temp.Copy(TypeScriptPackage, "node_modules/typescript");
+        return temp;
+    }
 
     public static string MixedRepoWithTypeScript()
     {

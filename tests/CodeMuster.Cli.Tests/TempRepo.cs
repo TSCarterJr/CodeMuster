@@ -54,6 +54,8 @@ public sealed class TempRepo : IDisposable
         CopyAll(source, Path.Combine(Root, relativeDirectory));
     }
 
+    public void CopyDirectory(string source, string relativeTarget) => CopyAll(source, Path.Combine(Root, relativeTarget));
+
     public string Git(params string[] args) => Run("git", args);
 
     public string Dotnet(params string[] args) => Run("dotnet", args);

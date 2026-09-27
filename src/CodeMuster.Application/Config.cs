@@ -40,7 +40,7 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
         Exclusions.Reason(path, linguistGenerated)
         ?? (excludeGlobs.FirstMatch(path) is { } glob ? "exclude:" + glob : null);
 
-    /// <summary>True when an edit to the file changes what the next scan plans or records: a file it reviews, a solution, project or tsconfig.json the mappers load, or, with <see cref="Vulnerabilities"/> on, a package.json whose audit unit it fingerprints (D38). Lockfiles and other excluded files do not count.</summary>
+    /// <summary>True when an edit to the file changes what the next scan plans or records: a file it reviews, a solution, project, tsconfig.json or jsconfig.json the mappers load, or, with <see cref="Vulnerabilities"/> on, a package.json whose audit unit it fingerprints (D38). Lockfiles and other excluded files do not count.</summary>
     public bool AffectsScan(string path, bool linguistGenerated)
     {
         var reason = ExcludedReason(path, linguistGenerated);
@@ -51,7 +51,7 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     internal bool IsMappingInput(string path, string? excludedReason) =>
         excludedReason is null || excludedReason == "data" && !ExcludedHere(path)
         && (Path.GetExtension(path).ToLowerInvariant() is ".sln" or ".slnx" or ".csproj"
-            || Path.GetFileName(path) == "tsconfig.json");
+            || Path.GetFileName(path) is "tsconfig.json" or "jsconfig.json");
 
     /// <summary>Instructions of the lens every repo starts with.</summary>
     public const string DefaultInstructions =

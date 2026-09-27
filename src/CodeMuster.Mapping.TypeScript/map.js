@@ -10,18 +10,18 @@ process.stdin.on('data', (chunk) => chunks.push(chunk));
 process.stdin.on('end', () => {
   try {
     const request = JSON.parse(chunks.join(''));
-    const compilers = new Map();
-    for (const tsconfig of request.tsconfigs) {
-      const loaded = loadTypeScript(request.repo_root, tsconfig);
+    const programs = [];
+    for (const tsconfig of request.tsconfigs.length === 0 ? [null] : request.tsconfigs) {
+      const loaded = loadTypeScript(request.repo_root, tsconfig, request.paths);
       if (loaded.error !== undefined) {
         fail(loaded.error);
         return;
       }
 
-      compilers.set(tsconfig, loaded.ts);
+      programs.push({ tsconfig, ts: loaded.ts });
     }
 
-    process.stdout.write(JSON.stringify(mapRepo(request, compilers)));
+    process.stdout.write(JSON.stringify(mapRepo(request, programs)));
   } catch (error) {
     fail(describe(error));
   }
@@ -54,16 +54,27 @@ function report(message) {
 
 // TypeScript 7 ships a native compiler with no JavaScript API; Microsoft publishes the TypeScript 6 API beside it, so the first of the two
 // packages that resolves and has createProgram maps the project.
-function loadTypeScript(repoRoot, tsconfig) {
-  const folder = path.posix.dirname(tsconfig);
-  const directory = path.dirname(path.resolve(repoRoot, tsconfig));
+// A null tsconfig is the default program (D64): typescript is looked up from the repository root, then from each script's folder, and the fix is
+// named for the first of those with a package.json on disk (scan never passes package.json, which it excludes as data).
+function loadTypeScript(repoRoot, tsconfig, paths) {
+  const folders = tsconfig === null ? ['.', ...new Set(paths.filter((file) => SCRIPT.test(file)).map((file) => path.posix.dirname(file)).sort(ordinal))] : [];
+  const folder = tsconfig === null ? packageFolder(repoRoot, folders) : path.posix.dirname(tsconfig);
+  const directory = path.resolve(repoRoot, folder);
+  const directories = tsconfig === null ? folders.map((member) => path.resolve(repoRoot, member)) : [directory];
+  const subject = tsconfig ?? 'the JavaScript and TypeScript files';
   // npm's --prefix on a workspace member writes a second lockfile there, so npm's command is named only where the folder has its own.
-  const hint = (npm, other) => (fs.existsSync(path.join(directory, 'package-lock.json')) ? `run ${npm} --prefix ${folder}` : other);
+  const hint = (npm, other) => (fs.existsSync(path.join(directory, 'package-lock.json'))
+    ? `run ${npm}${tsconfig === null && folder === '.' ? '' : ` --prefix ${folder}`}`
+    : other);
   const candidates = ['typescript', '@typescript/typescript6']
-    .map((name) => ({ name, file: resolvePackage(name, [directory]) }))
+    .map((name) => ({ name, file: resolvePackage(name, directories) }))
     .filter((candidate) => candidate.file !== undefined);
   if (candidates.length === 0) {
-    return { error: `typescript was not found for ${tsconfig}; ${hint('npm ci', `install the dependencies of ${folder} with its package manager`)}` };
+    return {
+      error: tsconfig === null
+        ? `typescript was not found for ${subject}; ${hint('npm i -D typescript', `add typescript as a dev dependency of ${folder === '.' ? 'the repository' : folder} with its package manager`)}`
+        : `typescript was not found for ${tsconfig}; ${hint('npm ci', `install the dependencies of ${folder} with its package manager`)}`,
+    };
   }
 
   let version;
@@ -72,7 +83,7 @@ function loadTypeScript(repoRoot, tsconfig) {
     try {
       ts = require(candidate.file);
     } catch (error) {
-      return { error: `${tsconfig}: ${candidate.name} could not be loaded (${firstLine(error)}); ${hint('npm ci', `reinstall the dependencies of ${folder} with its package manager`)}` };
+      return { error: `${subject}: ${candidate.name} could not be loaded (${firstLine(error)}); ${hint('npm ci', `reinstall the dependencies of ${folder} with its package manager`)}` };
     }
 
     if (typeof ts.createProgram === 'function') {
@@ -83,9 +94,25 @@ function loadTypeScript(repoRoot, tsconfig) {
   }
 
   return {
-    error: `${tsconfig}: typescript ${version} has no JavaScript compiler API; `
+    error: `${subject}: typescript ${version} has no JavaScript compiler API; `
       + hint('npm i -D @typescript/typescript6', `add @typescript/typescript6 as a dev dependency of ${folder} with its package manager`),
   };
+}
+
+function packageFolder(repoRoot, folders) {
+  for (const start of folders) {
+    for (let folder = start; ; folder = path.posix.dirname(folder)) {
+      if (fs.existsSync(path.join(repoRoot, folder, 'package.json'))) {
+        return folder;
+      }
+
+      if (folder === '.') {
+        break;
+      }
+    }
+  }
+
+  return '.';
 }
 
 function resolvePackage(name, paths) {
@@ -96,7 +123,34 @@ function resolvePackage(name, paths) {
   }
 }
 
-function mapRepo(request, compilers) {
+const SCRIPT = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
+
+// D64: with no tsconfig.json or jsconfig.json, one program over every included script, reading JavaScript without type-checking it.
+function createProgram(ts, repoRoot, tsconfig, included) {
+  if (tsconfig === null) {
+    const rootNames = included.filter((file) => SCRIPT.test(file)).map((file) => path.join(repoRoot, file));
+    report(`loading ${rootNames.length} files without a tsconfig.json or jsconfig.json`);
+    const options = {
+      allowJs: true,
+      checkJs: false,
+      noEmit: true,
+      skipLibCheck: true,
+      jsx: ts.JsxEmit.Preserve,
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler ?? ts.ModuleResolutionKind.NodeJs,
+    };
+    return { program: ts.createProgram({ rootNames, options }), errors: [] };
+  }
+
+  report(`loading ${tsconfig}`);
+  const configPath = path.join(repoRoot, tsconfig);
+  const config = ts.readConfigFile(configPath, ts.sys.readFile);
+  const parsed = ts.parseJsonConfigFileContent(config.config || {}, ts.sys, path.dirname(configPath), undefined, configPath);
+  return { program: ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options }), errors: [config.error, ...parsed.errors] };
+}
+
+function mapRepo(request, programs) {
   const repoRoot = path.resolve(request.repo_root);
   const included = new Set(request.paths);
   const mapped = new Set();
@@ -109,25 +163,20 @@ function mapRepo(request, compilers) {
   let resolved = 0;
   let unresolved = 0;
 
-  for (const tsconfig of request.tsconfigs) {
-    report(`loading ${tsconfig}`);
-    const configPath = path.join(repoRoot, tsconfig);
-    const ts = compilers.get(tsconfig);
-    const config = ts.readConfigFile(configPath, ts.sys.readFile);
-    const parsed = ts.parseJsonConfigFileContent(config.config || {}, ts.sys, path.dirname(configPath), undefined, configPath);
-    const program = ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options });
-    [config.error, ...parsed.errors, ...program.getOptionsDiagnostics(), ...program.getGlobalDiagnostics(), ...program.getSyntacticDiagnostics()]
+  for (const { tsconfig, ts } of programs) {
+    const { program, errors } = createProgram(ts, repoRoot, tsconfig, request.paths);
+    [...errors, ...program.getOptionsDiagnostics(), ...program.getGlobalDiagnostics(), ...program.getSyntacticDiagnostics()]
       .filter((diagnostic) => diagnostic !== undefined)
       .forEach((diagnostic) => {
-        const file = diagnostic.file ? path.relative(repoRoot, diagnostic.file.fileName).split(path.sep).join('/') : tsconfig;
+        const file = diagnostic.file ? path.relative(repoRoot, diagnostic.file.fileName).split(path.sep).join('/') : tsconfig ?? 'default program';
         const location = diagnostic.file && diagnostic.start !== undefined ? `${file}:${line(diagnostic.file, diagnostic.start)}` : file;
         diagnostics.add(`${location}: TS${diagnostic.code}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')}`);
       });
     const mapper = createMapper(ts, program.getTypeChecker(), repoRoot);
-    const files = program.getSourceFiles().filter((sourceFile) => {
-      const file = mapper.repoPath(sourceFile);
-      return !sourceFile.isDeclarationFile && included.has(file) && !mapped.has(file);
-    });
+    const sources = program.getSourceFiles().filter((sourceFile) => !sourceFile.isDeclarationFile && included.has(mapper.repoPath(sourceFile)));
+    // Mounts are read from every included file of the program, so a router mapped here still gets the prefix a file mapped earlier mounts it under.
+    sources.forEach(mapper.collectMounts);
+    const files = sources.filter((sourceFile) => !mapped.has(mapper.repoPath(sourceFile)));
     let done = 0;
 
     for (const sourceFile of files) {
@@ -156,13 +205,15 @@ function mapRepo(request, compilers) {
       if (route !== undefined) {
         mapper.defaultExportIds(sourceFile).forEach((id) => entryPoints.set(`${id}\n${route}`, { symbol_id: id, kind: 'page', display: route }));
       }
+
+      mapper.routes(sourceFile).forEach(({ id, display }) => entryPoints.set(`${id}\n${display}`, { symbol_id: id, kind: 'http', display }));
     }
   }
 
   return {
     symbols: [...symbols.values()].sort((a, b) => ordinal(a.id, b.id)),
     edges: [...edges.values()].filter((edge) => symbols.has(edge.to)).sort((a, b) => ordinal(a.from, b.from) || ordinal(a.to, b.to)),
-    entry_points: [...entryPoints.values()].filter((entry) => symbols.has(entry.symbol_id)).sort((a, b) => ordinal(a.symbol_id, b.symbol_id)),
+    entry_points: [...entryPoints.values()].filter((entry) => symbols.has(entry.symbol_id)).sort((a, b) => ordinal(a.symbol_id, b.symbol_id) || ordinal(a.display, b.display)),
     resolution: {
       resolved,
       unresolved,
@@ -198,10 +249,160 @@ function createMapper(ts, checker, repoRoot) {
           .forEach((member) => found.push(declared(member, member, member, ts.isConstructorDeclaration(member) ? 'constructor' : 'method', header)));
       } else if (ts.isExportAssignment(statement) && isFunctionExpression(statement.expression)) {
         found.push(declared(statement, statement, statement.expression, 'function', ''));
+      } else {
+        const route = routeCall(statement);
+        if (route !== undefined && route.path !== undefined && isFunctionExpression(route.handler)) {
+          found.push({ id: `${repoPath(sourceFile)}#${route.method} ${route.path}`, node: statement, fn: route.handler, kind: 'function', header: '' });
+        }
       }
     }
 
     return found;
+  }
+
+  const mounts = new Map();
+
+  function collectMounts(sourceFile) {
+    for (const statement of sourceFile.statements) {
+      const route = routeCall(statement);
+      const child = route !== undefined && route.verb === 'use' ? mountedServer(route.handler) : undefined;
+      if (child !== undefined) {
+        mounts.set(child, [...(mounts.get(child) || []), { parent: route.server, prefix: route.path ?? '' }]);
+      }
+    }
+  }
+
+  // An http entry point per route registered at the top level of the file, once per prefix its router is mounted under (D64).
+  function routes(sourceFile) {
+    const found = [];
+    for (const statement of sourceFile.statements) {
+      const route = routeCall(statement);
+      if (route === undefined || route.path === undefined || (route.verb === 'use' && mountedServer(route.handler) !== undefined)) {
+        continue;
+      }
+
+      const ids = isFunctionExpression(route.handler)
+        ? [`${repoPath(sourceFile)}#${route.method} ${route.path}`]
+        : ts.isIdentifier(route.handler) || ts.isPropertyAccessExpression(route.handler)
+          ? targetIds(checker.getSymbolAtLocation(ts.isPropertyAccessExpression(route.handler) ? route.handler.name : route.handler))
+          : [];
+      prefixes(route.server, new Set()).forEach((prefix) => ids.forEach((id) => found.push({ id, display: `${route.method} ${routeTemplate(prefix, route.path)}` })));
+    }
+
+    return found;
+  }
+
+  function prefixes(server, seen) {
+    const parents = mounts.get(server) || [];
+    if (parents.length === 0 || seen.has(server) || seen.size >= 8) {
+      return [''];
+    }
+
+    const inner = new Set([...seen, server]);
+    return [...new Set(parents.flatMap(({ parent, prefix }) => prefixes(parent, inner).map((outer) => `${outer}/${prefix}`)))];
+  }
+
+  // `app.get("/x", ...handlers)` as a top-level statement on an Express app or router, a Koa router or a Fastify instance: the path is the first
+  // literal starting with / among the first two arguments (a Koa route may be named first) and the handler is the last argument.
+  function routeCall(statement) {
+    const call = ts.isExpressionStatement(statement) ? unwrap(statement.expression) : undefined;
+    if (call === undefined || !ts.isCallExpression(call) || !ts.isPropertyAccessExpression(call.expression) || !ts.isIdentifier(call.expression.name)
+      || !ROUTE_VERBS.has(call.expression.name.text) || call.arguments.length === 0) {
+      return undefined;
+    }
+
+    const server = serverDeclaration(call.expression.expression);
+    if (server === undefined) {
+      return undefined;
+    }
+
+    const verb = call.expression.name.text;
+    const path = call.arguments.slice(0, 2).map(literalText).find((text) => text !== undefined && text.startsWith('/'));
+    const method = verb === 'all' || verb === 'use' ? 'ANY' : verb === 'del' ? 'DELETE' : verb.toUpperCase();
+    return { server, verb, method, path, handler: unwrap(call.arguments[call.arguments.length - 1]) };
+  }
+
+  function literalText(node) {
+    const value = unwrap(node);
+    return ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value) ? value.text : undefined;
+  }
+
+  // A router passed to use(), directly or as Koa's router.routes().
+  function mountedServer(handler) {
+    const target = ts.isCallExpression(handler) && ts.isPropertyAccessExpression(handler.expression) && handler.expression.name.text === 'routes'
+      ? handler.expression.expression
+      : handler;
+    return serverDeclaration(target);
+  }
+
+  function serverDeclaration(expression) {
+    const node = unwrap(expression);
+    const symbol = ts.isIdentifier(node) ? aliased(checker.getSymbolAtLocation(node)) : undefined;
+    const declaration = symbol && symbol.declarations && symbol.declarations[0];
+    return declaration && ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined
+      && ts.isVariableStatement(declaration.parent.parent) && ts.isSourceFile(declaration.parent.parent.parent) && createsServer(declaration.initializer)
+      ? declaration
+      : undefined;
+  }
+
+  function createsServer(initializer) {
+    const node = unwrap(initializer);
+    if (!ts.isCallExpression(node) && !ts.isNewExpression(node)) {
+      return false;
+    }
+
+    const callee = unwrap(node.expression);
+    if (ts.isIdentifier(callee)) {
+      const imported = importOf(callee);
+      return imported !== undefined && (SERVER_FACTORIES[imported.module] || []).includes(imported.name);
+    }
+
+    if (ts.isPropertyAccessExpression(callee) && callee.name.text === 'Router') {
+      const owner = unwrap(callee.expression);
+      return (ts.isIdentifier(owner) ? (importOf(owner) || {}).module : requireOf(owner)) === 'express';
+    }
+
+    return ts.isCallExpression(callee) && Object.hasOwn(SERVER_FACTORIES, requireOf(callee) ?? '');
+  }
+
+  // The module and export an identifier is imported or required as: 'default' for a default, namespace or whole-module import.
+  function importOf(identifier) {
+    const symbol = checker.getSymbolAtLocation(identifier);
+    const declaration = symbol && symbol.declarations && symbol.declarations[0];
+    const from = (specifier, name) => (specifier !== undefined && ts.isStringLiteral(specifier) ? { module: specifier.text, name } : undefined);
+    if (declaration === undefined) {
+      return undefined;
+    }
+
+    if (ts.isImportClause(declaration)) {
+      return from(declaration.parent.moduleSpecifier, 'default');
+    }
+
+    if (ts.isNamespaceImport(declaration)) {
+      return from(declaration.parent.parent.moduleSpecifier, 'default');
+    }
+
+    if (ts.isImportSpecifier(declaration)) {
+      return from(declaration.parent.parent.parent.moduleSpecifier, (declaration.propertyName || declaration.name).text);
+    }
+
+    if (ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined && requireOf(declaration.initializer) !== undefined) {
+      return { module: requireOf(declaration.initializer), name: 'default' };
+    }
+
+    if (ts.isBindingElement(declaration) && ts.isObjectBindingPattern(declaration.parent) && declaration.parent.parent.initializer !== undefined) {
+      const module = requireOf(declaration.parent.parent.initializer);
+      return module === undefined ? undefined : { module, name: (declaration.propertyName || declaration.name).getText() };
+    }
+
+    return undefined;
+  }
+
+  function requireOf(expression) {
+    const node = unwrap(expression);
+    return ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'require' && node.arguments.length === 1
+      ? literalText(node.arguments[0])
+      : undefined;
   }
 
   function declared(named, node, fn, kind, header) {
@@ -527,10 +728,28 @@ function createMapper(ts, checker, repoRoot) {
       .join('');
   }
 
-  return { repoPath, declarations, symbol, callSites, defaultExportIds };
+  return { repoPath, declarations, symbol, callSites, defaultExportIds, collectMounts, routes };
 }
 
 const AXIOS_VERBS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options']);
+
+const ROUTE_VERBS = new Set(['get', 'post', 'put', 'patch', 'delete', 'del', 'all', 'use', 'head', 'options']);
+
+// The exports that create an app or router whose verb methods register routes.
+const SERVER_FACTORIES = { express: ['default', 'Router'], fastify: ['default', 'fastify'], '@koa/router': ['default'], 'koa-router': ['default'] };
+
+// Joins a mount prefix and a route path, writing Express parameters as the braces the UI-to-API join reads (D61): :id is {id}, :id? is {id?}, *rest is {*rest}.
+function routeTemplate(prefix, route) {
+  const segments = `${prefix}/${route}`.split('/').filter((segment) => segment !== '').map((segment) => {
+    const parameter = /^:([A-Za-z_$][\w$]*)(\(.*\))?(\?)?$/.exec(segment);
+    if (parameter !== null) {
+      return `{${parameter[1]}${parameter[3] ?? ''}}`;
+    }
+
+    return segment.startsWith('*') ? `{${segment}}` : segment;
+  });
+  return '/' + segments.join('/');
+}
 
 // Drops the query string, fragment and origin; a relative URL gets the client's base path in front, as axios does.
 function normalizeUrl(raw, base) {

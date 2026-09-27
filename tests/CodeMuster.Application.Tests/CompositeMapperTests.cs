@@ -70,6 +70,40 @@ public class CompositeMapperTests
     }
 
     [Fact]
+    public async Task MapperCoveringSeveralLanguages_RunsForAnyOfThem_AndReportsOnlyThePresentOnesMapped()
+    {
+        var typescript = new FakeCodeMapper(Languages.TypeScript, MixedRepo.TypeScript()) { Languages = [Languages.TypeScript, Languages.JavaScript] };
+        FileRecord[] javascriptOnly = [.. MixedRepo.Included().Take(1).Select(file => file with { Path = "server.js", Language = Languages.JavaScript })];
+        var both = javascriptOnly.Append(MixedRepo.Included().First() with { Path = "web/lib/api.ts", Language = Languages.TypeScript }).ToList();
+
+        var javascript = await CompositeMapper.MapAsync([typescript], Root, javascriptOnly, null, CancellationToken.None);
+        var mixed = await CompositeMapper.MapAsync([typescript], Root, both, null, CancellationToken.None);
+        var tsOnly = await MapAsync(typescript);
+
+        Assert.Equal(3, typescript.Calls.Count);
+        Assert.Equal(new[] { Languages.JavaScript }, javascript.MappedLanguages);
+        Assert.Equal(new[] { Languages.TypeScript, Languages.JavaScript }, mixed.MappedLanguages);
+        Assert.Equal(new[] { Languages.TypeScript }, tsOnly.MappedLanguages);
+    }
+
+    [Fact]
+    public async Task MapperCoveringSeveralLanguages_ThatThrows_MarksEachPresentLanguageFailed_UnderItsOwnName()
+    {
+        var typescript = new FakeCodeMapper(Languages.TypeScript, MixedRepo.TypeScript())
+        {
+            Languages = [Languages.TypeScript, Languages.JavaScript],
+            Throws = new InvalidOperationException("typescript was not found"),
+        };
+        FileRecord[] javascriptOnly = [.. MixedRepo.Included().Take(1).Select(file => file with { Path = "server.js", Language = Languages.JavaScript })];
+
+        var mapped = await CompositeMapper.MapAsync([typescript], Root, javascriptOnly, null, CancellationToken.None);
+
+        Assert.Equal(new[] { Languages.JavaScript }, mapped.FailedLanguages);
+        Assert.Empty(mapped.MappedLanguages);
+        Assert.Equal(new[] { "typescript mapper failed: typescript was not found" }, mapped.Map.Diagnostics);
+    }
+
+    [Fact]
     public async Task ThrowingMapper_AddsADiagnostic_AndMarksOnlyItsLanguageFailed()
     {
         var csharp = new FakeCodeMapper(Languages.CSharp, MixedRepo.CSharp()) { Throws = new InvalidOperationException("no .NET SDK found") };

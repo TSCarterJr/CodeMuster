@@ -7,7 +7,7 @@ public static class CompositeMapper
 {
     private const int MaxUnresolvedNames = 20;
 
-    /// <summary>Runs, in order, each mapper whose language has at least one of the <paramref name="included"/> files, handing it every included path. A mapper that throws adds the diagnostic <c>&lt;language&gt; mapper failed: &lt;message&gt;</c> and marks its language failed; cancellation propagates. Each mapper's progress reaches <paramref name="progress"/> as <c>&lt;language&gt;: &lt;step&gt;</c>.</summary>
+    /// <summary>Runs, in order, each mapper with at least one of the <paramref name="included"/> files in one of its languages, handing it every included path. Each of its languages that has an included file is reported mapped, or failed when it throws; a mapper that throws also adds the diagnostic <c>&lt;language&gt; mapper failed: &lt;message&gt;</c> under its main language; cancellation propagates. Each mapper's progress reaches <paramref name="progress"/> as <c>&lt;language&gt;: &lt;step&gt;</c>.</summary>
     public static async Task<CompositeMap> MapAsync(IReadOnlyList<ICodeMapper> mappers, string repoRoot, IReadOnlyList<FileRecord> included, IProgress<string>? progress, CancellationToken cancellationToken)
     {
         var paths = included.Select(f => f.Path).ToList();
@@ -15,18 +15,24 @@ public static class CompositeMapper
         var mapped = new List<string>();
         var failed = new List<string>();
         var diagnostics = new List<string>();
-        foreach (var mapper in mappers.Where(m => included.Any(f => f.Language == m.Language)))
+        foreach (var mapper in mappers)
         {
+            var present = mapper.Languages.Where(language => included.Any(f => f.Language == language)).ToList();
+            if (present.Count == 0)
+            {
+                continue;
+            }
+
             try
             {
                 var map = await mapper.MapAsync(repoRoot, paths, PrefixedProgress.For(progress, mapper.Language), cancellationToken);
                 maps.Add(map);
-                mapped.Add(mapper.Language);
+                mapped.AddRange(present);
                 diagnostics.AddRange(map.Diagnostics);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                failed.Add(mapper.Language);
+                failed.AddRange(present);
                 diagnostics.Add($"{mapper.Language} mapper failed: {ex.Message}");
             }
         }

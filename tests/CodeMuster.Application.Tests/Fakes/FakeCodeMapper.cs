@@ -5,6 +5,7 @@ namespace CodeMuster.Application.Tests.Fakes;
 public sealed class FakeCodeMapper(string language, CodeMap map) : ICodeMapper
 {
     public string Language => language;
+    public IReadOnlyList<string> Languages { get; init; } = [language];
     public CodeMap Map { get; set; } = map;
     public Exception? Throws { get; set; }
     public List<(string RepoRoot, IReadOnlyList<string> Paths)> Calls { get; } = [];

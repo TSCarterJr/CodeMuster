@@ -3,7 +3,7 @@
 Audit a codebase with Claude Code, Codex, or the standalone CLI, and see exactly which work
 has been completed.
 
-CodeMuster maps C# with Roslyn and TypeScript with the TypeScript compiler, groups code into
+CodeMuster maps C# with Roslyn and TypeScript and JavaScript with the TypeScript compiler, groups code into
 work units, and tracks each unit in a local SQLite ledger. Your agent analyzes each unit in a
 fresh context. A verification pass tries to refute reported findings. Fix mode groups confirmed
 findings by file, runs independent file workers, and creates local commits.
@@ -60,8 +60,9 @@ status, see the [distribution guide](https://github.com/TSCarterJr/CodeMuster/bl
 ### Use the standalone CLI
 
 You need Node.js 22 or later and Git. The CLI ships as a self-contained platform build.
-C# mapping also needs a suitable .NET SDK; TypeScript mapping needs the target repository's
-`typescript` dependency installed, plus `@typescript/typescript6` with TypeScript 7, which has no
+C# mapping also needs a suitable .NET SDK; TypeScript and JavaScript mapping needs the target
+repository's `typescript` dependency installed (a JavaScript-only repository adds it with
+`npm i -D typescript`), plus `@typescript/typescript6` with TypeScript 7, which has no
 JavaScript compiler API. These requirements also apply to plugin use, which needs
 terminal access to your repository. Install and authenticate your chosen coding agent separately.
 CodeMuster starts Git, Node.js, agents, audit tools and `test_command` only from absolute `PATH`

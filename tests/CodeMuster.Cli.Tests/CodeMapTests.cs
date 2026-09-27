@@ -100,3 +100,33 @@ public class HttpLinkTests
         Assert.Contains("\nslice 0/5\norphan 0/3\n", status.Stdout);
     }
 }
+
+public class JavaScriptMapTests
+{
+    [Fact]
+    public async Task Scan_MapsAJavaScriptOnlyRepo_AndLinksItsFetchesToItsExpressRoutes()
+    {
+        using var repo = TempRepo.FromFixture("express-js");
+        repo.CopyDirectory(Path.Combine(TempRepo.FindRepoRoot(), "fixtures", "mixed-repo", "web", "node_modules", "typescript"), Path.Combine("node_modules", "typescript"));
+        await CliProcess.RunAsync(repo.Root, "init", "--yes");
+        repo.WithoutVulnerabilityScan();
+
+        var scan = await CliProcess.RunAsync(repo.Root, "scan");
+
+        Assert.Equal(0, scan.ExitCode);
+        using var ledger = await SqliteLedger.OpenAsync(Path.Combine(repo.Root, ".codemuster", "ledger.db"), CancellationToken.None);
+        var stored = (await ledger.GetCodeMapAsync(CancellationToken.None))!;
+        Assert.Equal([Languages.JavaScript], stored.MappedLanguages);
+        Assert.Empty(stored.FailedLanguages);
+        Assert.Equal(
+            [
+                new Edge("web/lib/api.js#loadUser", "routes/users.js#getUser", EdgeKind.Http),
+                new Edge("web/lib/api.js#loadUsers", "routes/users.js#GET /", EdgeKind.Http),
+            ],
+            stored.Map.Edges.Where(edge => edge.Kind == EdgeKind.Http).OrderBy(edge => edge.From, StringComparer.Ordinal));
+        Assert.Equal(["http: GET /health is not called from the mapped UI"], stored.Map.Diagnostics);
+        Assert.Contains("linked 2 UI calls to an endpoint; 0 calls and 1 endpoint unmatched", scan.Stderr);
+        var status = await CliProcess.RunAsync(repo.Root, "status");
+        Assert.Contains("\nslice 0/5\n", status.Stdout);
+    }
+}
