@@ -9,7 +9,7 @@ namespace CodeMuster.Application;
 /// a check that verify completed over whole files whose content is unchanged stays done in the reporting unit's form.
 /// With at least one mapper the scan runs in slice mode: the mappers map the repository at <paramref name="repoRoot"/> and units are slices, orphans, and file units (D25). Without mappers every included file is one file unit.
 /// In slice mode the scan also replaces the stored code map with what the mappers returned, including a failed mapper's diagnostic, at the scanned commit (D60); a file-mode scan leaves it as it was.
-/// Slices never read the stored map; with impact review on (D67) the scan reads it once, before replacing it, to plan an impact unit for each symbol whose body or signature changed.
+/// Slices never read the stored map. In slice mode the scan reads it once, before replacing it: to reuse it instead of mapping when <see cref="MapInputs"/> proves nothing the mappers read changed and no remap was asked for (D66), and, with impact review on, to plan an impact unit for each symbol whose body or signature changed (D67).
 /// Only the stored map carries the UI-to-API join (D61): its <see cref="EdgeKind.Http"/> edges and diagnostics never reach slices, fingerprints or the result's diagnostics, and one progress line summarizes it when the mappers found an HTTP call.
 /// Each step is reported to <paramref name="progress"/> as it starts or finishes, with mapper steps under their language.
 /// </summary>
