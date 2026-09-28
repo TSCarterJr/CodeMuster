@@ -17,6 +17,16 @@ test('public workflows use hosted runners and publishing requires same-revision 
   assert.match(release, /scripts\/publish-packages.js/);
 });
 
+test('release builds are published with ReadyToRun as self-contained folders (D74, D33)', () => {
+  const release = fs.readFileSync(path.join(root, '.github/workflows/release.yml'), 'utf8');
+  const publish = release.match(/dotnet publish src\/CodeMuster\.Cli[^\n]*(?:\\\n[^\n]*)*/);
+  assert.ok(publish, 'release.yml publishes src/CodeMuster.Cli');
+  assert.match(publish[0], /-c Release/);
+  assert.match(publish[0], /--self-contained/);
+  assert.match(publish[0], /-p:PublishReadyToRun=true/);
+  assert.doesNotMatch(publish[0], /PublishSingleFile|PublishAot/);
+});
+
 test('publication resumes identical packages but refuses changed bytes and registry failures', async () => {
   const { publishPackages } = require('../../scripts/publish-packages');
   const packages = [{ name: '@codemuster/linux-x64', version: '0.2.7', integrity: 'sha512-one', file: 'platform.tgz' },

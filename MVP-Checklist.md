@@ -411,6 +411,6 @@ Tim asked on 2026-09-28 to track references as well as calls, expose the map to 
 | REF3 | Impact units walk references; dead-code review counts them; `map` gains `references` (D72). | `[ ]` | | |
 | MCP1 | `codemuster mcp`: read-only stdio MCP server over the stored map, with freshness and refresh (D73). | `[ ]` | | |
 | MCP2 | Register the server in the Claude and Codex plugin, offer it in `init`, teach the skill (D73). | `[ ]` | | |
-| OPT1 | ReadyToRun release builds (D74). | `[ ]` | | Review `performance-12`. |
+| OPT1 | ReadyToRun release builds (D74). | `[x]` | claude 2026-09-28 | release.yml passes `-p:PublishReadyToRun=true` to each self-contained publish; the folder layout is unchanged (D33). The release test guarding the publish line fails against the old workflow. On win-x64, doctor went from about 4.7 s to 3.8-4.3 s and `scan --remap` from about 5.3-6.1 s to 4.1-4.9 s, for 28 MB more unpacked. Review `performance-12`. |
 | OPT2 | Git history walk only in scan, tolerant of failure (D75). | `[ ]` | | Review `gap2-1-2`, `core-loop-19`, `performance-14`. |
 | REL050 | Release 0.5.0. | `[ ]` | | |

@@ -58,7 +58,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           for rid in win-x64 win-arm64 osx-x64 osx-arm64 linux-x64 linux-arm64; do
-            dotnet publish src/CodeMuster.Cli -c Release -r "$rid" --self-contained \
+            dotnet publish src/CodeMuster.Cli -c Release -r "$rid" --self-contained -p:PublishReadyToRun=true \
               -p:Version="$VERSION" -p:SatelliteResourceLanguages=en -p:DebugType=none -o "builds/$rid"
           done
       - name: Pack the platform packages and the launcher
