@@ -11,7 +11,9 @@
   All 2,072 .NET and 74 npm tests pass on Windows. Caveats: MCP registration uses a node shell
   wrapper because npm's codemuster.cmd cannot be spawned directly on Windows; Codex's plugin
   MCP format is taken from a GitHub issue; Claude asks users to approve a project .mcp.json.
-  Releasing as 0.5.0 under REL050.
+  Released as 0.5.0 under REL050: dry run 36434374955 proved ReadyToRun on all six
+  platforms; tag v0.5.0 ran release 36436286815 and published all seven packages and the
+  GitHub release. A fresh install here reports 0.5.0. Do not move the tag.
 - 2026-09-27, claude: REL037 released 0.3.7 at Tim's request: release/0.3.7 passed three-OS CI
   and dry run 36339171230; main fast-forwarded to 5376b43; tag v0.3.7 ran release 36339982756
   (validation, six builds, three smokes, npm publication of all seven packages, GitHub release
