@@ -27,7 +27,7 @@ public sealed class ImpactQuery(ILedger ledger, ISourceTree tree)
         }
 
         var symbols = stored.Map.Symbols.DistinctBy(s => s.Id, StringComparer.Ordinal).ToList();
-        var byId = symbols.ToDictionary(s => s.Id, StringComparer.Ordinal);
+        var byId = symbols.Concat(stored.Map.Declarations).DistinctBy(s => s.Id, StringComparer.Ordinal).ToDictionary(s => s.Id, StringComparer.Ordinal);
         var impact = (await ledger.GetUnitsAsync(cancellationToken))
             .Where(u => u.Kind == UnitKind.Impact && u.Status != UnitStatus.Retired)
             .ToDictionary(u => u.Id, StringComparer.Ordinal);

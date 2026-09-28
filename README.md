@@ -167,6 +167,7 @@ codemuster map                                  # summary and entry points
 codemuster map flow "GET /quotes"               # the call tree from an entry point
 codemuster map callers QuoteService.ListQuotes  # who calls a method (--depth N walks further)
 codemuster map callees ListForTenant --format mermaid
+codemuster map references Quote.Status          # every read, write, call and type use
 codemuster map --out map.html                   # one offline, interactive page
 ```
 
@@ -177,9 +178,10 @@ Agents can query the same map over MCP: `codemuster mcp` serves `find_symbol`, `
 standard input and output, read-only, and marks results in files changed since the scan. See
 [Use the map from your agent](https://github.com/TSCarterJr/CodeMuster/blob/main/docs/usage.md#use-the-map-from-your-agent-mcp).
 
-When a later `scan` finds a method or function whose body or signature changed, it plans an
-`impact` unit: `run` shows the agent the old and new text, the callers up to their endpoints and
-pages, and the callees, and asks whether anything now breaks. `codemuster impact` lists those
+When a later `scan` finds a method, function, type, field, property or constant whose code or
+signature changed, it plans an `impact` unit: `run` shows the agent the old and new text, the
+callers and the code that uses it up to their endpoints and pages, and the callees, and asks
+whether anything now breaks. `codemuster impact` lists those
 units and what each change reaches; `codemuster impact --since main` does the same for the
 symbols in files committed since a ref, without a model call. Each scan also groups methods and
 functions whose bodies are the same apart from names and literals into `duplicate` units that ask

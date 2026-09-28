@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using CodeMuster.Domain;
@@ -33,12 +34,13 @@ public sealed class McpTools(ILedger ledger, ISourceTree tree, IContentHasher ha
     public const int MaxDepth = 6;
 
     private const int PathDepth = 12;
-    private const int UserCap = 40;
     private const int ReferenceGroupCap = 50;
 
     private const string SymbolArgument = "A method, function, type, property, field or constant: its exact id, Type.Member, a bare name, or part of one. Ambiguous names return the candidates with their ids.";
 
     private static readonly Regex HttpDiagnostic = new(@"^http: (?<path>[^\s]+):(?<line>\d+) (?<text>.+)$", RegexOptions.CultureInvariant);
+
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
     private State? state;
     private string? stamp;
@@ -141,6 +143,24 @@ public sealed class McpTools(ILedger ledger, ISourceTree tree, IContentHasher ha
         }
 
         return new McpToolResult(text.ToString(), data, answer.IsError);
+    }
+
+    /// <summary>
+    /// <c>map references &lt;symbol&gt;</c>: what the <c>references</c> tool answers, as its text or its structured JSON, with up to the tool's most references;
+    /// exit code 2 with the tool's message when there is no map or the symbol matches none or several.
+    /// </summary>
+    public async Task<MapResult> ReferencesAsync(string symbol, string? kind, MapFormat format, CancellationToken cancellationToken)
+    {
+        var arguments = new JsonObject { ["symbol"] = symbol, ["limit"] = 1000 };
+        if (kind is not null)
+        {
+            arguments["kind"] = kind;
+        }
+
+        var result = await CallAsync("references", arguments, cancellationToken);
+        return result.IsError
+            ? new MapResult(2, "", result.Text.TrimEnd('\n'))
+            : new MapResult(0, format == MapFormat.Json ? result.Structured.ToJsonString(Indented) + "\n" : result.Text, "");
     }
 
     private sealed record State(StoredCodeMap Stored, CodeMapQuery.MapIndex Index, IReadOnlyList<Symbol> All, IReadOnlyDictionary<string, Symbol> ById,
@@ -467,25 +487,9 @@ public sealed class McpTools(ILedger ledger, ISourceTree tree, IContentHasher ha
         var map = current.Stored.Map;
         var reach = ImpactReview.Walk(map, target.Id);
         var references = current.ReferencesTo[target.Id].ToList();
-        var entries = new Dictionary<EntryPoint, int>();
-        foreach (var (entry, depth) in reach.EntryPoints)
-        {
-            entries[entry] = depth;
-        }
-
-        var users = references.Select(reference => reference.From).Where(id => id != target.Id && current.ById.ContainsKey(id)).Distinct(StringComparer.Ordinal).Take(UserCap).ToList();
-        foreach (var user in users)
-        {
-            foreach (var (entry, depth) in ImpactReview.Walk(map, user).EntryPoints)
-            {
-                entries[entry] = Math.Min(entries.GetValueOrDefault(entry, int.MaxValue), depth + 1);
-            }
-        }
-
-        var reached = entries.OrderBy(pair => pair.Value).ThenBy(pair => pair.Key.Display, StringComparer.Ordinal).Select(pair => (pair.Key, pair.Value)).ToList();
         var unit = (await ledger.GetUnitsAsync(cancellationToken)).FirstOrDefault(u => u.Id == UnitIds.Impact(target.Id) && u.Status != UnitStatus.Retired);
         var text = new StringBuilder();
-        ImpactQuery.Append(text, new ImpactQuery.Row(target, unit, reach with { EntryPoints = reached }), unit is null ? null : "impact unit " + unit.Status.ToString().ToLowerInvariant());
+        ImpactQuery.Append(text, new ImpactQuery.Row(target, unit, reach), unit is null ? null : "impact unit " + unit.Status.ToString().ToLowerInvariant());
         text.Append("  callees: ").Append(reach.Callees.Count == 0 ? "none" : string.Join(", ", reach.Callees.Select(Name))).Append('\n');
         var groups = references.GroupBy(reference => reference.Kind).OrderBy(group => group.Key).ToList();
         foreach (var group in groups)
@@ -525,17 +529,16 @@ public sealed class McpTools(ILedger ledger, ISourceTree tree, IContentHasher ha
                 ["line"] = caller.Symbol.Range.StartLine,
                 ["depth"] = caller.Depth,
             })]),
-            ["entryPoints"] = new JsonArray([.. reached.Select(pair => (JsonNode?)new JsonObject
+            ["entryPoints"] = new JsonArray([.. reach.EntryPoints.Select(pair => (JsonNode?)new JsonObject
             {
-                ["display"] = pair.Key.Display,
-                ["kind"] = pair.Key.Kind,
-                ["symbol"] = pair.Key.SymbolId,
-                ["depth"] = pair.Value,
+                ["display"] = pair.Entry.Display,
+                ["kind"] = pair.Entry.Kind,
+                ["symbol"] = pair.Entry.SymbolId,
+                ["depth"] = pair.Depth,
             })]),
             ["callees"] = new JsonArray([.. reach.Callees.Select(callee => (JsonNode?)SymbolJson(callee))]),
             ["calleesCut"] = reach.CalleesCut,
             ["references"] = referenceData,
-            ["referenceUsersCut"] = Math.Max(0, references.Select(reference => reference.From).Distinct(StringComparer.Ordinal).Count() - UserCap),
         }, [target.Path, .. reach.Upward.Select(caller => caller.Symbol.Path), .. reach.Callees.Select(callee => callee.Path), .. references.Take(ReferenceGroupCap).Select(reference => reference.Path)])
         {
             Notes = current.Stored.Map.References.Count == 0 ? ReferenceNotes(current, target) : [],

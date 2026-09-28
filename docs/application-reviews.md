@@ -67,12 +67,16 @@ network request, and an absent match never makes an endpoint safe to delete.
 Unresolved calls, mapper diagnostics, missing language support, or detected dynamic
 invocation/registration keep otherwise unreachable declarations unknown. This conservative
 behavior can suppress candidates in real applications. File-only scan mode cannot establish
-symbol reachability. The current analysis covers mapped declarations; it is not an exhaustive
-unused-file, export, resource or dependency remover.
+symbol reachability. The current analysis covers mapped methods and functions and the
+declarations of types, fields, properties and constants. Anything the map records a reference
+to (a call, read, write, type use, attribute or import) is not a candidate, and a declaration
+that is public, exported, attributed, a member of an attributed type, or not explicitly private
+or internal is protected. It is not an exhaustive unused-file, export, resource or dependency
+remover.
 
 An orphan unit means code was outside the mapped entry-point slices. It does not prove dead
-code. An isolated group whose members only call each other may be a candidate, but that still
-does not prove nothing outside the map uses it.
+code. In an isolated group whose members only call each other, only members nothing references
+can be candidates, and that still does not prove nothing outside the map uses them.
 
 Findings use category and lens `dead_code`, remain report-only, and never enter automatic
 `fix`, even if someone previously marked them confirmed or enabled `review_and_fix`. Do not

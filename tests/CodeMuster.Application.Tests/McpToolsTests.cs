@@ -184,6 +184,41 @@ public class McpToolsTests
     }
 
     [Fact]
+    public async Task MapReferences_PrintsWhatTheReferencesToolAnswers_AsTextOrJson()
+    {
+        var tools = await ToolsAsync();
+
+        var text = await tools.ReferencesAsync("Order.Total", null, MapFormat.Text, CancellationToken.None);
+        var json = await tools.ReferencesAsync("Order.Total", "write", MapFormat.Json, CancellationToken.None);
+
+        Assert.Equal((0, ""), (text.ExitCode, text.Error));
+        Assert.StartsWith($"2 references to Order.Total ({Total})\n", text.Output);
+        Assert.Contains($"  read  {ServicePath}:15:20  in OrderService.Load\n", text.Output);
+        Assert.Contains($"  write  {RepositoryPath}:22:13  in OrderRepository.Find\n", text.Output);
+        var parsed = JsonNode.Parse(json.Output)!;
+        Assert.Equal(["write"], parsed["references"]!.AsArray().Select(r => r!["kind"]!.GetValue<string>()));
+        Assert.Equal(Total, parsed["symbol"]!["id"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task MapReferences_ExitsTwo_ForAnUnknownOrAmbiguousSymbol_OrNoMap()
+    {
+        var none = await new McpTools(new FakeLedger(), tree, hasher).ReferencesAsync("Order.Total", null, MapFormat.Text, CancellationToken.None);
+        var tools = await ToolsAsync();
+
+        var missing = await tools.ReferencesAsync("Nope", null, MapFormat.Text, CancellationToken.None);
+        var ambiguous = await tools.ReferencesAsync("Load", null, MapFormat.Text, CancellationToken.None);
+
+        Assert.Equal((2, ""), (none.ExitCode, none.Output));
+        Assert.Contains("no code map yet", none.Error);
+        Assert.Equal((2, ""), (missing.ExitCode, missing.Output));
+        Assert.Contains("no symbol or declaration matches \"Nope\"", missing.Error);
+        Assert.Equal(2, ambiguous.ExitCode);
+        Assert.Contains(Service, ambiguous.Error);
+        Assert.Contains(Audit, ambiguous.Error);
+    }
+
+    [Fact]
     public async Task References_ToAnEndpoint_IncludeTheUiCallsThatReachIt()
     {
         var tools = await ToolsAsync();

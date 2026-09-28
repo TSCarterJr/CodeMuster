@@ -208,7 +208,7 @@ public static class Program
             case "fix":
                 return await FixAsync(command, repoRoot, ledger, tree, clock, config, events, control, cancellationToken);
             case "map":
-                return await MapAsync(command, ledger, cancellationToken);
+                return await MapAsync(command, ledger, tree, repoRoot, cancellationToken);
             case "impact":
                 var impact = await new ImpactQuery(ledger, tree).RunAsync(command.Options.GetValueOrDefault("since"),
                     command.Options.GetValueOrDefault("format") == "json" ? MapFormat.Json : MapFormat.Text, cancellationToken);
@@ -498,10 +498,11 @@ public static class Program
         return 0;
     }
 
-    private static async Task<int> MapAsync(Command command, SqliteLedger ledger, CancellationToken cancellationToken)
+    private static async Task<int> MapAsync(Command command, SqliteLedger ledger, GitSourceTree tree, string repoRoot, CancellationToken cancellationToken)
     {
         var outPath = command.Options.GetValueOrDefault("out");
-        var page = outPath is not null && outPath.EndsWith(".html", StringComparison.OrdinalIgnoreCase);
+        var references = command.Positionals.ElementAtOrDefault(0) == "references";
+        var page = !references && outPath is not null && outPath.EndsWith(".html", StringComparison.OrdinalIgnoreCase);
         var format = command.Options.GetValueOrDefault("format") switch
         {
             "mermaid" => MapFormat.Mermaid,
@@ -510,7 +511,9 @@ public static class Program
         };
         int? depth = command.Options.TryGetValue("depth", out var value) ? int.Parse(value, CultureInfo.InvariantCulture) : null;
         var request = new MapRequest(command.Positionals.ElementAtOrDefault(0), command.Positionals.ElementAtOrDefault(1), depth, format, page);
-        var result = await new CodeMapQuery(ledger).RunAsync(request, cancellationToken);
+        var result = references
+            ? await new McpTools(ledger, tree, new GitBlobHasher(repoRoot)).ReferencesAsync(command.Positionals[1], command.Options.GetValueOrDefault("kind"), format, cancellationToken)
+            : await new CodeMapQuery(ledger).RunAsync(request, cancellationToken);
         if (result.ExitCode != 0)
         {
             Console.Error.WriteLine("error: " + result.Error);

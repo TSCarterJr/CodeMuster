@@ -34,15 +34,17 @@ public static class CommandLine
         ["fix"] = new(["agent", "jobs", "attempts", "path", "model", "effort", "include-related", "include"], ["stash", "retry-declined", "allow-failing-tests"], ["agent"]),
         ["hook"] = new([], []),
         ["validate"] = new([], []),
-        ["map"] = new(["depth", "format", "out"], [], null, MapPositionals),
+        ["map"] = new(["depth", "format", "kind", "out"], [], null, MapPositionals),
         ["impact"] = new(["since", "format"], []),
         ["mcp"] = new([], ["refresh"]),
     };
 
     // map takes nothing (the summary) or a subcommand and its target, so it is checked on its own rather than as one placeholder.
-    private const string MapPositionals = "[callers|callees|flow <target>]";
+    private const string MapPositionals = "[callers|callees|flow|references <target>]";
 
-    private static readonly string[] MapSubcommands = ["callers", "callees", "flow"];
+    private static readonly string[] MapSubcommands = ["callers", "callees", "flow", "references"];
+
+    private static readonly string[] ReferenceKinds = Enum.GetNames<ReferenceKind>().Select(name => name.ToLowerInvariant()).Append("http").ToArray();
 
     private static readonly string[] Kinds = Enum.GetNames<UnitKind>().Select(name => name.ToLowerInvariant()).Except(["fix", "dependency", "deadcode"]).ToArray();
 
@@ -149,14 +151,19 @@ public static class CommandLine
 
     private static void CheckMap(List<string> positionals, Dictionary<string, string> options, Dictionary<string, string> typed)
     {
-        if (positionals.Count == 0)
+        var subcommand = positionals.Count == 0 ? null : positionals[0];
+        if (subcommand != "references" && options.ContainsKey("kind")) throw Mistake("map", $"{typed["kind"]} needs references");
+        if (subcommand is null or "references")
         {
             if (options.GetValueOrDefault("format") == "mermaid") throw Mistake("map", "--format mermaid needs callers, callees or flow");
             if (options.ContainsKey("depth")) throw Mistake("map", $"{typed["depth"]} needs callers, callees or flow");
+        }
+
+        if (subcommand is null)
+        {
             return;
         }
 
-        var subcommand = positionals[0];
         if (!MapSubcommands.Contains(subcommand))
         {
             var suggestion = Nearest(subcommand.ToLowerInvariant(), MapSubcommands, 3) is { } near ? $"; did you mean \"{near}\"?" : "";
@@ -188,6 +195,7 @@ public static class CommandLine
     private static IReadOnlyList<string>? Choices(string verb, string name) => (verb, name) switch
     {
         ("skill", "for") => SkillInstaller.Harnesses,
+        ("map", "kind") => ReferenceKinds,
         (_, "kind") => Kinds,
         ("scan", "mode") => ["slice", "file"],
         ("fix", "include") => [Config.SimplificationCategory],

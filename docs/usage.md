@@ -480,6 +480,7 @@ codemuster map callers QuoteRepository.FindForTenant --depth 3
 codemuster map callees QuoteService.ListQuotes --format json
 codemuster map flow "GET /quotes" --format mermaid --out quotes.md
 codemuster map --out map.html
+codemuster map references Quote.Status --kind write
 ```
 
 - `map` prints the commit and scan time, symbol counts by language, edge counts by kind, the
@@ -497,6 +498,13 @@ codemuster map --out map.html
   `map flow quotes` runs from the React page through its `fetch` call to the controller,
   service and repository. In Git Bash on Windows write page routes without the leading slash:
   Git Bash rewrites `/quotes` into a Windows path before CodeMuster sees it.
+- `map references <symbol>` lists every recorded use of a method, function, type, field,
+  property, constant or interface member (D72, D76): calls, reads, writes, type uses,
+  inheritance and implementation, attributes, imports, and for an endpoint the UI calls that
+  reach it (`http`), each with `path:line:column` and the symbol it sits in. It prints what the
+  MCP `references` tool answers, up to 1,000 uses, and names files changed since the scan.
+  `--kind <kind>` keeps one kind; `--format json` prints the tool's structured answer.
+  Reflection, `dynamic` and string lookups are not resolved.
 
 `<symbol>` is an exact symbol id, `Type.Method` (`QuoteService.ListQuotes`), a method or function
 name (`ListForTenant`), or part of one. When several symbols match, `map` lists them with their
@@ -578,14 +586,18 @@ skipped and the result says so).
 Slices go stale when code they hold changes, but they are then reviewed cold. An impact unit asks
 the targeted question instead (D67). When a `scan` finds a symbol whose body or signature changed
 since the map the previous scan stored, it plans one `impact` unit for it (id
-`impact:<symbol id>`). New and deleted symbols are not impact targets; their files' own units
-cover them. The unit holds:
+`impact:<symbol id>`). A declaration without a body counts too (D72): a type whose header
+changed, or a field, property, constant, enum member or interface member whose declaration
+changed. New and deleted symbols are not impact targets; their files' own units cover them. The
+unit holds:
 
 - the symbol's previous text, read from Git at the commit the previous scan mapped (if that scan
   mapped uncommitted edits, the committed text may differ, and the pack says so), and its
   current text;
-- its callers, walked up every edge kind including the `http` edges from UI calls to endpoints,
-  at most 4 calls up and 40 symbols, each with its body so the call sites are visible;
+- its callers and the code that reads, writes or names it, walked up every edge kind including
+  the `http` edges from UI calls to endpoints and every recorded reference, at most 4 levels up
+  and 40 symbols, each with its body so the use sites are visible;
+- each recorded use of it (up to 100) with its kind and `path:line:column`;
 - its direct callees, shown as signatures;
 - the entry points and UI pages that reach it, however far up, and what the caps left out.
 
@@ -800,7 +812,7 @@ and manage them.
 | `validate` | No options; runs configured final build/tests |
 | `hook` | No options; used by installed agent hooks |
 | `report` | `--out <file>`, `--include-refuted` |
-| `map` | `callers <symbol>`, `callees <symbol>` or `flow <entry point>`; `--depth N`, `--format text\|mermaid\|json`, `--out <file>` (`.html` writes an interactive page) |
+| `map` | `callers <symbol>`, `callees <symbol>`, `flow <entry point>` or `references <symbol>`; `--depth N`, `--kind <kind>` (references), `--format text\|mermaid\|json`, `--out <file>` (`.html` writes an interactive page) |
 | `impact` | `--since <ref>`, `--format text\|json` |
 | `mcp` | `--refresh` to scan first when the map is stale; serves MCP over standard input and output |
 | `next` | `--batch N`, `--out <file>`, `--path <path>`, `--kind file\|slice\|orphan\|verify\|ux\|impact\|duplicate\|architecture\|api` |

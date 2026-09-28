@@ -312,6 +312,127 @@ public class ImpactTests
         Assert.Contains("unknown revision nope", result.Error);
     }
 
+    private const string QuoteType = "T:MixedRepo.Api.Data.Quote";
+    private const string QuoteStatus = "P:MixedRepo.Api.Data.Quote.Status";
+
+    // Quote and its Status property, read by ToSummary and ListForTenant (D72); the fake mapper records no call edge for a read.
+    private void AddQuoteDeclarations() => csharp.Map = csharp.Map with
+    {
+        Declarations =
+        [
+            new Symbol(QuoteType, QuotePath, new LineRange(3, 3), "record", "public sealed record Quote(int Id, int TenantId, string Customer, decimal Total, string Status)", "decl:quote"),
+            new Symbol(QuoteStatus, QuotePath, new LineRange(3, 3), "property", "string Status", "decl:status"),
+        ],
+        References =
+        [
+            new Reference(ListForTenant, QuoteStatus, ReferenceKind.Read, RepositoryPath, 19, 40),
+            new Reference(ToSummary, QuoteStatus, ReferenceKind.Read, ServicePath, 26, 92),
+            new Reference(ToSummary, QuoteType, ReferenceKind.Type, ServicePath, 24, 45),
+        ],
+    };
+
+    private async Task ScanChangingDeclarationAsync(string declarationId, Func<Symbol, Symbol> change)
+    {
+        AddQuoteDeclarations();
+        await ScanAsync();
+        tree.HeadCommit = Second;
+        csharp.Map = csharp.Map with { Declarations = csharp.Map.Declarations.Select(d => d.Id == declarationId ? change(d) : d).ToList() };
+        Edit(QuotePath);
+        await ScanAsync();
+    }
+
+    [Fact]
+    public async Task ChangedDeclaration_PlansAnImpactUnit_WithItsReaders_AndTheirCallersUpToTheDepthCap()
+    {
+        await ScanChangingDeclarationAsync(QuoteStatus, d => d with { Signature = "string? Status", BodyHash = "decl:changed" });
+
+        var unit = Assert.Single(Live(UnitKind.Impact));
+        Assert.Equal((UnitIds.Impact(QuoteStatus), UnitStatus.Pending, "Quote.Status"), (unit.Id, unit.Status, unit.Key));
+        Assert.Equal(
+            new[]
+            {
+                $"-1 {QuotePath} {QuoteStatus}@{First}",
+                $"0 {QuotePath} {QuoteStatus}",
+                $"1 {RepositoryPath} {ListForTenant}",
+                $"1 {ServicePath} {ToSummary}",
+                $"2 {ServicePath} {ServiceGetQuote}",
+                $"2 {ServicePath} {ServiceListQuotes}",
+                $"3 {ControllerPath} {ControllerGetQuote}",
+                $"3 {ControllerPath} {ControllerListQuotes}",
+                $"3 {WorkerPath} {ExecuteAsync}",
+                $"4 {ApiPath} {FetchQuotes}",
+            }.Order(StringComparer.Ordinal),
+            MembersOf(unit.Id));
+    }
+
+    [Fact]
+    public async Task AChangedTypeBody_IsNotAnImpactTarget_ButAChangedTypeHeaderIs()
+    {
+        await ScanChangingDeclarationAsync(QuoteType, d => d with { BodyHash = "decl:members-changed" });
+
+        Assert.Empty(Live(UnitKind.Impact));
+
+        csharp.Map = csharp.Map with { Declarations = csharp.Map.Declarations.Select(d => d.Id == QuoteType ? d with { Signature = d.Signature + " : IQuote" } : d).ToList() };
+        Edit(QuotePath);
+        await ScanAsync();
+
+        var unit = Assert.Single(Live(UnitKind.Impact));
+        Assert.Equal(UnitIds.Impact(QuoteType), unit.Id);
+        Assert.Contains($"1 {ServicePath} {ToSummary}", MembersOf(unit.Id));
+    }
+
+    [Fact]
+    public async Task UnchangedRescan_KeepsAPendingDeclarationImpactUnit()
+    {
+        await ScanChangingDeclarationAsync(QuoteStatus, d => d with { BodyHash = "decl:changed" });
+        var planned = Assert.Single(Live(UnitKind.Impact));
+
+        Edit(MoneyPath);
+        await ScanAsync();
+
+        Assert.Equal((planned.Id, UnitStatus.Pending), (Assert.Single(Live(UnitKind.Impact)).Id, Assert.Single(Live(UnitKind.Impact)).Status));
+    }
+
+    [Fact]
+    public async Task AChangedSymbol_ReachesCodeThatReferencesItWithoutACallEdge()
+    {
+        csharp.Map = csharp.Map with { References = [new Reference(FindForTenant, MoneyFormat, ReferenceKind.Read, RepositoryPath, 23, 10)] };
+
+        await ScanChangingAsync(MoneyFormat, s => s with { BodyHash = "body:changed" });
+
+        var unit = Assert.Single(Live(UnitKind.Impact));
+        Assert.Contains($"1 {RepositoryPath} {FindForTenant}", MembersOf(unit.Id));
+        Assert.Contains($"1 {ServicePath} {ToSummary}", MembersOf(unit.Id));
+    }
+
+    [Fact]
+    public async Task DeclarationImpactPack_ListsEachReferencingSite_WithKindAndLine_AndTheEntryPointsReached()
+    {
+        tree.Add(QuotePath, Lines(3, (3, "public sealed record Quote(int Id, int TenantId, string Customer, decimal Total, string? Status);")));
+        await ScanChangingDeclarationAsync(QuoteStatus, d => d with { Signature = "string? Status", BodyHash = "decl:changed" });
+
+        var pack = Assert.Single(await new Next(ledger, tree, Config.Default, kind: UnitKind.Impact).RunAsync(1, CancellationToken.None)).Markdown;
+
+        Assert.Contains("## References\n", pack);
+        Assert.Contains($"- read {RepositoryPath}:19:40 in QuoteRepository.ListForTenant\n", pack);
+        Assert.Contains($"- read {ServicePath}:26:92 in QuoteService.ToSummary\n", pack);
+        Assert.Contains("- GET /quotes (http), 3 calls up", pack);
+        Assert.Contains("- references to the changed symbol, up to 100: 2 shown, 0 more not shown", pack);
+        Assert.Contains($"### {QuotePath} :: {QuoteStatus} (csharp)", pack);
+    }
+
+    [Fact]
+    public async Task ImpactQuery_ListsADeclarationImpactUnit_WithTheCodeThatReadsIt()
+    {
+        await ScanChangingDeclarationAsync(QuoteStatus, d => d with { BodyHash = "decl:changed" });
+
+        var result = await new ImpactQuery(ledger, tree).RunAsync(null, MapFormat.Text, CancellationToken.None);
+
+        Assert.Contains($"Quote.Status  {QuotePath}:3  pending", result.Output);
+        Assert.Contains("  callers: QuoteRepository.ListForTenant, QuoteService.ToSummary", result.Output);
+        Assert.Contains("  entry points: GET /quotes (http), GET /quotes/{id} (http), ReminderWorker (background)", result.Output);
+    }
+
     private static string Lines(int count, params (int Line, string Text)[] lines) =>
         string.Join('\n', Enumerable.Range(1, count).Select(n => lines.FirstOrDefault(l => l.Line == n).Text ?? $"// line {n}")) + "\n";
 }

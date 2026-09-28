@@ -229,6 +229,101 @@ public class DeadCodeReviewTests
         Assert.Contains("report-only", DeadCodeReview.Instructions);
     }
 
+    [Fact]
+    public void AMethodWithAnIncomingReferenceButNoCallEdgeIsNotACandidate()
+    {
+        var map = Map([Symbol("helper", "private void Helper()"), Symbol("other", "private void Other()")]) with
+        {
+            References = [new Reference("src/A.cs", "helper", ReferenceKind.Read, "src/A.cs", 2, 5)],
+        };
+
+        var result = DeadCodeReview.Analyze(map, Sources());
+
+        var helper = result.Single(x => x.SymbolId == "helper");
+        Assert.Equal(DeadCodeState.Reachable, helper.State);
+        Assert.Contains("referenced", helper.Reason);
+        Assert.Contains("src/A.cs:2", helper.Reason);
+        Assert.Equal(DeadCodeState.Candidate, result.Single(x => x.SymbolId == "other").State);
+    }
+
+    [Fact]
+    public void InternalFieldsPropertiesConstantsAndTypesWithoutReferencesAreCandidates_AndReferencedOnesAreNot()
+    {
+        var map = Map([Symbol("M:N.C.Run", "public class C\npublic void Run()")]) with
+        {
+            Declarations =
+            [
+                Declaration("T:N.C", "class", "public class C"),
+                Declaration("F:N.C._unused", "field", "private int _unused"),
+                Declaration("F:N.C._used", "field", "private int _used"),
+                Declaration("F:N.C.Limit", "constant", "private const int Limit"),
+                Declaration("P:N.C.Secret", "property", "private int Secret { get; set; }"),
+                Declaration("T:N.Hidden", "class", "internal sealed class Hidden"),
+            ],
+            References = [new Reference("M:N.C.Run", "F:N.C._used", ReferenceKind.Read, "src/A.cs", 3, 9)],
+        };
+
+        var result = DeadCodeReview.Analyze(map, Sources()).ToDictionary(x => x.SymbolId, x => x.State);
+
+        Assert.Equal(DeadCodeState.ProtectedEntryPoint, result["T:N.C"]);
+        Assert.Equal(DeadCodeState.Reachable, result["F:N.C._used"]);
+        Assert.Equal(DeadCodeState.Candidate, result["F:N.C._unused"]);
+        Assert.Equal(DeadCodeState.Candidate, result["F:N.C.Limit"]);
+        Assert.Equal(DeadCodeState.Candidate, result["P:N.C.Secret"]);
+        Assert.Equal(DeadCodeState.Candidate, result["T:N.Hidden"]);
+    }
+
+    [Fact]
+    public void PublicAttributedUnboundedAndSerializedDeclarationsAreProtected_AndOtherDeclarationKindsAreNotAssessed()
+    {
+        var map = Map([]) with
+        {
+            Declarations =
+            [
+                Declaration("P:N.Dto.Name", "property", "public string Name { get; set; }"),
+                Declaration("P:N.Point.X", "property", "int X"),
+                Declaration("F:N.C._tagged", "field", "[JsonInclude] private int _tagged"),
+                Declaration("T:N.Wire", "class", "[Serializable] internal class Wire"),
+                Declaration("F:N.Wire._payload", "field", "private int _payload"),
+                Declaration("M:N.IStore.Find(System.String)", "method", "int Find(string key)"),
+                Declaration("F:N.Color.Red", "enum_member", "Red"),
+            ],
+        };
+
+        var result = DeadCodeReview.Analyze(map, Sources()).ToDictionary(x => x.SymbolId, x => x.State);
+
+        Assert.Equal(DeadCodeState.ProtectedEntryPoint, result["P:N.Dto.Name"]);
+        Assert.Equal(DeadCodeState.ProtectedEntryPoint, result["P:N.Point.X"]);
+        Assert.Equal(DeadCodeState.ProtectedEntryPoint, result["F:N.C._tagged"]);
+        Assert.Equal(DeadCodeState.ProtectedEntryPoint, result["T:N.Wire"]);
+        Assert.Equal(DeadCodeState.ProtectedEntryPoint, result["F:N.Wire._payload"]);
+        Assert.False(result.ContainsKey("M:N.IStore.Find(System.String)"));
+        Assert.False(result.ContainsKey("F:N.Color.Red"));
+    }
+
+    [Fact]
+    public void TypeScriptModuleLocalDeclarationsWithoutReferencesAreCandidates_AndExportedOnesAreProtected()
+    {
+        var map = Map([]) with
+        {
+            Declarations =
+            [
+                Declaration("src/a.ts#LIMIT", "constant", "const LIMIT") with { Path = "src/a.ts" },
+                Declaration("src/a.ts#MAX", "constant", "export const MAX") with { Path = "src/a.ts" },
+                Declaration("src/a.ts#Shape", "interface", "interface Shape") with { Path = "src/a.ts" },
+            ],
+        };
+
+        var result = DeadCodeReview.Analyze(map, new Dictionary<string, string>(StringComparer.Ordinal) { ["src/a.ts"] = "const LIMIT = 1;" })
+            .ToDictionary(x => x.SymbolId, x => x.State);
+
+        Assert.Equal(DeadCodeState.Candidate, result["src/a.ts#LIMIT"]);
+        Assert.Equal(DeadCodeState.ProtectedEntryPoint, result["src/a.ts#MAX"]);
+        Assert.Equal(DeadCodeState.Candidate, result["src/a.ts#Shape"]);
+    }
+
+    private static Symbol Declaration(string id, string kind, string signature) => new(id, "src/A.cs", new LineRange(1, 1), kind, signature, "decl");
+
     private static Symbol Symbol(string id, string signature) => new(id, "src/A.cs", new LineRange(1, 3), "method", signature, "hash");
 
     private static Dictionary<string, string> Sources() => new(StringComparer.Ordinal) { ["src/A.cs"] = "class A { }" };

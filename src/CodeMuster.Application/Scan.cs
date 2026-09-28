@@ -82,7 +82,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         planned = [.. planned.Select(p => baselines.TryGetValue(p.Id, out var baseline)
             ? p with { Members = [.. p.Members.Select(m => m.Distance < 0 ? baseline : m)] }
             : p)];
-        var symbols = linked.Map.Symbols.Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
+        var symbols = linked.Map.Symbols.Concat(linked.Map.Declarations).Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
 
         var units = new List<Unit>(planned.Count);
         var created = 0;

@@ -22,6 +22,14 @@ start with 0.2.8.
   `IQuoteService` shows up as a use of `IQuoteService.ListQuotes`. A C# `new` of a type
   without a declared constructor (a record's primary constructor, or none) is recorded as a
   call to the type.
+- References now feed reviews. A changed type header, field, property, constant, enum member or
+  interface member plans an `impact` unit too, and every impact unit walks up through the code
+  that reads, writes or names the change as well as its callers; the pack lists each use with
+  its kind and `path:line:column`. The opt-in `dead_code` review no longer reports anything the
+  map records a use of, and now also reports private or internal types, fields, properties and
+  constants that nothing references (public, exported, attributed and serialized ones stay
+  protected). New `codemuster map references <symbol> [--kind <kind>] [--format text|json]`
+  prints what the MCP `references` tool answers.
 - New `codemuster mcp`: a read-only MCP server over standard input and output, so an agent can
   ask the stored map what a language server would answer. Its tools are `find_symbol`,
   `references`, `callers`, `callees`, `call_path`, `impact`, `http_links`, `entry_points` and

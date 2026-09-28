@@ -239,15 +239,21 @@ public static class HelpText
             model, unit kind and run, with the price table date and why any call is unpriced.
             """,
         "map" => """
-            usage: codemuster map [callers <symbol> | callees <symbol> | flow <entry point>] [--depth N] [--format text|mermaid|json] [--out <file>]
+            usage: codemuster map [callers <symbol> | callees <symbol> | flow <entry point> | references <symbol>] [--depth N] [--kind <kind>] [--format text|mermaid|json] [--out <file>]
 
             Read the code map the last scan stored. Never scans; run codemuster scan first.
               map                   Summary: commit, counts by language and edge kind, entry points
               map callers <symbol>  Who calls the symbol, with edge kind, path:line and signature
               map callees <symbol>  What the symbol calls
               map flow <entry>      The call tree from an entry point, such as "GET /quotes"
+              map references <symbol>
+                                    Every use of a symbol, type, field, property or constant: calls, reads,
+                                    writes, type uses, inheritance, attributes, imports and UI http calls,
+                                    each with path:line:column and the code it sits in
+              --kind <kind>         references only: call, read, write, type, inherit, implement,
+                                    attribute, import or http
               --depth N             Edges to walk (default: 1 for callers/callees, 6 for flow)
-              --format <format>     text (default), mermaid (a flowchart), or json
+              --format <format>     text (default), mermaid (a flowchart; not for references), or json
               --out <file>          Write to a file; a .html file is one self-contained interactive page
 
             <symbol> is an exact id, Type.Method, a method or function name, or part of one; when several
@@ -255,7 +261,8 @@ public static class HelpText
             or by its symbol id. Walks stop at 300 nodes and say how many they left out; cycles are shown once.
             map --out map.html without a subcommand writes a page that lists entry points to draw.
 
-            Example: codemuster map flow "GET /quotes" --format mermaid
+            Examples: codemuster map flow "GET /quotes" --format mermaid
+                      codemuster map references Quote.Status --kind write
             """,
         "impact" => """
             usage: codemuster impact [--since <ref>] [--format text|json]

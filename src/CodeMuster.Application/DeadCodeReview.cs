@@ -42,23 +42,37 @@ public static partial class DeadCodeReview
     /// <summary>False for every unused-code finding, including historical findings marked confirmed.</summary>
     public static bool CanAutoFix(Finding finding) => !IsFinding(finding);
 
-    /// <summary>Follows all mapped edges from known external entries; incomplete or dynamic maps cannot establish unused candidates.</summary>
+    /// <summary>
+    /// Follows all mapped edges and references (D72) from known external entries; incomplete or dynamic maps cannot establish unused candidates.
+    /// Symbols are assessed, and so are the declarations of types, fields, properties and constants; anything with an incoming reference is not a candidate.
+    /// </summary>
     public static IReadOnlyList<DeadCodeAssessment> Analyze(CodeMap map, IReadOnlyDictionary<string, string> sources)
     {
+        var declarations = map.Declarations.DistinctBy(declaration => declaration.Id, StringComparer.Ordinal).ToDictionary(declaration => declaration.Id, StringComparer.Ordinal);
         var symbols = map.Symbols.DistinctBy(symbol => symbol.Id, StringComparer.Ordinal).ToDictionary(symbol => symbol.Id, StringComparer.Ordinal);
+        foreach (var declaration in declarations.Values.Where(declaration => AssessedDeclarationKinds.Contains(declaration.Kind)))
+        {
+            symbols.TryAdd(declaration.Id, declaration);
+        }
+
         var entries = map.EntryPoints.ToLookup(entry => entry.SymbolId, StringComparer.Ordinal);
         var roots = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var symbol in symbols.Values)
         {
             var entry = entries[symbol.Id].FirstOrDefault();
-            var reason = entry is null ? ProtectedReason(symbol) : entry.Kind == "http"
-                ? $"HTTP endpoint {entry.Display} is externally callable even when repository code has no caller."
-                : $"Mapped {entry.Kind} entry point {entry.Display} can be invoked externally or by its framework.";
+            var reason = entry is not null
+                ? entry.Kind == "http"
+                    ? $"HTTP endpoint {entry.Display} is externally callable even when repository code has no caller."
+                    : $"Mapped {entry.Kind} entry point {entry.Display} can be invoked externally or by its framework."
+                : declarations.ContainsKey(symbol.Id) ? DeclarationProtectedReason(symbol, declarations) : ProtectedReason(symbol);
             if (reason is not null) roots[symbol.Id] = reason;
         }
 
         var reachable = roots.Keys.ToHashSet(StringComparer.Ordinal);
-        var calls = map.Edges.ToLookup(edge => edge.From, edge => edge.To, StringComparer.Ordinal);
+        var references = map.References.Where(reference => reference.From != reference.To).ToList();
+        var used = references.ToLookup(reference => reference.To, StringComparer.Ordinal);
+        var calls = map.Edges.Select(edge => (edge.From, edge.To)).Concat(references.Select(reference => (reference.From, reference.To)))
+            .ToLookup(edge => edge.From, edge => edge.To, StringComparer.Ordinal);
         var queue = new Queue<string>(roots.Keys);
         while (queue.TryDequeue(out var id))
         {
@@ -75,7 +89,7 @@ public static partial class DeadCodeReview
                 : null;
         var requests = Requests(sources);
         return symbols.Values.OrderBy(symbol => symbol.Path, StringComparer.Ordinal).ThenBy(symbol => symbol.Range.StartLine).ThenBy(symbol => symbol.Id, StringComparer.Ordinal)
-            .Select(symbol => Assessment(symbol, entries[symbol.Id], roots, reachable, uncertainty, requests, sources.ContainsKey(symbol.Path)))
+            .Select(symbol => Assessment(symbol, entries[symbol.Id], roots, reachable, used[symbol.Id].ToList(), uncertainty, requests, sources.ContainsKey(symbol.Path)))
             .ToList();
     }
 
@@ -84,7 +98,7 @@ public static partial class DeadCodeReview
         assessment.Reason + (assessment.UsageEvidence.Count == 0 ? "" : "\n" + string.Join('\n', assessment.UsageEvidence));
 
     private static DeadCodeAssessment Assessment(Symbol symbol, IEnumerable<EntryPoint> entries, IReadOnlyDictionary<string, string> roots,
-        HashSet<string> reachable, string? uncertainty, IReadOnlyList<Request> requests, bool sourcePresent)
+        HashSet<string> reachable, IReadOnlyList<Reference> uses, string? uncertainty, IReadOnlyList<Request> requests, bool sourcePresent)
     {
         var usage = entries.Where(entry => entry.Kind == "http")
             .SelectMany(entry => requests.Where(request => Matches(entry.Display, request)).Select(request =>
@@ -94,6 +108,12 @@ public static partial class DeadCodeReview
             return new(symbol.Id, symbol.Path, symbol.Range, DeadCodeState.ProtectedEntryPoint, reason, usage);
         if (reachable.Contains(symbol.Id))
             return new(symbol.Id, symbol.Path, symbol.Range, DeadCodeState.Reachable, "A mapped call path reaches this declaration from an external, public, or framework entry point.", usage);
+        if (uses.Count > 0)
+        {
+            var first = uses.OrderBy(use => use.Path, StringComparer.Ordinal).ThenBy(use => use.Line).First();
+            return new(symbol.Id, symbol.Path, symbol.Range, DeadCodeState.Reachable, string.Create(CultureInfo.InvariantCulture,
+                $"The map records {uses.Count} reference(s) to this declaration, such as a {first.Kind.ToString().ToLowerInvariant()} at {first.Path}:{first.Line}; referenced code is not reported as unused even when no entry point reaches the code that uses it."), usage);
+        }
         if (uncertainty is not null || !sourcePresent || !InternalDeclaration(symbol))
             return new(symbol.Id, symbol.Path, symbol.Range, DeadCodeState.Unknown,
                 uncertainty ?? (!sourcePresent ? "The declaration's source is unavailable; usage evidence is incomplete." : "The mapper does not establish an internal declaration with bounded consumers."), usage);
@@ -116,13 +136,39 @@ public static partial class DeadCodeReview
         return null;
     }
 
+    // Declarations of these kinds can be unused on their own; methods without a body, events and enum members are judged with their type.
+    private static readonly HashSet<string> AssessedDeclarationKinds = new(
+        ["class", "record", "struct", "interface", "enum", "delegate", "type", "field", "property", "constant", "variable", "accessor"], StringComparer.Ordinal);
+
+    // A C# declaration's signature has no type header (D72), so its type's attributes are read from the type's declaration.
+    private static string? DeclarationProtectedReason(Symbol declaration, IReadOnlyDictionary<string, Symbol> declarations)
+    {
+        var typescript = Languages.FromPath(declaration.Path) is Languages.TypeScript or Languages.JavaScript;
+        var container = SymbolContainer.Of(declaration);
+        var type = declarations.GetValueOrDefault(container) ?? declarations.GetValueOrDefault("T:" + container);
+        if (Attributed(declaration.Signature) || type is not null && Attributed(type.Signature))
+            return "Attributed or decorated declarations, and members of attributed types, may be used by serialization, reflection or a framework.";
+        if (HasPublicDeclaration(declaration.Signature))
+            return "Public, exported, or protected declarations may have consumers outside the mapped references.";
+        if (typescript)
+            return type is not null && !HasPrivateDeclaration(declaration.Signature.Split('\n')[^1])
+                ? "Externally accessible JavaScript or TypeScript members may be used by consumers or frameworks."
+                : null;
+        return HasInternalVisibility(declaration.Signature) ? null : "Its accessibility is not declared private or internal, so consumers outside the map may use it.";
+    }
+
+    // Attributes and decorators come first on the line they apply to, so an array type or an index is not taken for one.
+    private static bool Attributed(string signature) =>
+        signature.Split('\n').Any(line => line.TrimStart().StartsWith('[') || line.TrimStart().StartsWith('@'));
+
     private static bool InternalDeclaration(Symbol symbol)
     {
         var declaration = symbol.Signature.Split('\n')[^1];
         return Languages.FromPath(symbol.Path) switch
         {
             Languages.CSharp => HasInternalVisibility(declaration),
-            Languages.TypeScript or Languages.JavaScript => symbol.Kind == "function" || HasPrivateDeclaration(declaration),
+            Languages.TypeScript or Languages.JavaScript => symbol.Kind == "function" || HasPrivateDeclaration(declaration)
+                || AssessedDeclarationKinds.Contains(symbol.Kind) && SymbolContainer.Of(symbol) == symbol.Path,
             _ => false,
         };
     }

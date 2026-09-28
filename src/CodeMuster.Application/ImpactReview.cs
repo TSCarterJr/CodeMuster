@@ -10,17 +10,21 @@ namespace CodeMuster.Application;
 /// <param name="Callees">Symbols the changed symbol calls directly, up to <see cref="ImpactReview.CalleeNodes"/>.</param>
 /// <param name="CalleesCut">Direct callees the cap left out.</param>
 /// <param name="EntryPoints">Entry points on the changed symbol or any caller in <paramref name="Upward"/>, with how many calls up each is, nearest first.</param>
+/// <param name="References">Every recorded use of the changed symbol or declaration (D72), up to <see cref="ImpactReview.ReferenceSites"/>, in path and line order, each with the name of the code it sits in.</param>
+/// <param name="ReferencesCut">Uses the cap left out.</param>
 public sealed record ImpactReach(
     IReadOnlyList<(Symbol Symbol, int Depth)> Callers,
     int CallersCut,
     IReadOnlyList<(Symbol Symbol, int Depth)> Upward,
     IReadOnlyList<Symbol> Callees,
     int CalleesCut,
-    IReadOnlyList<(EntryPoint Entry, int Depth)> EntryPoints);
+    IReadOnlyList<(EntryPoint Entry, int Depth)> EntryPoints,
+    IReadOnlyList<(Reference Reference, string From)> References,
+    int ReferencesCut);
 
 /// <summary>
-/// Middle-out impact review (D67): a symbol whose body hash or signature changed since the stored map gets one <see cref="UnitKind.Impact"/> unit
-/// holding its previous version, its current version, its callers walked up every edge kind (http included) and its direct callees.
+/// Middle-out impact review (D67): a symbol or declaration (D72) whose body hash or signature changed since the stored map gets one <see cref="UnitKind.Impact"/> unit
+/// holding its previous version, its current version, the code that calls or uses it walked up every edge kind (http included) and every reference, and its direct callees.
 /// </summary>
 public static class ImpactReview
 {
@@ -33,6 +37,9 @@ public static class ImpactReview
     /// <summary>The most direct callees that become members.</summary>
     public const int CalleeNodes = 40;
 
+    /// <summary>The most uses of the changed symbol or declaration an impact pack lists.</summary>
+    public const int ReferenceSites = 100;
+
     /// <summary>The lens id impact findings carry.</summary>
     public const string LensId = "impact";
 
@@ -44,8 +51,9 @@ public static class ImpactReview
         + "and set lens_id to \"impact\". Report nothing when every caller and callee still fits the change.";
 
     /// <summary>
-    /// One impact unit per symbol in an included file whose id is in both maps with a different body hash or signature; new and deleted symbols are not impact targets.
-    /// Members: the previous version at distance -1 (its symbol written <c>id@commit</c>, so the pack can read it from git), the current version at 0, the callers within the caps at their distance,
+    /// One impact unit per symbol or declaration in an included file whose id is in both maps with a different body hash or signature; new and deleted ones are not impact targets.
+    /// A type declaration counts only when its signature changed, because a TypeScript type's hash covers members that have entries of their own.
+    /// Members: the previous version at distance -1 (its symbol written <c>id@commit</c>, so the pack can read it from git), the current version at 0, the callers and users within the caps at their distance,
     /// and the direct callees at 1; callers and callees in files that are not included are walked through but never become members.
     /// </summary>
     public static IReadOnlyList<PlannedUnit> Plan(StoredCodeMap? previous, CodeMap current, IReadOnlyList<FileRecord> included)
@@ -57,10 +65,17 @@ public static class ImpactReview
 
         var paths = included.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
         var before = previous.Map.Symbols.DistinctBy(s => s.Id, StringComparer.Ordinal).ToDictionary(s => s.Id, StringComparer.Ordinal);
+        var declaredBefore = previous.Map.Declarations.DistinctBy(s => s.Id, StringComparer.Ordinal).ToDictionary(s => s.Id, StringComparer.Ordinal);
+        var changed = current.Symbols.DistinctBy(s => s.Id, StringComparer.Ordinal)
+            .Select(s => (Symbol: s, Old: before.GetValueOrDefault(s.Id)))
+            .Where(c => c.Old is not null && (c.Old.BodyHash != c.Symbol.BodyHash || c.Old.Signature != c.Symbol.Signature))
+            .Concat(current.Declarations.DistinctBy(s => s.Id, StringComparer.Ordinal)
+                .Select(d => (Symbol: d, Old: declaredBefore.GetValueOrDefault(d.Id)))
+                .Where(c => c.Old is not null && (c.Old.Signature != c.Symbol.Signature || !TypeKinds.Contains(c.Symbol.Kind) && c.Old.BodyHash != c.Symbol.BodyHash)));
         var units = new List<PlannedUnit>();
-        foreach (var symbol in current.Symbols.DistinctBy(s => s.Id, StringComparer.Ordinal))
+        foreach (var (symbol, old) in changed)
         {
-            if (!paths.Contains(symbol.Path) || !before.TryGetValue(symbol.Id, out var old) || old.BodyHash == symbol.BodyHash && old.Signature == symbol.Signature)
+            if (!paths.Contains(symbol.Path) || old is null)
             {
                 continue;
             }
@@ -91,12 +106,16 @@ public static class ImpactReview
         return at < 0 ? (previousSymbol, "") : (previousSymbol[..at], previousSymbol[(at + 1)..]);
     }
 
-    /// <summary>Walks <paramref name="map"/> up and down from <paramref name="symbolId"/> breadth-first, never revisiting a symbol.</summary>
+    /// <summary>
+    /// Walks <paramref name="map"/> up and down from <paramref name="symbolId"/> breadth-first, never revisiting a node. Upward, a node is reached through edges and through
+    /// references of any kind, so a changed declaration reaches its readers, writers and type users and a changed symbol reaches code that uses it without calling it.
+    /// </summary>
     public static ImpactReach Walk(CodeMap map, string symbolId)
     {
-        var symbols = map.Symbols.DistinctBy(s => s.Id, StringComparer.Ordinal).ToDictionary(s => s.Id, StringComparer.Ordinal);
+        var symbols = map.Symbols.Concat(map.Declarations).DistinctBy(s => s.Id, StringComparer.Ordinal).ToDictionary(s => s.Id, StringComparer.Ordinal);
         var edges = map.Edges.Distinct().ToList();
-        var incoming = edges.ToLookup(e => e.To, e => e.From, StringComparer.Ordinal);
+        var references = map.References.Distinct().ToList();
+        var incoming = edges.Select(e => (e.To, e.From)).Concat(references.Select(r => (r.To, r.From))).ToLookup(e => e.To, e => e.From, StringComparer.Ordinal);
         var depths = new Dictionary<string, int>(StringComparer.Ordinal) { [symbolId] = 0 };
         var upward = new List<(Symbol Symbol, int Depth)>();
         var queue = new Queue<string>([symbolId]);
@@ -120,8 +139,15 @@ public static class ImpactReview
             .OrderBy(e => e.Depth)
             .ThenBy(e => e.Entry.Display, StringComparer.Ordinal)
             .ToList();
-        return new ImpactReach(callers, upward.Count - callers.Count, upward, direct.Take(CalleeNodes).Select(id => symbols[id]).ToList(), Math.Max(0, direct.Count - CalleeNodes), entries);
+        var sites = references.Where(r => r.To == symbolId)
+            .OrderBy(r => r.Path, StringComparer.Ordinal).ThenBy(r => r.Line).ThenBy(r => r.Column).ThenBy(r => r.Kind)
+            .ToList();
+        return new ImpactReach(callers, upward.Count - callers.Count, upward, direct.Take(CalleeNodes).Select(id => symbols[id]).ToList(), Math.Max(0, direct.Count - CalleeNodes), entries,
+            sites.Take(ReferenceSites).Select(r => (r, symbols.TryGetValue(r.From, out var from) ? CodeMapQuery.ShortName(from) : r.From)).ToList(), Math.Max(0, sites.Count - ReferenceSites));
     }
+
+    // Kinds whose hash covers members that are symbols or declarations of their own (a TypeScript class, interface or enum), so only their header counts.
+    private static readonly HashSet<string> TypeKinds = new(["class", "record", "struct", "interface", "enum"], StringComparer.Ordinal);
 
     /// <summary>The pack sections between the instructions and the files: the changed symbol with its previous text, the entry points and pages reached, and what the caps cut.</summary>
     public static IReadOnlyList<string> Sections(Unit unit, UnitMember? previous, UnitMember? current, string? previousText, ImpactReach reach)
@@ -166,9 +192,21 @@ public static class ImpactReview
             lines.Add($"- {entry.Display} ({entry.Kind}), {distance}{cut}");
         }
 
+        lines.AddRange(["", "## References", ""]);
+        if (reach.References.Count == 0)
+        {
+            lines.Add("- none recorded: the map has no call, read, write or type use of it");
+        }
+
+        foreach (var (reference, from) in reach.References)
+        {
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"- {reference.Kind.ToString().ToLowerInvariant()} {reference.Path}:{reference.Line}:{reference.Column} in {from}"));
+        }
+
         lines.AddRange(["", "## Caps", ""]);
         lines.Add(string.Create(CultureInfo.InvariantCulture, $"- callers up to {CallerDepth} calls up and {CallerNodes} symbols: {reach.Callers.Count} shown, {reach.CallersCut} more not shown"));
         lines.Add(string.Create(CultureInfo.InvariantCulture, $"- callees one call down, up to {CalleeNodes} symbols: {reach.Callees.Count} shown as signatures, {reach.CalleesCut} more not shown"));
+        lines.Add(string.Create(CultureInfo.InvariantCulture, $"- references to the changed symbol, up to {ReferenceSites}: {reach.References.Count} shown, {reach.ReferencesCut} more not shown"));
         return lines;
     }
 

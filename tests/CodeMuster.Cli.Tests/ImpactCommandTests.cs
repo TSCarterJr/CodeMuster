@@ -67,4 +67,45 @@ public class ImpactCommandTests
         Assert.Contains("  pages: /quotes", since.Stdout);
         Assert.Contains($"QuoteRepository.ListForTenant  {RepositoryPath}:17  done", listed.Stdout);
     }
+
+    [Fact]
+    public async Task ChangingAProperty_PlansAnImpactUnitListingItsReaders_AndMapReferencesListsEveryUse()
+    {
+        using var repo = TempRepo.FromFixture("mixed-repo");
+        repo.CopyRestoredFromFixture("mixed-repo", Path.Combine("web", "node_modules"), "npm ci --prefix fixtures/mixed-repo/web");
+        repo.Dotnet("restore", "MixedRepo.sln");
+        await CliProcess.RunAsync(repo.Root, "init", "--yes", "--for=none");
+        repo.WithoutVulnerabilityScan();
+        repo.Git("add", "-A");
+        repo.Git("-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "init");
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "scan")).ExitCode);
+
+        var calls = await CliProcess.RunAsync(repo.Root, "map", "references", "IQuoteService.ListQuotes", "--kind", "call");
+        var json = await CliProcess.RunAsync(repo.Root, "map", "references", "IQuoteService.ListQuotes", "--format", "json");
+
+        Assert.Equal(0, calls.ExitCode);
+        Assert.StartsWith("2 references to IQuoteService.ListQuotes (M:MixedRepo.Api.Services.IQuoteService.ListQuotes(System.Int32)) of kind call\n", calls.Stdout);
+        Assert.Contains("  call  src/MixedRepo.Api/Controllers/QuotesController.cs:12:23  in QuotesController.ListQuotes\n", calls.Stdout);
+        Assert.Contains("  call  src/MixedRepo.Api/Workers/ReminderWorker.cs:11:31  in ReminderWorker.ExecuteAsync\n", calls.Stdout);
+        Assert.Equal(0, json.ExitCode);
+        Assert.Contains("\"fromName\": \"ReminderWorker.ExecuteAsync\"", json.Stdout);
+
+        var file = Path.Combine(repo.Root, "src", "MixedRepo.Api", "Data", "Quote.cs");
+        File.WriteAllText(file, File.ReadAllText(file).Replace("string Status", "string? Status", StringComparison.Ordinal));
+        repo.Git("-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-am", "status may be missing");
+        Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "scan")).ExitCode);
+        var impact = await CliProcess.RunAsync(repo.Root, "impact");
+        var next = await CliProcess.RunAsync(repo.Root, "next", "--kind", "impact", "--batch", "5");
+        var reads = await CliProcess.RunAsync(repo.Root, "map", "references", "Quote.Status");
+
+        Assert.Contains("Quote.Status  src/MixedRepo.Api/Data/Quote.cs:3  pending\n", impact.Stdout);
+        Assert.Contains("- unit: impact:P:MixedRepo.Api.Data.Quote.Status\n", next.Stdout);
+        Assert.Contains($"- read {RepositoryPath}:19:37 in QuoteRepository.ListForTenant\n", next.Stdout);
+        Assert.Contains("- read src/MixedRepo.Api/Services/QuoteService.cs:26:92 in QuoteService.ToSummary\n", next.Stdout);
+        Assert.Contains($"  read  {RepositoryPath}:19:37  in QuoteRepository.ListForTenant\n", reads.Stdout);
+
+        var unknown = await CliProcess.RunAsync(repo.Root, "map", "references", "NoSuchThing");
+        Assert.Equal(2, unknown.ExitCode);
+        Assert.StartsWith("error: no symbol or declaration matches \"NoSuchThing\"", unknown.Stderr);
+    }
 }
