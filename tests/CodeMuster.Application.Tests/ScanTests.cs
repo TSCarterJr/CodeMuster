@@ -390,6 +390,20 @@ public class ScanTests
     }
 
     [Fact]
+    public async Task HistoryThatCannotBeRead_KeepsTheLastCommitsAnEarlierScanRecorded()
+    {
+        AddThree();
+        tree.LastCommits["src/A.cs"] = new CommitStamp("a1", "2026-09-01T10:00:00Z");
+        await ScanAsync();
+        tree.HistoryError = new InvalidOperationException("git log exited with code 128: fatal: could not fetch 1234 from promisor remote");
+
+        await ScanAsync();
+
+        Assert.Equal(("a1", "2026-09-01T10:00:00Z"), (ledger.Files["src/A.cs"].LastCommit, ledger.Files["src/A.cs"].LastCommitAt));
+        Assert.Null(ledger.Files["src/B.cs"].LastCommit);
+    }
+
+    [Fact]
     public async Task RemovedFile_GetsDeletedAt_AndItsUnitIsRetired_WithRowsKept()
     {
         tree.Add("src/A.cs", "class A {}");

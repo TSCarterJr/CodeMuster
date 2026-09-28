@@ -27,7 +27,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         var lastCommits = await LastCommitsAsync(files, cancellationToken);
         var existing = (await ledger.GetFilesAsync(cancellationToken)).ToDictionary(f => f.Path, StringComparer.Ordinal);
         var hashes = await ContentHashes.CurrentAsync(hasher, files, existing, cancellationToken);
-        var current = files.Select(file => Refresh(file, existing.GetValueOrDefault(file.Path), hashes[file.Path], lastCommits.GetValueOrDefault(file.Path), now)).ToList();
+        var current = files.Select(file => Refresh(file, existing.GetValueOrDefault(file.Path), hashes[file.Path], lastCommits, now)).ToList();
 
         var present = current.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
         var deleted = existing.Values
@@ -296,8 +296,8 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             DependencyFindings.Lens);
     }
 
-    // Only scan reads history, and history it cannot read (an offline partial clone) costs the last-commit columns, not the scan (D75).
-    private async Task<IReadOnlyDictionary<string, CommitStamp>> LastCommitsAsync(IReadOnlyList<SourceFile> files, CancellationToken cancellationToken)
+    // Only scan reads history. History it cannot read (an offline partial clone) must not fail the scan, and returns null so files keep the last commits an earlier scan recorded (D75).
+    private async Task<IReadOnlyDictionary<string, CommitStamp>?> LastCommitsAsync(IReadOnlyList<SourceFile> files, CancellationToken cancellationToken)
     {
         try
         {
@@ -305,12 +305,12 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
-            progress?.Report($"warning: last commits not recorded, because git history could not be read: {ex.Message}");
-            return new Dictionary<string, CommitStamp>();
+            progress?.Report($"warning: last commits not updated, because git history could not be read: {ex.Message}");
+            return null;
         }
     }
 
-    private FileRecord Refresh(SourceFile file, FileRecord? previous, string hash, CommitStamp? lastCommit, string now)
+    private FileRecord Refresh(SourceFile file, FileRecord? previous, string hash, IReadOnlyDictionary<string, CommitStamp>? lastCommits, string now)
     {
         var unchanged = previous?.ContentHash == hash;
         return new FileRecord(
@@ -321,8 +321,8 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             file.Mtime,
             previous?.FirstSeen ?? now,
             now,
-            lastCommit?.Sha,
-            lastCommit?.At,
+            lastCommits is null ? previous?.LastCommit : lastCommits.GetValueOrDefault(file.Path)?.Sha,
+            lastCommits is null ? previous?.LastCommitAt : lastCommits.GetValueOrDefault(file.Path)?.At,
             config.ExcludedReason(file.Path, file.LinguistGenerated),
             null,
             unchanged ? previous!.Summary : null,
