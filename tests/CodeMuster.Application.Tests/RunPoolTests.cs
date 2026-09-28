@@ -3,8 +3,22 @@ using CodeMuster.Domain;
 
 namespace CodeMuster.Application.Tests;
 
+/// <summary>
+/// Pool tests step a run through many continuations, and xunit runs every async test's continuations on a few shared threads,
+/// so they run on their own after the parallel tests: on a busy CI runner the shared threads once held them past a 20 s guard.
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class RunPool
+{
+    public const string Name = "run pool";
+}
+
+[Collection(RunPool.Name)]
 public class RunPoolTests
 {
+    // Only a backstop against a hang; the tests step virtual time and never wait on the clock.
+    private static readonly TimeSpan Guard = TimeSpan.FromMinutes(1);
+
     private const string EmptyResponse = """{"summary": "Nothing to report.", "findings": []}""";
 
     private readonly FakeLedger ledger = new();
@@ -67,7 +81,7 @@ public class RunPoolTests
             if (UnitIdOf(pack) == units[0].Id) await slow.Task;
             return EmptyResponse;
         });
-        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var guard = new CancellationTokenSource(Guard);
 
         var run = Running(adapter).RunAsync(new RunOptions(2, 1, false), guard.Token);
         await WaitUntilAsync(() => reports.Count == 3, guard.Token);
@@ -87,7 +101,7 @@ public class RunPoolTests
     {
         var units = AddFileUnits("a", "b", "c", "d");
         var ticks = new Dictionary<string, int> { [units[0].Id] = 5, [units[1].Id] = 1, [units[2].Id] = 1, [units[3].Id] = 1 };
-        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var guard = new CancellationTokenSource(Guard);
 
         var run = Running(Sleeping(ticks)).RunAsync(new RunOptions(2, 1, false), guard.Token);
         var finished = await DriveAsync(run, () => Math.Min(2, 4 - reports.Count), guard.Token);
@@ -115,7 +129,7 @@ public class RunPoolTests
         int[] durations = [3, 1, 2, 1, 1, 4, 1, 2, 1, 1];
         var ticks = units.Select((u, i) => (u.Id, durations[i])).ToDictionary(p => p.Id, p => p.Item2);
         var adapter = Sleeping(ticks);
-        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var guard = new CancellationTokenSource(Guard);
 
         var run = Running(adapter).RunAsync(new RunOptions(3, 1, false), guard.Token);
         await DriveAsync(run, () => Math.Min(3, 10 - reports.Count), guard.Token);
@@ -134,7 +148,7 @@ public class RunPoolTests
     {
         var units = AddFileUnits("a", "b", "c", "d");
         var adapter = Sleeping(units.ToDictionary(u => u.Id, _ => 1));
-        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var guard = new CancellationTokenSource(Guard);
         var runner = Running(adapter);
 
         var run = runner.RunAsync(new RunOptions(1, 1, false), guard.Token);
@@ -153,7 +167,7 @@ public class RunPoolTests
     {
         var units = AddFileUnits("a", "b", "c", "d", "e", "f");
         var adapter = Sleeping(units.ToDictionary(u => u.Id, _ => 1));
-        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var guard = new CancellationTokenSource(Guard);
         var runner = Running(adapter);
 
         var run = runner.RunAsync(new RunOptions(3, 1, false), guard.Token);
