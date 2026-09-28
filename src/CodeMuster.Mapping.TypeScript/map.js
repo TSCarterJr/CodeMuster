@@ -171,6 +171,7 @@ function mapRepo(request, programs) {
   const included = new Set(request.paths);
   const mapped = new Set();
   const symbols = new Map();
+  const bodyless = new Map();
   const edges = new Map();
   const entryPoints = new Map();
   const unresolvedNames = new Map();
@@ -251,6 +252,8 @@ function mapRepo(request, programs) {
         calls.http.forEach((call) => httpCalls.push({ from: declaration.id, ...call, path: file }));
       }
 
+      mapper.bodyless(sourceFile).filter((declaration) => !bodyless.has(declaration.id)).forEach((declaration) => bodyless.set(declaration.id, declaration));
+
       const route = pageRoute(file);
       const pageIds = route === undefined ? [] : mapper.defaultExportIds(sourceFile);
       pageIds.forEach((id) => entryPoints.set(`${id}\n${route}`, { symbol_id: id, kind: 'page', display: route }));
@@ -277,6 +280,11 @@ function mapRepo(request, programs) {
     http_calls: httpCalls.sort((a, b) => ordinal(a.path, b.path) || a.line - b.line || ordinal(a.from, b.from)),
     ...(uiElements.length === 0 ? {} : { ui_elements: uiElements.sort((a, b) => ordinal(a.path, b.path) || a.line - b.line) }),
   };
+  const declarations = [...bodyless.values()].filter((declaration) => !symbols.has(declaration.id)).sort((a, b) => ordinal(a.id, b.id));
+  if (declarations.length > 0) {
+    map.declarations = declarations.map(({ node, ...declaration }) => declaration);
+  }
+
   return request.debug === true ? { ...map, parsed_files: parsedFiles } : map;
 }
 
@@ -313,6 +321,69 @@ function createMapper(ts, checker, repoRoot) {
     }
 
     return found;
+  }
+
+  // D72: top-level declarations without a body (types, enums and their members, class fields, plain variables) that references can point at.
+  function bodyless(sourceFile) {
+    const file = repoPath(sourceFile);
+    const found = [];
+    const text = (from, to) => collapse(sourceFile.text.slice(from.getStart(sourceFile), to));
+    const add = (node, name, kind, signature, hashed = node) => found.push({
+      id: `${file}#${name}`,
+      path: file,
+      range: { start_line: line(sourceFile, node.getStart(sourceFile)), end_line: line(sourceFile, node.end) },
+      kind,
+      signature,
+      body_hash: crypto.createHash('sha256').update(tokenText(hashed, sourceFile), 'utf8').digest('hex'),
+      node,
+    });
+    // A field or parameter without its initializer: modifiers, name, optional or definite marker and type.
+    const member = (node) => text(node, (node.type || node.exclamationToken || node.questionToken || node.name).end);
+    const until = (node, kind) => text(node, node.getChildren(sourceFile).find((child) => child.kind === kind).getStart(sourceFile));
+    const header = (node) => until(node, ts.SyntaxKind.OpenBraceToken);
+
+    for (const statement of sourceFile.statements) {
+      if (ts.isClassDeclaration(statement)) {
+        const name = className(statement);
+        const head = header(statement);
+        add(statement, name, 'class', head);
+        for (const field of statement.members) {
+          if (ts.isPropertyDeclaration(field)) {
+            add(field, `${name}.${field.name.getText()}`, 'field', `${head}\n${member(field)}`);
+          } else if (ts.isConstructorDeclaration(field)) {
+            field.parameters
+              .filter((parameter) => ts.isParameterPropertyDeclaration(parameter, field))
+              .forEach((parameter) => add(parameter, `${name}.${parameter.name.getText()}`, 'field', `${head}\n${member(parameter)}`));
+          }
+        }
+      } else if (ts.isInterfaceDeclaration(statement)) {
+        add(statement, statement.name.text, 'interface', header(statement));
+      } else if (ts.isTypeAliasDeclaration(statement)) {
+        add(statement, statement.name.text, 'type', until(statement, ts.SyntaxKind.EqualsToken));
+      } else if (ts.isEnumDeclaration(statement)) {
+        const head = header(statement);
+        add(statement, statement.name.text, 'enum', head);
+        statement.members.forEach((value) => add(value, `${statement.name.text}.${value.name.getText()}`, 'enum_member', `${head}\n${value.name.getText()}`));
+      } else if (ts.isVariableStatement(statement)) {
+        const list = statement.declarationList;
+        const keyword = collapse(sourceFile.text.slice(statement.getStart(sourceFile), list.declarations[0].getStart(sourceFile)));
+        const kind = (list.flags & ts.NodeFlags.Const) !== 0 ? 'constant' : 'variable';
+        list.declarations
+          .filter((variable) => ts.isIdentifier(variable.name) && !isFunctionConst(variable) && !isAlias(variable))
+          .forEach((variable) => {
+            const single = list.declarations.length === 1;
+            add(single ? statement : variable, variable.name.text, kind, `${keyword} ${member(variable)}`, single ? statement : variable);
+          });
+      }
+    }
+
+    return found;
+  }
+
+  // A JavaScript `const x = require('y')` is an import the checker aliases, not a constant.
+  function isAlias(variable) {
+    const symbol = checker.getSymbolAtLocation(variable.name);
+    return symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0;
   }
 
   const mounts = new Map();
@@ -992,7 +1063,7 @@ function createMapper(ts, checker, repoRoot) {
       .join('');
   }
 
-  return { repoPath, declarations, symbol, callSites, defaultExportIds, collectMounts, routes, uiElements, defaultExportLine };
+  return { repoPath, declarations, bodyless, symbol, callSites, defaultExportIds, collectMounts, routes, uiElements, defaultExportLine };
 }
 
 const AXIOS_VERBS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options']);

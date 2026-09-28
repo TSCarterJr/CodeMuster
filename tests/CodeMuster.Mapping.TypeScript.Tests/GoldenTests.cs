@@ -23,5 +23,10 @@ public class GoldenTests
         Assert.All(golden.HttpCalls, call => Assert.Contains(call.From, ids));
         Assert.All(golden.HttpCalls, call => Assert.StartsWith(call.Path + "#", call.From, StringComparison.Ordinal));
         Assert.Empty(golden.Diagnostics);
+        Assert.NotEmpty(golden.Declarations);
+        Assert.Equal(golden.Declarations.Count, golden.Declarations.Select(declaration => declaration.Id).Distinct().Count());
+        Assert.All(golden.Declarations, declaration => Assert.DoesNotContain(declaration.Id, ids));
+        Assert.All(golden.Declarations, declaration => Assert.StartsWith(declaration.Path + "#", declaration.Id, StringComparison.Ordinal));
+        Assert.All(golden.Declarations, declaration => Assert.Matches(new Regex("^[0-9a-f]{64}$"), declaration.BodyHash));
     }
 }

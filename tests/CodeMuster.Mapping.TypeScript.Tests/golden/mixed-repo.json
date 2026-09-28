@@ -76,5 +76,15 @@
     { "kind": "heading", "text": "Customers", "path": "web/app/customers/page.tsx", "line": 11, "route": "/customers" },
     { "kind": "route", "text": "/quotes", "path": "web/app/quotes/page.tsx", "line": 4, "route": "/quotes" },
     { "kind": "heading", "text": "Quotes", "path": "web/app/quotes/page.tsx", "line": 8, "route": "/quotes" }
+  ],
+  "declarations": [
+    {
+      "id": "web/lib/api.ts#Quote",
+      "path": "web/lib/api.ts",
+      "range": { "start_line": 1, "end_line": 6 },
+      "kind": "type",
+      "signature": "export type Quote",
+      "body_hash": "faeec1c0fee643a44065f245ace9dcd5cd81e524f7efec13146d2e27fce357aa"
+    }
   ]
 }

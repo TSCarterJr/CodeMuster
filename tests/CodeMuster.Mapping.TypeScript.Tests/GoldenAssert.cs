@@ -19,6 +19,7 @@ internal static class GoldenAssert
         Assert.Empty(actual.Diagnostics);
         Assert.Equal(Sorted(golden.HttpCalls), Sorted(actual.HttpCalls));
         Assert.Equal(golden.UiElements, actual.UiElements);
+        Assert.Equal(Sorted(golden.Declarations), Sorted(actual.Declarations));
     }
 
     public static IEnumerable<Symbol> Sorted(IEnumerable<Symbol> symbols) =>

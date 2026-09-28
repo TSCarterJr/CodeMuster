@@ -115,5 +115,31 @@
   "ui_elements": [
     { "kind": "route", "text": "/users/[id]", "path": "web/pages/users/[id].jsx", "line": 4, "route": "/users/[id]" },
     { "kind": "route", "text": "/users", "path": "web/pages/users/index.jsx", "line": 5, "route": "/users" }
+  ],
+  "declarations": [
+    {
+      "id": "routes/users.js#router",
+      "path": "routes/users.js",
+      "range": { "start_line": 4, "end_line": 4 },
+      "kind": "constant",
+      "signature": "const router",
+      "body_hash": "0fd2e2d9ad5647098ec041fccfd8a8849d5251840446d50cdad56200fb295499"
+    },
+    {
+      "id": "server.js#app",
+      "path": "server.js",
+      "range": { "start_line": 4, "end_line": 4 },
+      "kind": "constant",
+      "signature": "const app",
+      "body_hash": "c80f4798a4a829f2265b366ee9fcfdbc5ba3353af0ac388e2ec6d09fadb9017b"
+    },
+    {
+      "id": "services/users.js#users",
+      "path": "services/users.js",
+      "range": { "start_line": 1, "end_line": 1 },
+      "kind": "constant",
+      "signature": "const users",
+      "body_hash": "9bf4541f6ec927747cafd6b21d6740ad25d57b70d64e2deb7de4f6c9001e4d96"
+    }
   ]
 }
