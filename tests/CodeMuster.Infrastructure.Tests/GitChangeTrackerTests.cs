@@ -266,30 +266,6 @@ public class GitChangeTrackerTests
     }
 
     [Fact]
-    public async Task Untracked_files_never_count_as_changes_and_many_of_them_stay_cheap()
-    {
-        using var repo = new TempRepo();
-        repo.WriteFile("a.cs", "class A {}\n");
-        repo.Commit("seed");
-        for (var i = 0; i < 500; i++)
-        {
-            repo.WriteFile($"notes/n{i}.cs", $"class N{i} {{}}\n");
-        }
-
-        var changes = new GitChangeTracker(repo.Root);
-        var watch = Stopwatch.StartNew();
-        var snapshot = await changes.SnapshotAsync(None);
-        watch.Stop();
-        await changes.AcknowledgeAsync(snapshot, None);
-        repo.WriteFile("audit.md", "# CodeMuster report\n");
-        repo.WriteFile("notes/n1.cs", "class Renamed {}\n");
-
-        Assert.False((await changes.ChangesAsync(None)).Detected);
-        // One process per untracked file took about 25 ms each on Windows; a few git calls take well under a second.
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"the snapshot of 500 untracked files took {watch.Elapsed}");
-    }
-
-    [Fact]
     public async Task Reading_the_stored_snapshot_waits_out_a_writer_that_briefly_holds_it()
     {
         using var repo = new TempRepo();

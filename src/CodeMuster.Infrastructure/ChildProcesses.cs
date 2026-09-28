@@ -19,6 +19,12 @@ public static class ChildProcesses
     private static readonly ConcurrentDictionary<int, Process> Running = new();
     private static readonly Lazy<PosixSignalRegistration[]> Watch = new(StartWatching);
 
+    // Counts starts so a test can prove work stays at a few processes instead of timing it on a shared runner.
+    private static long started;
+
+    /// <summary>How many child processes this process has started.</summary>
+    internal static long StartedCount => Interlocked.Read(ref started);
+
     /// <summary>
     /// Starts <paramref name="startInfo"/> tied to this process's lifetime. Its standard input is closed at once unless the
     /// caller redirected it to write input, in which case the caller closes it after writing.
@@ -30,6 +36,7 @@ public static class ChildProcesses
         var closeInput = !startInfo.RedirectStandardInput;
         startInfo.RedirectStandardInput = true;
         var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"{startInfo.FileName} did not start.");
+        Interlocked.Increment(ref started);
 
         // A grandchild the child starts before this line escapes the job; the window is the few microseconds between the two calls.
         if (OperatingSystem.IsWindows() && Job.Value != 0)
