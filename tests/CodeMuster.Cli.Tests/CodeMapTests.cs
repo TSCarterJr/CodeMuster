@@ -51,6 +51,9 @@ public class CodeMapTests
         Assert.Equal(
             csharp.Declarations.Concat(typescript.Declarations).OrderBy(declaration => declaration.Id, StringComparer.Ordinal),
             stored.Map.Declarations.OrderBy(declaration => declaration.Id, StringComparer.Ordinal));
+        Assert.Equal(
+            csharp.References.Concat(typescript.References).OrderBy(reference => reference.Path, StringComparer.Ordinal).ThenBy(reference => reference.Line).ThenBy(reference => reference.Column).ThenBy(reference => reference.Kind),
+            stored.Map.References.OrderBy(reference => reference.Path, StringComparer.Ordinal).ThenBy(reference => reference.Line).ThenBy(reference => reference.Column).ThenBy(reference => reference.Kind));
         Assert.Contains(stored.Map.EntryPoints, entry => entry is { Kind: "http", Display: "GET /quotes" });
         Assert.Contains(stored.Map.Symbols, symbol => symbol.Id == "web/lib/api.ts#fetchQuotes");
 

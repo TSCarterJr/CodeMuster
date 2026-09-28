@@ -13,6 +13,7 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
     private readonly Dictionary<string, Symbol> symbols = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Symbol> declarations = new(StringComparer.Ordinal);
     private readonly HashSet<Edge> edges = [];
+    private readonly HashSet<Reference> references = [];
     private readonly HashSet<EntryPoint> entryPoints = [];
     private readonly Dictionary<string, int> unresolved = new(StringComparer.Ordinal);
     private int resolved;
@@ -79,6 +80,7 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
         }
 
         edges.UnionWith(document.Edges);
+        references.UnionWith(document.References);
         entryPoints.UnionWith(document.EntryPoints);
         resolved += document.Resolved;
         foreach (var (name, count) in document.Unresolved)
@@ -97,18 +99,26 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
 
         var root = await model.SyntaxTree.GetRootAsync(cancellationToken);
         map.EntryPoints.AddRange(EntryPoints.Find(root, model, cancellationToken));
+        var references = new ReferenceCollector(model, path, map.References, cancellationToken);
         foreach (var node in root.DescendantNodes())
         {
-            foreach (var (_, declaration) in Declarations(node, model, path, cancellationToken))
+            foreach (var (declared, declaration) in Declarations(node, model, path, cancellationToken))
             {
                 map.Declarations.Add(declaration);
+                references.Contain(declared, declaration.Id);
+                references.Contain(declared.Parent is VariableDeclarationSyntax { Parent: BaseFieldDeclarationSyntax field } ? field : declared, declaration.Id);
             }
 
+            references.Add(node);
             if (DeclaredMethod(node, model, cancellationToken) is not { } method || Id(method) is not { } from)
             {
                 continue;
             }
 
+            // An expression-bodied property is a declaration and its getter a symbol, so the getter contains only what its expression uses.
+            SyntaxNode? getter = node switch { PropertyDeclarationSyntax property => property.ExpressionBody, IndexerDeclarationSyntax indexer => indexer.ExpressionBody, _ => null };
+            references.Contain(getter ?? node, from);
+            references.Contain(node, from);
             map.Symbols.Add(new Symbol(from, path, Lines(node), KindOf(node), Signature(node), BodyHash(node), NormalizedHash(node)));
             CountCallSites(node, model, map, cancellationToken);
             foreach (var callee in Callees(node, model, cancellationToken))
@@ -155,6 +165,15 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
                 .ThenBy(declaration => declaration.Range.StartLine)
                 .ThenBy(declaration => declaration.Id, StringComparer.Ordinal)
                 .ToList(),
+            References = references
+                .Where(reference => symbols.ContainsKey(reference.To) || declarations.ContainsKey(reference.To))
+                .OrderBy(reference => reference.Path, StringComparer.Ordinal)
+                .ThenBy(reference => reference.Line)
+                .ThenBy(reference => reference.Column)
+                .ThenBy(reference => reference.Kind)
+                .ThenBy(reference => reference.To, StringComparer.Ordinal)
+                .ThenBy(reference => reference.From, StringComparer.Ordinal)
+                .ToList(),
         };
     }
 
@@ -163,7 +182,7 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
     {
         switch (node)
         {
-            case BaseTypeDeclarationSyntax type when TypeKind(type) is { } kind:
+            case BaseTypeDeclarationSyntax type when TypeDeclarationKind(type) is { } kind:
                 var header = type.DescendantTokens().TakeWhile(token => token != type.OpenBraceToken && token != type.SemicolonToken).ToList();
                 return Declared(node, model.GetDeclaredSymbol(node, cancellationToken), path, kind, Collapse(header), header);
             case DelegateDeclarationSyntax @delegate:
@@ -206,7 +225,7 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
         }
     }
 
-    private static string? TypeKind(BaseTypeDeclarationSyntax type) => type switch
+    private static string? TypeDeclarationKind(BaseTypeDeclarationSyntax type) => type switch
     {
         RecordDeclarationSyntax => "record",
         ClassDeclarationSyntax => "class",
@@ -423,6 +442,8 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
         public List<Symbol> Symbols { get; } = [];
 
         public List<Symbol> Declarations { get; } = [];
+
+        public List<Reference> References { get; } = [];
 
         public List<Edge> Edges { get; } = [];
 

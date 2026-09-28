@@ -58,5 +58,12 @@
       "signature": "public static class Endpoints",
       "body_hash": "e321dafc46d3f06ca9fd9200df39e07c64144f9cacc40a61208f2082de39e67d"
     }
+  ],
+  "references": [
+    { "from": "M:MinimalApi.Endpoints.Hello", "to": "M:MinimalApi.Endpoints.Greeting(System.String)", "kind": "call", "path": "src/MinimalApi/Endpoints.cs", "line": 7, "column": 16 },
+    { "from": "src/MinimalApi/Program.cs", "to": "T:MinimalApi.Endpoints", "kind": "type", "path": "src/MinimalApi/Program.cs", "line": 4, "column": 22 },
+    { "from": "src/MinimalApi/Program.cs", "to": "M:MinimalApi.Endpoints.Hello", "kind": "call", "path": "src/MinimalApi/Program.cs", "line": 4, "column": 32 },
+    { "from": "src/MinimalApi/Program.cs", "to": "T:MinimalApi.Endpoints", "kind": "type", "path": "src/MinimalApi/Program.cs", "line": 5, "column": 22 },
+    { "from": "src/MinimalApi/Program.cs", "to": "M:MinimalApi.Endpoints.Echo(System.String)", "kind": "call", "path": "src/MinimalApi/Program.cs", "line": 5, "column": 32 }
   ]
 }

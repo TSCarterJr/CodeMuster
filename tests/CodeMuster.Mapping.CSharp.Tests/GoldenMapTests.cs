@@ -26,6 +26,15 @@ public class GoldenMapTests(FixtureMaps maps) : IClassFixture<FixtureMaps>
     [Theory]
     [InlineData("mixed-repo")]
     [InlineData("minimal-api")]
+    public void References_match_the_golden(string fixture)
+    {
+        Assert.NotEmpty(Fixtures.Golden(fixture).References);
+        Assert.Equal(Fixtures.Golden(fixture).References, maps[fixture].References);
+    }
+
+    [Theory]
+    [InlineData("mixed-repo")]
+    [InlineData("minimal-api")]
     public void Edges_match_the_golden(string fixture)
     {
         Assert.Equal(Sorted(Fixtures.Golden(fixture).Edges), Sorted(maps[fixture].Edges));
