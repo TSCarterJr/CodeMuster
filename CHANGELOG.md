@@ -4,7 +4,9 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
-## Unreleased
+## 0.5.1 - 2026-09-28
+
+Use `npm install -g codemuster@0.5.1` to update. The ledger stays at schema 9.
 
 - A child process CodeMuster starts (git, the audit tools, the agents, `test_command`, `doctor
   --fix` commands, node for TypeScript mapping) no longer outlives it. On Windows the children
