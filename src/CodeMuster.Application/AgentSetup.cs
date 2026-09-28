@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using CodeMuster.Domain;
 
 namespace CodeMuster.Application;
@@ -9,6 +10,18 @@ public sealed class AgentSetup(IFileSystem files)
 {
     /// <summary>Agents supported by integrated setup.</summary>
     public static IReadOnlyList<string> Agents { get; } = ["claude", "codex", "gemini"];
+
+    /// <summary>The program agents start for the codemuster MCP server (D73); distribution/mcp.json registers the same command for the plugin.</summary>
+    public const string McpCommand = "node";
+
+    /// <summary>
+    /// Its arguments. npm installs codemuster as a .cmd shim on Windows, which agents cannot start without a shell,
+    /// so node starts <c>codemuster mcp</c> through the shell on every platform and passes standard input and output through.
+    /// </summary>
+    public static IReadOnlyList<string> McpArguments { get; } =
+        ["-e", "process.exitCode=require(\"node:child_process\").spawnSync(\"codemuster mcp\",{stdio:\"inherit\",shell:true}).status??1"];
+
+    private static readonly Regex CodexServer = new(@"^\s*\[\s*mcp_servers\s*\.\s*(codemuster|""codemuster"")\s*\]", RegexOptions.Multiline | RegexOptions.CultureInvariant);
 
     // The Claude and Codex tools that run the change hook; distribution/hooks/hooks.json matches the same tools.
     private const string ToolMatcher = "^(Edit|Write|apply_patch|Bash|PowerShell|NotebookEdit)$";
@@ -89,6 +102,53 @@ public sealed class AgentSetup(IFileSystem files)
             await new SkillInstaller(files).InstallAsync(agent, false, root, "", skill, cancellationToken);
             var (hook, settingsPath, rewrote) = changes[agent];
             results.Add(new AgentSetupResult(agent, skillWritten, hook, settingsPath, rewrote));
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Registers the codemuster MCP server in each agent's project settings (D73): <c>.mcp.json</c> for Claude, <c>.codex/config.toml</c> for Codex and
+    /// <c>.gemini/settings.json</c> for Gemini. A server already named codemuster is left as it is, and every other server and setting is kept.
+    /// </summary>
+    public async Task<IReadOnlyList<McpSetupResult>> InstallMcpAsync(string root, IReadOnlyList<string> agents, CancellationToken cancellationToken)
+    {
+        var results = new List<McpSetupResult>();
+        foreach (var agent in agents.Distinct(StringComparer.Ordinal))
+        {
+            if (!Agents.Contains(agent)) throw new ArgumentException("unsupported agent: " + agent);
+            var path = agent switch
+            {
+                "claude" => Path.Combine(root, ".mcp.json"),
+                "codex" => Path.Combine(root, ".codex", "config.toml"),
+                _ => Path.Combine(root, ".gemini", "settings.json"),
+            };
+            var existed = files.FileExists(path);
+            var text = existed ? await files.ReadAllTextAsync(path, cancellationToken) : "";
+            string? updated;
+            if (agent == "codex")
+            {
+                // No TOML parser is allowed, so the server table is appended when no table of that name exists; the rest of the file is untouched.
+                var table = $"[mcp_servers.codemuster]\ncommand = \"{McpCommand}\"\nargs = [\"{McpArguments[0]}\", '{McpArguments[1]}']\n";
+                updated = CodexServer.IsMatch(text) ? null : text.Length == 0 ? table : text + (text.EndsWith('\n') ? "\n" : "\n\n") + table;
+            }
+            else
+            {
+                var document = JsonNode.Parse(existed ? text : "{}", documentOptions: new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip }) as JsonObject
+                    ?? throw new ArgumentException($"{path} must contain a JSON object; existing settings were not changed");
+                var servers = document["mcpServers"] as JsonObject;
+                if (document["mcpServers"] is not null && servers is null) throw new ArgumentException($"invalid mcpServers in {path}");
+                if (servers is null) document["mcpServers"] = servers = new JsonObject();
+                updated = null;
+                if (!servers.ContainsKey("codemuster"))
+                {
+                    servers["codemuster"] = new JsonObject { ["command"] = McpCommand, ["args"] = new JsonArray([.. McpArguments.Select(arg => (JsonNode?)arg)]) };
+                    updated = document.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";
+                }
+            }
+
+            if (updated is not null) await files.WriteAllTextAsync(path, updated, cancellationToken);
+            results.Add(new McpSetupResult(agent, path, updated is not null, updated is not null && existed && agent != "codex"));
         }
 
         return results;

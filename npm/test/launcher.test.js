@@ -446,6 +446,15 @@ test('hook runs without an availability check, version line or background update
   assert.match(h.stderr.join(''), /0\.2\.10 is available/);
 });
 
+test('mcp is started by the agent, so it skips the availability check and background update like hook', async (t) => {
+  const h = commandHarness(t, '0.2.10');
+  assert.equal(await launcher.main(['mcp'], {}), 3);
+  assert.deepEqual(h.calls, []);
+  assert.deepEqual(h.stderr, []);
+  assert.deepEqual(h.children.map((c) => c.args), [['mcp']]);
+  assert.equal(h.children[0].options.stdio, 'inherit');
+});
+
 for (const verb of ['Hook', 'HOOK']) {
   test(`${verb} is the hook in any case, as the CLI reads it, so it skips the availability check`, async (t) => {
     const h = commandHarness(t, '0.2.10');

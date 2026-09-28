@@ -87,10 +87,11 @@ Commit `.codemuster/config.json`. Keep `.codemuster/ledger.db` local and ignored
 `doctor` checks the mappers and suggests setup commands; `doctor --fix` offers to run them
 (`git init` and a first commit, `dotnet restore`, the package install), asking before each, and
 `--yes` runs them all. It never installs the .NET SDK, Node.js or Git.
-`init` installs project skills and change hooks for your selected agents. Choose a comma-separated
-`--for claude,codex,gemini`, or choose interactively with plain `init`. `--yes` selects all unless
-`--for` or `--no-skills` is given. Use `--no-gitignore`, `--no-hooks`, or `--no-skills` to opt out.
-Reload the agent and approve its hook trust prompt when needed. Hooks track changes without
+`init` installs project skills, change hooks and the codemuster MCP server for your selected agents.
+Choose a comma-separated `--for claude,codex,gemini`, or choose interactively with plain `init`.
+`--yes` selects all unless `--for` or `--no-skills` is given. Use `--no-gitignore`, `--no-hooks`,
+`--no-mcp`, or `--no-skills` to opt out. Reload the agent and approve its hook and MCP server
+prompts when needed. Hooks track changes without
 running an audit. Standalone `skill install` also supports `opencode` and global installation.
 
 ### Use the skill without a plugin

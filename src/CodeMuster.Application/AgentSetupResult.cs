@@ -23,3 +23,10 @@ public enum HookChange
     /// <summary>The CodeMuster hook was already current and the settings file was left alone.</summary>
     Current,
 }
+
+/// <summary>What <see cref="AgentSetup.InstallMcpAsync"/> did for one agent.</summary>
+/// <param name="Agent">The agent.</param>
+/// <param name="Path">The project settings file that registers the server.</param>
+/// <param name="Added">Whether the server was added; false when a server named codemuster was already there.</param>
+/// <param name="RewroteSettings">Whether an existing JSON settings file was rewritten, which drops its comments and formatting.</param>
+public sealed record McpSetupResult(string Agent, string Path, bool Added, bool RewroteSettings);

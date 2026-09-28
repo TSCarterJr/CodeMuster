@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "codemuster": {
+      "command": "node",
+      "args": [
+        "-e",
+        "process.exitCode=require(\"node:child_process\").spawnSync(\"codemuster mcp\",{stdio:\"inherit\",shell:true}).status??1"
+      ]
+    }
+  }
+}

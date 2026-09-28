@@ -28,7 +28,7 @@ On first use, the skill checks `codemuster --version`. If the command is missing
 the error and gives you the manual installation command.
 
 Plugin-driven setup uses `init --yes --no-skills` without `--for` to avoid installing a duplicate project
-skill and project change hooks. The plugin supplies its own session/edit context hooks,
+skill, project change hooks and a second MCP server registration. The plugin supplies its own session/edit context hooks,
 which instruct the active agent to use the CLI; hooks do not run reviews or fixes themselves.
 For the CLI's integrated project skills and change notifications, use standalone setup with
 `init --for <agent>` instead of a plugin in that scope.
@@ -50,7 +50,10 @@ your local repository or run the CLI.
 
 CodeMuster stores its ledger locally under `.codemuster/`. Analysis packs contain repository
 code and go to the coding agent/provider you choose. Review that provider's data controls.
-The plugin adds no MCP server or separate account. Fix runs change files and create local
+The plugin adds no separate account. It registers one read-only MCP server, `codemuster mcp`,
+started through `node` so the npm-installed command also starts on Windows; it serves the stored
+code map (who calls or uses a symbol, call paths, impact, UI-to-API links) and never writes the
+ledger, calls a model or changes files. Fix runs change files and create local
 commits; they do not push them. Coverage measures completed analysis, not proof that code is
 free of defects.
 

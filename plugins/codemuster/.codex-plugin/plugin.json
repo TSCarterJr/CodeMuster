@@ -19,6 +19,7 @@
     "codemuster"
   ],
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "CodeMuster",
     "shortDescription": "Settings-driven code reviews and tracked audits",

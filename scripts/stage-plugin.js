@@ -27,7 +27,8 @@ const files = new Map();
 const json = (value) => JSON.stringify(value, null, 2) + '\n';
 files.set(`${pluginPath}/plugin.json`, json(manifest));
 files.set(`${pluginPath}/.claude-plugin/plugin.json`, json(identity));
-files.set(`${pluginPath}/.codex-plugin/plugin.json`, json({ ...identity, skills: './skills/', interface: presentation }));
+// Claude loads the plugin root's .mcp.json by itself; Codex reads the file its manifest names.
+files.set(`${pluginPath}/.codex-plugin/plugin.json`, json({ ...identity, skills: './skills/', mcpServers: './.mcp.json', interface: presentation }));
 files.set('.claude-plugin/marketplace.json', json({
   name: 'codemuster',
   owner: identity.author,
@@ -51,6 +52,7 @@ for (const [destination, source] of [
   [`${pluginPath}/README.md`, 'distribution/README.md'],
   [`${pluginPath}/hooks/hooks.json`, 'distribution/hooks/hooks.json'],
   [`${pluginPath}/hooks/context.cjs`, 'distribution/hooks/context.cjs'],
+  [`${pluginPath}/.mcp.json`, 'distribution/mcp.json'],
 ]) {
   files.set(destination, fs.readFileSync(path.join(repo, source)));
 }

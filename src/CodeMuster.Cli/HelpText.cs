@@ -88,11 +88,13 @@ public static class HelpText
             Run codemuster scan afterward to apply the updated audit scope.
             """,
         "init" => """
-            usage: codemuster init [--for claude,codex,gemini] [--yes] [--no-gitignore] [--no-hooks] [--no-skills]
+            usage: codemuster init [--for claude,codex,gemini] [--yes] [--no-gitignore] [--no-hooks] [--no-mcp] [--no-skills]
 
             Write .codemuster/config.json and ignore the local ledger in this Git repo.
               --for <agents>   Comma-separated claude,codex,gemini; all or none
               --no-hooks       Install selected skills without change hooks
+              --no-mcp         Do not register the codemuster MCP server (.mcp.json, .codex/config.toml,
+                               .gemini/settings.json) for the selected agents
               --no-skills      Skip agent integration
               --yes            Skip prompts; select all agents unless --for or --no-skills is given
               --no-gitignore   Leave .gitignore unchanged
@@ -284,7 +286,8 @@ public static class HelpText
             and duplicates. Answers name the cited files that changed since the scan as stale.
             Without a map, tools answer with an error telling the agent to run codemuster scan.
 
-            Example (.mcp.json): {"mcpServers": {"codemuster": {"command": "codemuster", "args": ["mcp"]}}}
+            codemuster init --for <agent> writes the registration; it starts the server through node,
+            because agents cannot start npm's codemuster.cmd on Windows without a shell.
             """,
         "skill" => """
             usage: codemuster skill install --for <agent> [--global]
@@ -303,7 +306,7 @@ public static class HelpText
               --check   Show the available version without installing it
 
             Automatic background checks can be disabled with CI or CODEMUSTER_NO_UPDATE.
-            hook and commands in CodeMuster workers never check.
+            hook, mcp and commands in CodeMuster workers never check.
             """,
         _ => null,
     };

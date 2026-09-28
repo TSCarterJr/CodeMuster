@@ -19,7 +19,7 @@ public static class CommandLine
 
     private static readonly Dictionary<string, Spec> Verbs = new(StringComparer.Ordinal)
     {
-        ["init"] = new(["for"], ["yes", "no-gitignore", "no-hooks", "no-skills"]),
+        ["init"] = new(["for"], ["yes", "no-gitignore", "no-hooks", "no-skills", "no-mcp"]),
         ["intelligent-config"] = new(["agent", "model", "effort"], []),
         ["doctor"] = new([], ["fix", "yes"]),
         ["scan"] = new(["mode"], ["remap"]),

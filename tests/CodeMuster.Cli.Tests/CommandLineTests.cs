@@ -201,6 +201,7 @@ public class CommandLineTests
     [InlineData("skill install --for opencode")]
     [InlineData("init --for claude,codex --yes --no-gitignore --no-hooks")]
     [InlineData("init --no-skills")]
+    [InlineData("init --for claude --no-mcp")]
     [InlineData("intelligent-config --agent claude --model m --effort high")]
     [InlineData("intelligent-config")]
     [InlineData("scan --mode file")]

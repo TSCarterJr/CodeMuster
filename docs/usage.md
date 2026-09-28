@@ -20,7 +20,8 @@ Fixing is a separate, explicit command that edits code and creates commits.
 For AI-driven use, install the [Claude or Codex plugin](distribution.md), start a new session
 in the repository, and ask it to audit with CodeMuster. The skill attempts CLI installation
 if missing. Plugin users do not also need `skill install`.
-Plugin-driven setup uses `init --yes --no-skills` without `--for`, skipping project skills and hooks.
+Plugin-driven setup uses `init --yes --no-skills` without `--for`, skipping project skills, hooks
+and the MCP server registration; the plugin registers the MCP server itself.
 The plugin supplies its own session/edit context hooks. They tell the active agent to follow
 the repository's `automation` setting during coding without a separate CodeMuster request.
 The integrated project setup described below remains available for standalone skill use.
@@ -91,7 +92,9 @@ puts that prefix in front of the router's routes, including routers imported wit
 selected project's skill and change hook. `--for all` selects all; `--for none` or `--no-skills`
 skips integration. `--yes` skips prompts and selects all unless you specify `--for` or
 `--no-skills`. In unattended use without `--yes`, supply `--for` to select agents.
-`--no-hooks` installs skills without hooks. Existing settings and other hooks are preserved;
+`--no-hooks` installs skills without hooks. `init` also registers the codemuster MCP server for
+each selected agent (see [Use the map from your agent](#use-the-map-from-your-agent-mcp));
+`--no-mcp` skips that. Existing settings, other hooks and other MCP servers are preserved;
 invalid settings stop installation rather than being overwritten. Repeat setup to refresh skills.
 Standalone `skill install --for opencode` and `skill install --for codex --global` remain available.
 
@@ -526,12 +529,23 @@ message per line, and serves clients that open with `initialize` (protocol 2025-
 output carries only protocol messages; anything else goes to standard error. It never writes the
 ledger, calls a model or changes files, and it does not take the lock other commands use.
 
-Register it with the agent as a stdio server whose command is `codemuster` with the argument
-`mcp`, for example in a Claude Code `.mcp.json` at the repository root:
+The Claude and Codex plugin registers the server, and `init` adds it for the agents it sets up
+(`--no-mcp` skips it): `.mcp.json` at the repository root for Claude Code, `[mcp_servers.codemuster]`
+in `.codex/config.toml` for Codex (read in trusted projects), and `mcpServers` in
+`.gemini/settings.json` for Gemini CLI. A server already named `codemuster` is left as it is, and
+other servers and settings are kept. Claude Code asks before it uses a project's `.mcp.json`
+server; approve it once. Every registration starts the server the same way:
 
 ```json
-{"mcpServers": {"codemuster": {"command": "codemuster", "args": ["mcp"]}}}
+{"mcpServers": {"codemuster": {"command": "node", "args": ["-e",
+  "process.exitCode=require(\"node:child_process\").spawnSync(\"codemuster mcp\",{stdio:\"inherit\",shell:true}).status??1"]}}}
 ```
+
+npm installs `codemuster` as a `.cmd` script on Windows, which agents cannot start without a
+shell, so `node` starts `codemuster mcp` through the shell on every platform and passes standard
+input and output through. Where `codemuster` is a real executable on your PATH you can register
+`{"command": "codemuster", "args": ["mcp"]}` instead; add `"--refresh"` to scan first when the map is
+stale.
 
 | Tool | Answers |
 |---|---|
@@ -775,7 +789,7 @@ and manage them.
 
 | Command | Options |
 |---|---|
-| `init` | `--for claude,codex,gemini` (or `all`/`none`), `--yes`, `--no-gitignore`, `--no-hooks`, `--no-skills` |
+| `init` | `--for claude,codex,gemini` (or `all`/`none`), `--yes`, `--no-gitignore`, `--no-hooks`, `--no-mcp`, `--no-skills` |
 | `doctor` | `--fix` to offer the setup commands it found, `--yes` to run them without asking |
 | `scan` | `--mode slice` (default), `--mode file`, `--remap` (map again even when nothing it reads changed) |
 | `status` | No options |
@@ -871,8 +885,9 @@ The npm launcher checks update availability on every normal invocation, includin
 stderr so command stdout remains usable. The check has a two-second timeout; offline, timed-out
 or invalid registry responses print that the check was unavailable and let your command continue.
 It never claims you are up to date when the check fails. `hook`, which installed agent hooks run
-after every edit, and commands run inside a CodeMuster worker (`CODEMUSTER_WORKER` set) skip the
-check: they make no registry request and print no version line. When no build is installed yet,
+after every edit, `mcp`, which agents start as their MCP server, and commands run inside a
+CodeMuster worker (`CODEMUSTER_WORKER` set) skip the check: they make no registry request and
+print no version line. When no build is installed yet,
 `hook` also skips the first-run download: it records nothing, prints one line saying so and exits
 0, and the next command you run installs the build.
 

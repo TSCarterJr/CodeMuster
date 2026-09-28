@@ -705,7 +705,7 @@ public static class Program
         var selection = command.Options.GetValueOrDefault("for");
         if (selection is null && !command.Flags.Contains("no-skills") && interactive && !command.Flags.Contains("yes"))
         {
-            Console.Write("install skills and hooks for which agents? [claude,codex,gemini / none; default all] ");
+            Console.Write("install skills, hooks and the MCP server for which agents? [claude,codex,gemini / none; default all] ");
             selection = Console.ReadLine();
             selection = string.IsNullOrWhiteSpace(selection) ? "all" : selection.Trim();
         }
@@ -713,6 +713,8 @@ public static class Program
         var agents = command.Flags.Contains("no-skills") || selection == "none" ? Array.Empty<string>() : AgentSetup.Select(selection);
         var setup = await new AgentSetup(fileSystem).InstallAsync(repoRoot, agents, !command.Flags.Contains("no-hooks"), EmbeddedSkill.Text, cancellationToken);
         foreach (var agentSetup in setup) Console.WriteLine(SetupLine(repoRoot, agentSetup));
+        var servers = command.Flags.Contains("no-mcp") ? [] : await new AgentSetup(fileSystem).InstallMcpAsync(repoRoot, agents, cancellationToken);
+        foreach (var server in servers) Console.WriteLine(McpLine(repoRoot, server));
         if (agents.Count == 0) Console.WriteLine("no agent skills selected; use init --for claude,codex,gemini to install them");
         var result = await new Init(fileSystem, tree).RunAsync(repoRoot, _ => Task.FromResult(GitignorePrompt.Decide(command.Flags, interactive, () =>
         {
@@ -791,6 +793,14 @@ public static class Program
             HookChange.Current => "; change hook already current",
             _ => "",
         };
+    }
+
+    private static string McpLine(string repoRoot, McpSetupResult result)
+    {
+        var path = RepoPath.Normalize(Path.GetRelativePath(repoRoot, result.Path));
+        return result.Added
+            ? $"added the codemuster MCP server to {path} for {result.Agent}{(result.RewroteSettings ? ", which rewrites that file without its comments" : "")} (approve it when the agent asks)"
+            : $"codemuster MCP server already in {path} for {result.Agent}";
     }
 
     private static string Version =>

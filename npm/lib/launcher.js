@@ -309,7 +309,7 @@ async function main(args, env = process.env) {
   const verb = args[0]?.toLowerCase();
   if ((verb === 'update' && args.slice(1).some((arg) => arg === '--help' || arg === '-h'))
       || (args.length === 2 && verb === 'help' && args[1].toLowerCase() === 'update')) {
-    process.stdout.write('usage: codemuster update [--check]\n\nUpdate CodeMuster itself and show the intervening release notes.\n  --check   Show the available version without installing it\n\nNormal commands check availability with a two-second timeout; hook and commands in CodeMuster workers do not.\nAutomatic checks and background updates can be disabled with CI or CODEMUSTER_NO_UPDATE.\n');
+    process.stdout.write('usage: codemuster update [--check]\n\nUpdate CodeMuster itself and show the intervening release notes.\n  --check   Show the available version without installing it\n\nNormal commands check availability with a two-second timeout; hook, mcp and commands in CodeMuster workers do not.\nAutomatic checks and background updates can be disabled with CI or CODEMUSTER_NO_UPDATE.\n');
     return 0;
   }
 
@@ -342,8 +342,8 @@ async function main(args, env = process.env) {
     return updateNow({ args: args.slice(1), stateDir, platform, arch, currentVersion: build.version });
   }
 
-  // hook fires after every agent edit and workers are CodeMuster's own agent processes; neither is a command someone typed.
-  const automated = verb === 'hook' || env.CODEMUSTER_WORKER !== undefined;
+  // hook fires after every agent edit, an agent starts mcp as its server, and workers are CodeMuster's own agent processes; none is a command someone typed.
+  const automated = verb === 'hook' || verb === 'mcp' || env.CODEMUSTER_WORKER !== undefined;
   if (!env.CI && !env.CODEMUSTER_NO_UPDATE && !pinnedVersion && !automated) {
     const latest = await checkForUpdate({ currentVersion: build.version });
     if (latest && compareVersions(latest, build.version) > 0

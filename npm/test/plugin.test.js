@@ -42,9 +42,17 @@ test('plugin staging ships a self-contained skill for both marketplaces with one
     assert.equal(manifest.version, '0.2.1-test.1');
     assert.equal(manifest.license, 'SEE LICENSE IN LICENSE');
     assert.equal(manifest.author.name, 'Tim Carter');
-    assert.equal(manifest.mcpServers, undefined);
     assert.equal(manifest.hooks, undefined);
   }
+  // Claude loads the plugin root's .mcp.json by itself; Codex reads the file its manifest names.
+  assert.equal(claude.mcpServers, undefined);
+  assert.equal(portable.mcpServers, undefined);
+  assert.equal(codex.mcpServers, './.mcp.json');
+  assert.deepEqual(fs.readFileSync(path.join(plugin, '.mcp.json')), fs.readFileSync(path.join(repo, 'distribution/mcp.json')));
+  const server = readJson(path.join(plugin, '.mcp.json')).mcpServers.codemuster;
+  assert.equal(server.command, 'node');
+  assert.deepEqual(server.args.slice(0, 1), ['-e']);
+  assert.match(server.args[1], /codemuster mcp/);
   assert.deepEqual(codex.interface, portable.extensions['com.openai'].interface);
   assert.equal(codex.skills, './skills/');
   const claudeMarket = readJson(path.join(output, '.claude-plugin/marketplace.json'));

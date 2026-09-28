@@ -373,7 +373,7 @@ public sealed class McpTools(ILedger ledger, ISourceTree tree, IContentHasher ha
             ["truncated"] = graph.Truncated,
         }, paths)
         {
-            Notes = current.Stored.Map.References.Count == 0 ? ["call-site lines and columns are unavailable: this map has no references (stored before ledger schema 9); run codemuster scan with a current codemuster"] : [],
+            Notes = current.Stored.Map.References.Count == 0 ? ["call-site lines and columns are unavailable: this map has no references, because it was stored before ledger schema 9 or by mappers that do not record references yet; the call edges are still shown"] : [],
         };
     }
 
