@@ -14,8 +14,14 @@ start with 0.2.8.
   the method or function it sits in. Both the C# and the TypeScript/JavaScript mappers record
   them; mapping takes about 6 to 8 percent longer. The ledger moves to schema 9 the first
   time this version opens it, and CodeMuster 0.3.7 and earlier then refuse that ledger, so
-  back up `.codemuster` if you may need to roll back. Interface and abstract methods are not
-  yet recorded as declarations.
+  back up `.codemuster` if you may need to roll back.
+- Calls through an interface are references too. Interface, abstract, extern and partial
+  method definitions, interface indexers, TypeScript interface method and property signatures,
+  abstract methods, get and set accessors, and overload signatures are recorded as
+  declarations, so a call such as `quotes.ListQuotes(...)` through an injected
+  `IQuoteService` shows up as a use of `IQuoteService.ListQuotes`. A C# `new` of a type
+  without a declared constructor (a record's primary constructor, or none) is recorded as a
+  call to the type.
 - New `codemuster mcp`: a read-only MCP server over standard input and output, so an agent can
   ask the stored map what a language server would answer. Its tools are `find_symbol`,
   `references`, `callers`, `callees`, `call_path`, `impact`, `http_links`, `entry_points` and

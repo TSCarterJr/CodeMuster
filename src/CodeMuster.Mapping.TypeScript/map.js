@@ -343,6 +343,7 @@ function createMapper(ts, checker, repoRoot) {
   }
 
   // D72: top-level declarations without a body (types, enums and their members, class fields, plain variables) that references can point at.
+  // D76: interface members, abstract methods, accessors and overload signatures too; an overload of an implemented method is that symbol.
   function bodyless(sourceFile) {
     const file = repoPath(sourceFile);
     const found = [];
@@ -360,6 +361,7 @@ function createMapper(ts, checker, repoRoot) {
     const member = (node) => text(node, (node.type || node.exclamationToken || node.questionToken || node.name).end);
     const until = (node, kind) => text(node, node.getChildren(sourceFile).find((child) => child.kind === kind).getStart(sourceFile));
     const header = (node) => until(node, ts.SyntaxKind.OpenBraceToken);
+    const signature = (node) => (node.body === undefined ? text(node, node.end).replace(/[;,]$/, '') : text(node, node.body.getStart(sourceFile)));
 
     for (const statement of sourceFile.statements) {
       if (ts.isClassDeclaration(statement)) {
@@ -369,6 +371,8 @@ function createMapper(ts, checker, repoRoot) {
         for (const field of statement.members) {
           if (ts.isPropertyDeclaration(field)) {
             add(field, `${name}.${field.name.getText()}`, 'field', `${head}\n${member(field)}`);
+          } else if ((ts.isMethodDeclaration(field) && field.body === undefined) || ts.isGetAccessorDeclaration(field) || ts.isSetAccessorDeclaration(field)) {
+            add(field, `${name}.${field.name.getText()}`, ts.isMethodDeclaration(field) ? 'method' : 'accessor', `${head}\n${signature(field)}`);
           } else if (ts.isConstructorDeclaration(field)) {
             field.parameters
               .filter((parameter) => ts.isParameterPropertyDeclaration(parameter, field))
@@ -376,7 +380,11 @@ function createMapper(ts, checker, repoRoot) {
           }
         }
       } else if (ts.isInterfaceDeclaration(statement)) {
-        add(statement, statement.name.text, 'interface', header(statement));
+        const head = header(statement);
+        add(statement, statement.name.text, 'interface', head);
+        statement.members
+          .filter((field) => (ts.isMethodSignature(field) || ts.isPropertySignature(field)) && field.name !== undefined)
+          .forEach((field) => add(field, `${statement.name.text}.${field.name.getText()}`, ts.isMethodSignature(field) ? 'method' : 'property', `${head}\n${signature(field)}`));
       } else if (ts.isTypeAliasDeclaration(statement)) {
         add(statement, statement.name.text, 'type', until(statement, ts.SyntaxKind.EqualsToken));
       } else if (ts.isEnumDeclaration(statement)) {
@@ -523,7 +531,7 @@ function createMapper(ts, checker, repoRoot) {
             member.parameters.forEach(add);
           }
         });
-      } else if (ts.isEnumDeclaration(statement)) {
+      } else if (ts.isEnumDeclaration(statement) || ts.isInterfaceDeclaration(statement)) {
         statement.members.forEach(add);
       }
     }
@@ -565,7 +573,12 @@ function createMapper(ts, checker, repoRoot) {
       return `${file()}#${parent.name.text}.${declaration.name.getText()}`;
     }
 
-    if (ts.isPropertyDeclaration(declaration) && ts.isClassDeclaration(parent) && ts.isSourceFile(parent.parent)) {
+    if ((ts.isMethodSignature(declaration) || ts.isPropertySignature(declaration)) && ts.isInterfaceDeclaration(parent) && ts.isSourceFile(parent.parent)) {
+      return `${file()}#${parent.name.text}.${declaration.name.getText()}`;
+    }
+
+    if ((ts.isPropertyDeclaration(declaration) || ts.isGetAccessorDeclaration(declaration) || ts.isSetAccessorDeclaration(declaration))
+      && ts.isClassDeclaration(parent) && ts.isSourceFile(parent.parent)) {
       return `${file()}#${className(parent)}.${declaration.name.getText()}`;
     }
 

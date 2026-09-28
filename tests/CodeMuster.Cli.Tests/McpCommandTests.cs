@@ -58,7 +58,8 @@ public class McpCommandTests
         Assert.Equal(["src/MixedRepo.Api/Services/QuoteService.cs"], callers["structuredContent"]!["stale"]!.AsArray().Select(path => path!.GetValue<string>()));
 
         var found = ById(replies, 4)["result"]!["structuredContent"]!["results"]!.AsArray();
-        Assert.Equal(3, found.Count);
+        Assert.Equal(4, found.Count);
+        Assert.Contains(found, item => item!.ToJsonString().Contains("IQuoteService.ListQuotes", StringComparison.Ordinal));
         Assert.NotEmpty(ById(replies, 5)["result"]!["structuredContent"]!["links"]!.AsArray());
         Assert.Equal(-32601, ById(replies, 6)["error"]!["code"]!.GetValue<int>());
         Assert.Equal(-32700, replies[^1]["error"]!["code"]!.GetValue<int>());

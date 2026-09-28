@@ -89,6 +89,38 @@ public class ReferenceTests
         }
         """;
 
+    private const string Service = """
+        export interface Store {
+          find(key: string): number;
+          count: number;
+          get(id: number): string;
+          get(id: string): string;
+        }
+
+        export abstract class Shape {
+          abstract area(): number;
+          get label(): string {
+            return "shape";
+          }
+          set label(value: string) {}
+          scale(factor: number): number;
+          scale(factor: string): number;
+          scale(factor: unknown): number {
+            return 1;
+          }
+        }
+        """;
+
+    private const string Client = """
+        import { Store, Shape } from "./service";
+
+        export function use(store: Store, shape: Shape): number {
+          store.count = store.find("a");
+          shape.label = shape.label + "!";
+          return shape.area() + shape.scale(2) + store.count + store.get(1).length;
+        }
+        """;
+
     private static readonly Dictionary<string, string> Sources = new(StringComparer.Ordinal)
     {
         ["src/model.ts"] = Model,
@@ -97,6 +129,8 @@ public class ReferenceTests
         ["src/helper.ts"] = "export function helper() {}",
         ["src/barrel.ts"] = """export { helper as help } from "./helper";""",
         ["src/spaces.ts"] = Spaces,
+        ["src/service.ts"] = Service,
+        ["src/client.ts"] = Client,
     };
 
     private static readonly Lazy<Task<CodeMap>> Mapped = new(MapAsync);
@@ -151,6 +185,27 @@ public class ReferenceTests
     public async Task A_method_called_through_an_instance_is_a_call_to_the_method()
     {
         Assert.Equal(["src/use.ts#run call @14:price"], await ReferencesTo("src/model.ts#Order.price"));
+    }
+
+    [Fact]
+    public async Task A_call_through_an_interface_method_signature_or_an_abstract_method_is_a_call_to_that_declaration()
+    {
+        Assert.Equal(["src/client.ts#use call @4:find"], await ReferencesTo("src/service.ts#Store.find"));
+        Assert.Equal(["src/client.ts#use call @6:area"], await ReferencesTo("src/service.ts#Shape.area"));
+    }
+
+    [Fact]
+    public async Task Overload_signatures_are_one_declaration_or_reach_the_implementation()
+    {
+        Assert.Equal(["src/client.ts#use call @6:get"], await ReferencesTo("src/service.ts#Store.get"));
+        Assert.Equal(["src/client.ts#use call @6:scale"], await ReferencesTo("src/service.ts#Shape.scale"));
+    }
+
+    [Fact]
+    public async Task Interface_properties_and_get_or_set_accessors_are_read_and_written()
+    {
+        Assert.Equal(["src/client.ts#use write @4:count", "src/client.ts#use read @6:count"], await ReferencesTo("src/service.ts#Store.count"));
+        Assert.Equal(["src/client.ts#use write @5:label", "src/client.ts#use read @5:label"], await ReferencesTo("src/service.ts#Shape.label"));
     }
 
     [Fact]

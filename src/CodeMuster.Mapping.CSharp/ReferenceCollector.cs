@@ -21,16 +21,22 @@ internal sealed class ReferenceCollector(SemanticModel model, string path, List<
                 AddName(name);
                 break;
             case BaseObjectCreationExpressionSyntax creation when model.GetSymbolInfo(creation, cancellationToken).Symbol is IMethodSymbol constructor:
-                if (creation is ObjectCreationExpressionSyntax { Type: var type })
+                var at = creation is ObjectCreationExpressionSyntax { Type: var type } ? Identifier(type) : creation.NewKeyword;
+                Record(constructor, ReferenceKind.Call, at);
+                if (creation is ImplicitObjectCreationExpressionSyntax)
                 {
-                    Record(constructor, ReferenceKind.Call, Identifier(type));
-                }
-                else
-                {
-                    Record(constructor, ReferenceKind.Call, creation.NewKeyword);
-                    Record(constructor.ContainingType, ReferenceKind.Type, creation.NewKeyword);
+                    Record(constructor.ContainingType, ReferenceKind.Type, at);
                 }
 
+                // An implicit or primary constructor has no body to point at, so the call goes to the type it creates.
+                if (constructor.IsImplicitlyDeclared || constructor.DeclaringSyntaxReferences.Any(reference => reference.GetSyntax(cancellationToken) is TypeDeclarationSyntax))
+                {
+                    Record(constructor.ContainingType, ReferenceKind.Call, at);
+                }
+
+                break;
+            case ElementAccessExpressionSyntax element when model.GetSymbolInfo(element, cancellationToken).Symbol is IPropertySymbol indexer:
+                Record(indexer, IsWritten(element) ? ReferenceKind.Write : ReferenceKind.Read, element.ArgumentList.OpenBracketToken);
                 break;
             case ConstructorInitializerSyntax initializer when model.GetSymbolInfo(initializer, cancellationToken).Symbol is IMethodSymbol constructor:
                 Record(constructor, ReferenceKind.Call, initializer.ThisOrBaseKeyword);

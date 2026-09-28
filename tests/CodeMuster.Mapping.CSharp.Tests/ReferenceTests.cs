@@ -98,6 +98,7 @@ public class ReferenceTests
                 (run, "P:N.Counter.Prop", ReferenceKind.Read, 22, 29),
                 (run, "E:N.Counter.Changed", ReferenceKind.Write, 23, 11),
                 (run, "E:N.Counter.Changed", ReferenceKind.Read, 24, 11),
+                (run, "T:N.Counter", ReferenceKind.Call, 25, 17),
                 (run, "T:N.Counter", ReferenceKind.Type, 25, 17),
                 (run, "P:N.Counter.Prop", ReferenceKind.Write, 25, 27),
             },
@@ -168,6 +169,87 @@ public class ReferenceTests
                 ("P:N.Square.Tint", "T:N.Color", ReferenceKind.Type, 33, 12),
                 ("P:N.Square.Tint", "T:N.Color", ReferenceKind.Type, 33, 34),
                 ("P:N.Square.Tint", "F:N.Color.Green", ReferenceKind.Read, 33, 40),
+            },
+            Rows(map));
+    }
+
+    [Fact]
+    public async Task Calls_through_an_interface_or_abstract_member_and_interface_property_and_indexer_uses_are_recorded()
+    {
+        var map = await Inline.MapAsync("""
+            namespace N;
+
+            public interface IStore
+            {
+                int Find(string key);
+                int Count { get; set; }
+                int this[int index] { get; set; }
+            }
+
+            public abstract class Shape
+            {
+                public abstract double Area();
+            }
+
+            public class User
+            {
+                public double Run(IStore store, Shape shape)
+                {
+                    store.Count = store.Find("a");
+                    store[0] = store[1] + store.Count;
+                    return shape.Area();
+                }
+            }
+            """);
+
+        const string run = "M:N.User.Run(N.IStore,N.Shape)";
+        Assert.Equal(
+            new[]
+            {
+                (run, "T:N.IStore", ReferenceKind.Type, 17, 23),
+                (run, "T:N.Shape", ReferenceKind.Type, 17, 37),
+                (run, "P:N.IStore.Count", ReferenceKind.Write, 19, 15),
+                (run, "M:N.IStore.Find(System.String)", ReferenceKind.Call, 19, 29),
+                (run, "P:N.IStore.Item(System.Int32)", ReferenceKind.Write, 20, 14),
+                (run, "P:N.IStore.Item(System.Int32)", ReferenceKind.Read, 20, 25),
+                (run, "P:N.IStore.Count", ReferenceKind.Read, 20, 37),
+                (run, "M:N.Shape.Area", ReferenceKind.Call, 21, 22),
+            },
+            Rows(map));
+    }
+
+    [Fact]
+    public async Task New_of_a_type_without_a_declared_constructor_is_a_call_to_the_type()
+    {
+        var map = await Inline.MapAsync("""
+            namespace N;
+
+            public record Quote(int Id);
+
+            public class Plain { }
+
+            public class User
+            {
+                public void Run()
+                {
+                    var quote = new Quote(1);
+                    Plain plain = new();
+                    _ = new Plain();
+                }
+            }
+            """);
+
+        const string run = "M:N.User.Run";
+        Assert.Equal(
+            new[]
+            {
+                (run, "T:N.Quote", ReferenceKind.Call, 11, 25),
+                (run, "T:N.Quote", ReferenceKind.Type, 11, 25),
+                (run, "T:N.Plain", ReferenceKind.Type, 12, 9),
+                (run, "T:N.Plain", ReferenceKind.Call, 12, 23),
+                (run, "T:N.Plain", ReferenceKind.Type, 12, 23),
+                (run, "T:N.Plain", ReferenceKind.Call, 13, 17),
+                (run, "T:N.Plain", ReferenceKind.Type, 13, 17),
             },
             Rows(map));
     }

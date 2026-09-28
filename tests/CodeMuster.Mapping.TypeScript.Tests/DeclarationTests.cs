@@ -70,6 +70,7 @@ public class DeclarationTests
                 $"src/model.ts#Order.lines field 5-5 {Header}\nprivate readonly lines: string[]",
                 $"src/model.ts#Order.total field 6-6 {Header}\ntotal!: number",
                 "src/model.ts#Priced interface 17-19 export interface Priced",
+                "src/model.ts#Priced.price method 18-18 export interface Priced\nprice(): number",
                 "src/model.ts#counter variable 29-29 let counter",
                 "src/model.ts#legacy variable 30-30 var legacy",
             ],
@@ -79,6 +80,46 @@ public class DeclarationTests
         Assert.All(map.Declarations, declaration => Assert.Null(declaration.NormalizedHash));
         Assert.Equal(map.Declarations.Count, map.Declarations.Select(declaration => declaration.BodyHash).Distinct().Count());
         Assert.Equal(["src/model.ts#Order.constructor", "src/model.ts#Order.price", "src/model.ts#handler"], map.Symbols.Select(symbol => symbol.Id));
+    }
+
+    [Fact]
+    public async Task Interface_members_abstract_methods_accessors_and_overload_signatures_are_declarations()
+    {
+        var map = await MapAsync("""
+            export interface Store {
+              find(key: string): number;
+              count: number;
+              get(id: number): string;
+              get(id: string): string;
+            }
+
+            export abstract class Shape {
+              abstract area(): number;
+              get label(): string {
+                return "shape";
+              }
+              set label(value: string) {}
+              scale(factor: number): number;
+              scale(factor: string): number;
+              scale(factor: unknown): number {
+                return 1;
+              }
+            }
+            """);
+
+        Assert.Equal(
+            [
+                "src/model.ts#Shape class 8-19 export abstract class Shape",
+                "src/model.ts#Shape.area method 9-9 export abstract class Shape\nabstract area(): number",
+                "src/model.ts#Shape.label accessor 10-12 export abstract class Shape\nget label(): string",
+                "src/model.ts#Store interface 1-6 export interface Store",
+                "src/model.ts#Store.count property 3-3 export interface Store\ncount: number",
+                "src/model.ts#Store.find method 2-2 export interface Store\nfind(key: string): number",
+                "src/model.ts#Store.get method 4-4 export interface Store\nget(id: number): string",
+            ],
+            map.Declarations.Select(declaration =>
+                $"{declaration.Id} {declaration.Kind} {declaration.Range.StartLine}-{declaration.Range.EndLine} {declaration.Signature}"));
+        Assert.Equal(["src/model.ts#Shape.scale"], map.Symbols.Select(symbol => symbol.Id));
     }
 
     [Fact]

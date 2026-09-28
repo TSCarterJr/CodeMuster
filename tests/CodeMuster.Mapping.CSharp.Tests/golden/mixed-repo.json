@@ -309,6 +309,22 @@
       "body_hash": "adae3ba11fc4a76eda6ebd0d7a85b49d3feb32bb5705284d0b65300df1729dee"
     },
     {
+      "id": "M:MixedRepo.Api.Services.IQuoteService.ListQuotes(System.Int32)",
+      "path": "src/MixedRepo.Api/Services/IQuoteService.cs",
+      "range": { "start_line": 7, "end_line": 7 },
+      "kind": "method",
+      "signature": "IReadOnlyList<QuoteSummary> ListQuotes(int tenantId)",
+      "body_hash": "68df7018ea43732b9165812f6ea5a15fe2ca99171d26df4c07457641b6c32a6d"
+    },
+    {
+      "id": "M:MixedRepo.Api.Services.IQuoteService.GetQuote(System.Int32,System.Int32)",
+      "path": "src/MixedRepo.Api/Services/IQuoteService.cs",
+      "range": { "start_line": 9, "end_line": 9 },
+      "kind": "method",
+      "signature": "QuoteSummary? GetQuote(int tenantId, int id)",
+      "body_hash": "c040958b94bf4aaa3e55cdee77d73d3fffbb24267b1b229b6efdb743c855112f"
+    },
+    {
       "id": "T:MixedRepo.Api.Services.QuoteService",
       "path": "src/MixedRepo.Api/Services/QuoteService.cs",
       "range": { "start_line": 6, "end_line": 28 },
@@ -336,11 +352,16 @@
   "references": [
     { "from": "T:MixedRepo.Api.Controllers.QuotesController", "to": "T:MixedRepo.Api.Services.IQuoteService", "kind": "type", "path": "src/MixedRepo.Api/Controllers/QuotesController.cs", "line": 7, "column": 38 },
     { "from": "M:MixedRepo.Api.Controllers.QuotesController.ListQuotes(System.Int32)", "to": "T:MixedRepo.Api.Services.QuoteSummary", "kind": "type", "path": "src/MixedRepo.Api/Controllers/QuotesController.cs", "line": 10, "column": 26 },
+    { "from": "M:MixedRepo.Api.Controllers.QuotesController.ListQuotes(System.Int32)", "to": "M:MixedRepo.Api.Services.IQuoteService.ListQuotes(System.Int32)", "kind": "call", "path": "src/MixedRepo.Api/Controllers/QuotesController.cs", "line": 12, "column": 23 },
     { "from": "M:MixedRepo.Api.Controllers.QuotesController.GetQuote(System.Int32,System.Int32)", "to": "T:MixedRepo.Api.Services.QuoteSummary", "kind": "type", "path": "src/MixedRepo.Api/Controllers/QuotesController.cs", "line": 16, "column": 25 },
+    { "from": "M:MixedRepo.Api.Controllers.QuotesController.GetQuote(System.Int32,System.Int32)", "to": "M:MixedRepo.Api.Services.IQuoteService.GetQuote(System.Int32,System.Int32)", "kind": "call", "path": "src/MixedRepo.Api/Controllers/QuotesController.cs", "line": 18, "column": 28 },
     { "from": "F:MixedRepo.Api.Data.QuoteRepository._quotes", "to": "T:MixedRepo.Api.Data.Quote", "kind": "type", "path": "src/MixedRepo.Api/Data/QuoteRepository.cs", "line": 5, "column": 27 },
     { "from": "M:MixedRepo.Api.Data.QuoteRepository.#ctor", "to": "F:MixedRepo.Api.Data.QuoteRepository._quotes", "kind": "write", "path": "src/MixedRepo.Api/Data/QuoteRepository.cs", "line": 9, "column": 9 },
+    { "from": "M:MixedRepo.Api.Data.QuoteRepository.#ctor", "to": "T:MixedRepo.Api.Data.Quote", "kind": "call", "path": "src/MixedRepo.Api/Data/QuoteRepository.cs", "line": 11, "column": 17 },
     { "from": "M:MixedRepo.Api.Data.QuoteRepository.#ctor", "to": "T:MixedRepo.Api.Data.Quote", "kind": "type", "path": "src/MixedRepo.Api/Data/QuoteRepository.cs", "line": 11, "column": 17 },
+    { "from": "M:MixedRepo.Api.Data.QuoteRepository.#ctor", "to": "T:MixedRepo.Api.Data.Quote", "kind": "call", "path": "src/MixedRepo.Api/Data/QuoteRepository.cs", "line": 12, "column": 17 },
     { "from": "M:MixedRepo.Api.Data.QuoteRepository.#ctor", "to": "T:MixedRepo.Api.Data.Quote", "kind": "type", "path": "src/MixedRepo.Api/Data/QuoteRepository.cs", "line": 12, "column": 17 },
+    { "from": "M:MixedRepo.Api.Data.QuoteRepository.#ctor", "to": "T:MixedRepo.Api.Data.Quote", "kind": "call", "path": "src/MixedRepo.Api/Data/QuoteRepository.cs", "line": 13, "column": 17 },
     { "from": "M:MixedRepo.Api.Data.QuoteRepository.#ctor", "to": "T:MixedRepo.Api.Data.Quote", "kind": "type", "path": "src/MixedRepo.Api/Data/QuoteRepository.cs", "line": 13, "column": 17 },
     { "from": "M:MixedRepo.Api.Data.QuoteRepository.ListForTenant(System.Int32)", "to": "T:MixedRepo.Api.Data.Quote", "kind": "type", "path": "src/MixedRepo.Api/Data/QuoteRepository.cs", "line": 17, "column": 26 },
     { "from": "M:MixedRepo.Api.Data.QuoteRepository.ListForTenant(System.Int32)", "to": "F:MixedRepo.Api.Data.QuoteRepository._quotes", "kind": "read", "path": "src/MixedRepo.Api/Data/QuoteRepository.cs", "line": 19, "column": 16 },
@@ -356,8 +377,8 @@
     { "from": "T:MixedRepo.Api.Services.EmptyQuoteService", "to": "T:MixedRepo.Api.Services.IQuoteService", "kind": "implement", "path": "src/MixedRepo.Api/Services/EmptyQuoteService.cs", "line": 3, "column": 41 },
     { "from": "M:MixedRepo.Api.Services.EmptyQuoteService.ListQuotes(System.Int32)", "to": "T:MixedRepo.Api.Services.QuoteSummary", "kind": "type", "path": "src/MixedRepo.Api/Services/EmptyQuoteService.cs", "line": 5, "column": 26 },
     { "from": "M:MixedRepo.Api.Services.EmptyQuoteService.GetQuote(System.Int32,System.Int32)", "to": "T:MixedRepo.Api.Services.QuoteSummary", "kind": "type", "path": "src/MixedRepo.Api/Services/EmptyQuoteService.cs", "line": 10, "column": 12 },
-    { "from": "T:MixedRepo.Api.Services.IQuoteService", "to": "T:MixedRepo.Api.Services.QuoteSummary", "kind": "type", "path": "src/MixedRepo.Api/Services/IQuoteService.cs", "line": 7, "column": 19 },
-    { "from": "T:MixedRepo.Api.Services.IQuoteService", "to": "T:MixedRepo.Api.Services.QuoteSummary", "kind": "type", "path": "src/MixedRepo.Api/Services/IQuoteService.cs", "line": 9, "column": 5 },
+    { "from": "M:MixedRepo.Api.Services.IQuoteService.ListQuotes(System.Int32)", "to": "T:MixedRepo.Api.Services.QuoteSummary", "kind": "type", "path": "src/MixedRepo.Api/Services/IQuoteService.cs", "line": 7, "column": 19 },
+    { "from": "M:MixedRepo.Api.Services.IQuoteService.GetQuote(System.Int32,System.Int32)", "to": "T:MixedRepo.Api.Services.QuoteSummary", "kind": "type", "path": "src/MixedRepo.Api/Services/IQuoteService.cs", "line": 9, "column": 5 },
     { "from": "T:MixedRepo.Api.Services.QuoteService", "to": "T:MixedRepo.Api.Data.QuoteRepository", "kind": "type", "path": "src/MixedRepo.Api/Services/QuoteService.cs", "line": 6, "column": 34 },
     { "from": "T:MixedRepo.Api.Services.QuoteService", "to": "T:MixedRepo.Api.Services.IQuoteService", "kind": "implement", "path": "src/MixedRepo.Api/Services/QuoteService.cs", "line": 6, "column": 64 },
     { "from": "M:MixedRepo.Api.Services.QuoteService.ListQuotes(System.Int32)", "to": "T:MixedRepo.Api.Services.QuoteSummary", "kind": "type", "path": "src/MixedRepo.Api/Services/QuoteService.cs", "line": 8, "column": 26 },
@@ -368,6 +389,7 @@
     { "from": "M:MixedRepo.Api.Services.QuoteService.GetQuote(System.Int32,System.Int32)", "to": "M:MixedRepo.Api.Services.QuoteService.ToSummary(MixedRepo.Api.Data.Quote)", "kind": "call", "path": "src/MixedRepo.Api/Services/QuoteService.cs", "line": 16, "column": 39 },
     { "from": "M:MixedRepo.Api.Services.QuoteService.ToSummary(MixedRepo.Api.Data.Quote)", "to": "T:MixedRepo.Api.Services.QuoteSummary", "kind": "type", "path": "src/MixedRepo.Api/Services/QuoteService.cs", "line": 24, "column": 20 },
     { "from": "M:MixedRepo.Api.Services.QuoteService.ToSummary(MixedRepo.Api.Data.Quote)", "to": "T:MixedRepo.Api.Data.Quote", "kind": "type", "path": "src/MixedRepo.Api/Services/QuoteService.cs", "line": 24, "column": 43 },
+    { "from": "M:MixedRepo.Api.Services.QuoteService.ToSummary(MixedRepo.Api.Data.Quote)", "to": "T:MixedRepo.Api.Services.QuoteSummary", "kind": "call", "path": "src/MixedRepo.Api/Services/QuoteService.cs", "line": 26, "column": 20 },
     { "from": "M:MixedRepo.Api.Services.QuoteService.ToSummary(MixedRepo.Api.Data.Quote)", "to": "T:MixedRepo.Api.Services.QuoteSummary", "kind": "type", "path": "src/MixedRepo.Api/Services/QuoteService.cs", "line": 26, "column": 20 },
     { "from": "M:MixedRepo.Api.Services.QuoteService.ToSummary(MixedRepo.Api.Data.Quote)", "to": "P:MixedRepo.Api.Data.Quote.Id", "kind": "read", "path": "src/MixedRepo.Api/Services/QuoteService.cs", "line": 26, "column": 39 },
     { "from": "M:MixedRepo.Api.Services.QuoteService.ToSummary(MixedRepo.Api.Data.Quote)", "to": "P:MixedRepo.Api.Data.Quote.Customer", "kind": "read", "path": "src/MixedRepo.Api/Services/QuoteService.cs", "line": 26, "column": 49 },
@@ -375,6 +397,7 @@
     { "from": "M:MixedRepo.Api.Services.QuoteService.ToSummary(MixedRepo.Api.Data.Quote)", "to": "M:MixedRepo.Api.Shared.Money.Format(System.Decimal)", "kind": "call", "path": "src/MixedRepo.Api/Services/QuoteService.cs", "line": 26, "column": 65 },
     { "from": "M:MixedRepo.Api.Services.QuoteService.ToSummary(MixedRepo.Api.Data.Quote)", "to": "P:MixedRepo.Api.Data.Quote.Total", "kind": "read", "path": "src/MixedRepo.Api/Services/QuoteService.cs", "line": 26, "column": 78 },
     { "from": "M:MixedRepo.Api.Services.QuoteService.ToSummary(MixedRepo.Api.Data.Quote)", "to": "P:MixedRepo.Api.Data.Quote.Status", "kind": "read", "path": "src/MixedRepo.Api/Services/QuoteService.cs", "line": 26, "column": 92 },
-    { "from": "T:MixedRepo.Api.Workers.ReminderWorker", "to": "T:MixedRepo.Api.Services.IQuoteService", "kind": "type", "path": "src/MixedRepo.Api/Workers/ReminderWorker.cs", "line": 5, "column": 36 }
+    { "from": "T:MixedRepo.Api.Workers.ReminderWorker", "to": "T:MixedRepo.Api.Services.IQuoteService", "kind": "type", "path": "src/MixedRepo.Api/Workers/ReminderWorker.cs", "line": 5, "column": 36 },
+    { "from": "M:MixedRepo.Api.Workers.ReminderWorker.ExecuteAsync(System.Threading.CancellationToken)", "to": "M:MixedRepo.Api.Services.IQuoteService.ListQuotes(System.Int32)", "kind": "call", "path": "src/MixedRepo.Api/Workers/ReminderWorker.cs", "line": 11, "column": 31 }
   ]
 }

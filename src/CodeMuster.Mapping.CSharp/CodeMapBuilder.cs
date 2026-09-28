@@ -205,6 +205,14 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
                 var accessors = property.AccessorList?.Accessors.Select(accessor => Collapse(Header(accessor).Where(token => token != accessor.SemicolonToken)) + ";") ?? ["get;"];
                 return Declared(node, model.GetDeclaredSymbol(node, cancellationToken), path, "property",
                     $"{Collapse(Header(property))} {{ {string.Join(" ", accessors)} }}", WithoutBodies(property));
+            case IndexerDeclarationSyntax indexer:
+                var indexerAccessors = indexer.AccessorList?.Accessors.Select(accessor => Collapse(Header(accessor).Where(token => token != accessor.SemicolonToken)) + ";") ?? ["get;"];
+                return Declared(node, model.GetDeclaredSymbol(node, cancellationToken), path, "indexer",
+                    $"{Collapse(Header(indexer))} {{ {string.Join(" ", indexerAccessors)} }}", WithoutBodies(indexer));
+            // A partial definition whose implementation exists shares its id with that implementation, which is a symbol.
+            case MethodDeclarationSyntax { Body: null, ExpressionBody: null } method
+                when model.GetDeclaredSymbol(method, cancellationToken) is IMethodSymbol { PartialImplementationPart: null } declared:
+                return Declared(node, declared, path, "method", Collapse(Header(method).Where(token => token != method.SemicolonToken)), method.DescendantTokens());
             case EventDeclarationSyntax @event:
                 return Declared(node, model.GetDeclaredSymbol(node, cancellationToken), path, "event", Collapse(Header(@event)), WithoutBodies(@event));
             case ParameterSyntax { Parent.Parent: RecordDeclarationSyntax record } parameter:

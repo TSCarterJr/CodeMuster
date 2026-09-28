@@ -66,6 +66,7 @@ public class DeclarationTests
                 ("F:N.Size.Width", "field", "public int Width", 21, 21),
                 ("F:N.Status.Closed", "enum_member", "[Obsolete] Closed", 15, 15),
                 ("F:N.Status.Open", "enum_member", "Open", 14, 14),
+                ("M:N.IShape.Area", "method", "double Area()", 7, 7),
                 ("P:N.Counter.Auto", "property", "public int Auto { get; private set; }", 34, 34),
                 ("P:N.Counter.Count", "property", "public int Count { get; set; }", 36, 40),
                 ("P:N.Counter.Double", "property", "public int Double { get; }", 42, 42),
@@ -84,6 +85,69 @@ public class DeclarationTests
         Assert.Equal(
             new[] { "M:N.Counter.Area", "M:N.Counter.add_Moved(System.EventHandler)", "M:N.Counter.get_Count", "M:N.Counter.get_Double", "M:N.Counter.remove_Moved(System.EventHandler)", "M:N.Counter.set_Count(System.Int32)" },
             map.Symbols.Select(symbol => symbol.Id).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task Interface_abstract_extern_and_unimplemented_partial_methods_and_indexers_are_declarations()
+    {
+        var map = await Inline.MapAsync("""
+            namespace N;
+
+            public interface IStore
+            {
+                int Find(string key);
+                int this[int index] { get; set; }
+                event System.EventHandler Saved;
+                int Count { get; }
+                void Log() { }
+            }
+
+            public abstract class Shape
+            {
+                public abstract double Area();
+                public virtual double Scale() => 1;
+            }
+
+            public static partial class Native
+            {
+                [System.Runtime.InteropServices.DllImport("lib")]
+                public static extern int Beep(int hz);
+                static partial void Traced();
+                static partial void Done();
+                static partial void Done() { }
+            }
+            """);
+
+        Assert.Equal(
+            new[]
+            {
+                ("M:N.IStore.Find(System.String)", "method", "int Find(string key)", 5, 5),
+                ("P:N.IStore.Item(System.Int32)", "indexer", "int this[int index] { get; set; }", 6, 6),
+                ("M:N.Shape.Area", "method", "public abstract double Area()", 14, 14),
+                ("M:N.Native.Beep(System.Int32)", "method", "[System.Runtime.InteropServices.DllImport(\"lib\")] public static extern int Beep(int hz)", 20, 21),
+                ("M:N.Native.Traced", "method", "static partial void Traced()", 22, 22),
+            },
+            map.Declarations
+                .Where(declaration => declaration.Kind is "method" or "indexer")
+                .Select(declaration => (declaration.Id, declaration.Kind, declaration.Signature, declaration.Range.StartLine, declaration.Range.EndLine)));
+        Assert.Equal(
+            new[] { "M:N.IStore.Log", "M:N.Native.Done", "M:N.Shape.Scale" },
+            map.Symbols.Select(symbol => symbol.Id).Order(StringComparer.Ordinal));
+        Assert.DoesNotContain(map.Declarations, declaration => map.Symbols.Any(symbol => symbol.Id == declaration.Id));
+    }
+
+    [Fact]
+    public async Task A_bodiless_method_hash_ignores_whitespace_and_changes_with_its_signature()
+    {
+        const string source = "namespace N;\n\npublic interface I\n{\n    int  Find( string key );\n}\n";
+        var map = await Inline.MapAsync(source);
+        var respaced = await Inline.MapAsync(source.Replace("int  Find( string key );", "int Find(string key); // note", StringComparison.Ordinal));
+        var changed = await Inline.MapAsync(source.Replace("string key", "string key, int limit", StringComparison.Ordinal));
+
+        var method = map.Declarations.Single(declaration => declaration.Kind == "method");
+        Assert.Equal(Hashing.Sha256Hex("int Find ( string key ) ;"), method.BodyHash);
+        Assert.Equal(method.BodyHash, respaced.Declarations.Single(declaration => declaration.Kind == "method").BodyHash);
+        Assert.NotEqual(method.BodyHash, changed.Declarations.Single(declaration => declaration.Kind == "method").BodyHash);
     }
 
     [Fact]
