@@ -2,6 +2,16 @@
 
 ## Current task status
 
+- 2026-09-28, claude: 0.5.0 work on main at Tim's request: references (REF0-REF4, D72, D76,
+  schema 9), impact and dead code over references and `map references` (REF3), the read-only
+  `codemuster mcp` server and its registration in the plugin, init and skill (MCP1-2, D73),
+  ReadyToRun release builds (OPT1, D74) and git history only in scan (OPT2, D75). On this repo
+  C# mapping records ~1,800 declarations and ~33,000 references for ~6-8% more mapping time;
+  `IQuoteService.ListQuotes` now shows its two interface call sites with line and column.
+  All 2,072 .NET and 74 npm tests pass on Windows. Caveats: MCP registration uses a node shell
+  wrapper because npm's codemuster.cmd cannot be spawned directly on Windows; Codex's plugin
+  MCP format is taken from a GitHub issue; Claude asks users to approve a project .mcp.json.
+  Releasing as 0.5.0 under REL050.
 - 2026-09-27, claude: REL037 released 0.3.7 at Tim's request: release/0.3.7 passed three-OS CI
   and dry run 36339171230; main fast-forwarded to 5376b43; tag v0.3.7 ran release 36339982756
   (validation, six builds, three smokes, npm publication of all seven packages, GitHub release

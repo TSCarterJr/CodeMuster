@@ -4,7 +4,11 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
-## Unreleased
+## 0.5.0 - 2026-09-28
+
+The ledger moves to schema 9 the first time 0.5.0 opens it, and CodeMuster 0.3.7 and earlier
+then refuse that ledger, so back up `.codemuster` if you may need to roll back. Use
+`npm install -g codemuster@0.5.0` once to receive the launcher as well as the native binary.
 
 - The code map now records references as well as calls. `scan` stores the declarations that
   have no body (types, fields, constants, properties, events, enum members, and in
