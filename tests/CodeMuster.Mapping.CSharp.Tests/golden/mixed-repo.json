@@ -178,5 +178,159 @@
     }
   ],
   "resolution": { "resolved": 21, "unresolved": 0, "top_unresolved_names": [] },
-  "diagnostics": []
+  "diagnostics": [],
+  "declarations": [
+    {
+      "id": "T:MixedRepo.Api.Controllers.QuotesController",
+      "path": "src/MixedRepo.Api/Controllers/QuotesController.cs",
+      "range": { "start_line": 6, "end_line": 26 },
+      "kind": "class",
+      "signature": "[ApiController] public sealed class QuotesController(IQuoteService quotes) : ControllerBase",
+      "body_hash": "5c312e9d9ffda8f838908725f69b37efda8817dd7b1b11335acce28654260fd9"
+    },
+    {
+      "id": "P:MixedRepo.Api.Data.Quote.Customer",
+      "path": "src/MixedRepo.Api/Data/Quote.cs",
+      "range": { "start_line": 3, "end_line": 3 },
+      "kind": "property",
+      "signature": "string Customer",
+      "body_hash": "09cd8061c1a4d96cd14be10ffa7148a67bd325475df01e23e0c7e0d5cc3541c3"
+    },
+    {
+      "id": "P:MixedRepo.Api.Data.Quote.Id",
+      "path": "src/MixedRepo.Api/Data/Quote.cs",
+      "range": { "start_line": 3, "end_line": 3 },
+      "kind": "property",
+      "signature": "int Id",
+      "body_hash": "13b660a3bf796c6723f502d5772f9040da8a15eaa096d0316bb991bb4492b13a"
+    },
+    {
+      "id": "P:MixedRepo.Api.Data.Quote.Status",
+      "path": "src/MixedRepo.Api/Data/Quote.cs",
+      "range": { "start_line": 3, "end_line": 3 },
+      "kind": "property",
+      "signature": "string Status",
+      "body_hash": "a2da741807e84eb6b8e4fe6fb6f3d25573c1205de503fa0fc18eaec3f87e30b8"
+    },
+    {
+      "id": "P:MixedRepo.Api.Data.Quote.TenantId",
+      "path": "src/MixedRepo.Api/Data/Quote.cs",
+      "range": { "start_line": 3, "end_line": 3 },
+      "kind": "property",
+      "signature": "int TenantId",
+      "body_hash": "e864537dae2662604087d24d78efd70e48d2e0c90dc04515422f8f99c8cd52f6"
+    },
+    {
+      "id": "P:MixedRepo.Api.Data.Quote.Total",
+      "path": "src/MixedRepo.Api/Data/Quote.cs",
+      "range": { "start_line": 3, "end_line": 3 },
+      "kind": "property",
+      "signature": "decimal Total",
+      "body_hash": "42bf29cdb38608925efb327e64241a5ff10089b87b37a843de6590d9371bec8a"
+    },
+    {
+      "id": "T:MixedRepo.Api.Data.Quote",
+      "path": "src/MixedRepo.Api/Data/Quote.cs",
+      "range": { "start_line": 3, "end_line": 3 },
+      "kind": "record",
+      "signature": "public sealed record Quote(int Id, int TenantId, string Customer, decimal Total, string Status)",
+      "body_hash": "ad7300ef1934211c93197a785871e72d707c4dec1d52d5268accb0800c6c2842"
+    },
+    {
+      "id": "T:MixedRepo.Api.Data.QuoteRepository",
+      "path": "src/MixedRepo.Api/Data/QuoteRepository.cs",
+      "range": { "start_line": 3, "end_line": 26 },
+      "kind": "class",
+      "signature": "public sealed class QuoteRepository",
+      "body_hash": "f3806823b0156cd36e22176886085e5b079672c7b28f6aea29b863c5d3ab02a5"
+    },
+    {
+      "id": "F:MixedRepo.Api.Data.QuoteRepository._quotes",
+      "path": "src/MixedRepo.Api/Data/QuoteRepository.cs",
+      "range": { "start_line": 5, "end_line": 5 },
+      "kind": "field",
+      "signature": "private readonly List<Quote> _quotes",
+      "body_hash": "604b28885b25928bc2c189fb482e7225c235740c093101a1c3c5b9b6d306c1fa"
+    },
+    {
+      "id": "T:MixedRepo.Api.Services.EmptyQuoteService",
+      "path": "src/MixedRepo.Api/Services/EmptyQuoteService.cs",
+      "range": { "start_line": 3, "end_line": 14 },
+      "kind": "class",
+      "signature": "public sealed class EmptyQuoteService : IQuoteService",
+      "body_hash": "a6c90656f6f4806f710e6bd03f4f4975e900a204df8a0aacefea955d68d5c046"
+    },
+    {
+      "id": "P:MixedRepo.Api.Services.QuoteSummary.Customer",
+      "path": "src/MixedRepo.Api/Services/IQuoteService.cs",
+      "range": { "start_line": 3, "end_line": 3 },
+      "kind": "property",
+      "signature": "string Customer",
+      "body_hash": "09cd8061c1a4d96cd14be10ffa7148a67bd325475df01e23e0c7e0d5cc3541c3"
+    },
+    {
+      "id": "P:MixedRepo.Api.Services.QuoteSummary.Id",
+      "path": "src/MixedRepo.Api/Services/IQuoteService.cs",
+      "range": { "start_line": 3, "end_line": 3 },
+      "kind": "property",
+      "signature": "int Id",
+      "body_hash": "13b660a3bf796c6723f502d5772f9040da8a15eaa096d0316bb991bb4492b13a"
+    },
+    {
+      "id": "P:MixedRepo.Api.Services.QuoteSummary.Status",
+      "path": "src/MixedRepo.Api/Services/IQuoteService.cs",
+      "range": { "start_line": 3, "end_line": 3 },
+      "kind": "property",
+      "signature": "string Status",
+      "body_hash": "a2da741807e84eb6b8e4fe6fb6f3d25573c1205de503fa0fc18eaec3f87e30b8"
+    },
+    {
+      "id": "P:MixedRepo.Api.Services.QuoteSummary.Total",
+      "path": "src/MixedRepo.Api/Services/IQuoteService.cs",
+      "range": { "start_line": 3, "end_line": 3 },
+      "kind": "property",
+      "signature": "string Total",
+      "body_hash": "bc46a090674910a60b4e31937c6679d1e5630694aceab161f545857572ee6aa1"
+    },
+    {
+      "id": "T:MixedRepo.Api.Services.QuoteSummary",
+      "path": "src/MixedRepo.Api/Services/IQuoteService.cs",
+      "range": { "start_line": 3, "end_line": 3 },
+      "kind": "record",
+      "signature": "public sealed record QuoteSummary(int Id, string Customer, string Total, string Status)",
+      "body_hash": "3ef9648494daa03699ec71d3e9c9fdf9c1dd9d88421cc2095449887d83938afb"
+    },
+    {
+      "id": "T:MixedRepo.Api.Services.IQuoteService",
+      "path": "src/MixedRepo.Api/Services/IQuoteService.cs",
+      "range": { "start_line": 5, "end_line": 10 },
+      "kind": "interface",
+      "signature": "public interface IQuoteService",
+      "body_hash": "adae3ba11fc4a76eda6ebd0d7a85b49d3feb32bb5705284d0b65300df1729dee"
+    },
+    {
+      "id": "T:MixedRepo.Api.Services.QuoteService",
+      "path": "src/MixedRepo.Api/Services/QuoteService.cs",
+      "range": { "start_line": 6, "end_line": 28 },
+      "kind": "class",
+      "signature": "public sealed class QuoteService(QuoteRepository repository) : IQuoteService",
+      "body_hash": "00e95a188502bcc751842f5c8b6a017a40af4d8a28f3d3abc25a111a4c2b5f03"
+    },
+    {
+      "id": "T:MixedRepo.Api.Shared.Money",
+      "path": "src/MixedRepo.Api/Shared/Money.cs",
+      "range": { "start_line": 5, "end_line": 11 },
+      "kind": "class",
+      "signature": "public static class Money",
+      "body_hash": "1f635a9de3995e229f177826766cba69f3e3db8e1707f3820ff6dd41099b7a01"
+    },
+    {
+      "id": "T:MixedRepo.Api.Workers.ReminderWorker",
+      "path": "src/MixedRepo.Api/Workers/ReminderWorker.cs",
+      "range": { "start_line": 5, "end_line": 16 },
+      "kind": "class",
+      "signature": "public sealed class ReminderWorker(IQuoteService quotes, ILogger<ReminderWorker> logger) : BackgroundService",
+      "body_hash": "10e56a53e0f3f05d32d0416fb9e27e1ffa49e90a23f3ee72cd710dd251416d00"
+    }
+  ]
 }

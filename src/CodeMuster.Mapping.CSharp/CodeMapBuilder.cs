@@ -11,6 +11,7 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
     private readonly HashSet<string> included = paths.Select(RepoPath.Normalize).ToHashSet(StringComparer.Ordinal);
     private readonly HashSet<string> mappedProjects = new(RoslynMapper.ProjectPathComparer);
     private readonly Dictionary<string, Symbol> symbols = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Symbol> declarations = new(StringComparer.Ordinal);
     private readonly HashSet<Edge> edges = [];
     private readonly HashSet<EntryPoint> entryPoints = [];
     private readonly Dictionary<string, int> unresolved = new(StringComparer.Ordinal);
@@ -72,6 +73,11 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
             symbols.TryAdd(symbol.Id, symbol);
         }
 
+        foreach (var declaration in document.Declarations)
+        {
+            declarations.TryAdd(declaration.Id, declaration);
+        }
+
         edges.UnionWith(document.Edges);
         entryPoints.UnionWith(document.EntryPoints);
         resolved += document.Resolved;
@@ -93,6 +99,11 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
         map.EntryPoints.AddRange(EntryPoints.Find(root, model, cancellationToken));
         foreach (var node in root.DescendantNodes())
         {
+            foreach (var (_, declaration) in Declarations(node, model, path, cancellationToken))
+            {
+                map.Declarations.Add(declaration);
+            }
+
             if (DeclaredMethod(node, model, cancellationToken) is not { } method || Id(method) is not { } from)
             {
                 continue;
@@ -137,8 +148,77 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
                 resolved,
                 unresolved.Values.Sum(),
                 unresolved.OrderByDescending(name => name.Value).ThenBy(name => name.Key, StringComparer.Ordinal).Take(20).Select(name => name.Key).ToList()),
-            []);
+            [])
+        {
+            Declarations = declarations.Values
+                .OrderBy(declaration => declaration.Path, StringComparer.Ordinal)
+                .ThenBy(declaration => declaration.Range.StartLine)
+                .ThenBy(declaration => declaration.Id, StringComparer.Ordinal)
+                .ToList(),
+        };
     }
+
+    // A partial type is declared once, at its first definition in document order, as a symbol shared by two documents is.
+    private static IEnumerable<(SyntaxNode Node, Symbol Declaration)> Declarations(SyntaxNode node, SemanticModel model, string path, CancellationToken cancellationToken)
+    {
+        switch (node)
+        {
+            case BaseTypeDeclarationSyntax type when TypeKind(type) is { } kind:
+                var header = type.DescendantTokens().TakeWhile(token => token != type.OpenBraceToken && token != type.SemicolonToken).ToList();
+                return Declared(node, model.GetDeclaredSymbol(node, cancellationToken), path, kind, Collapse(header), header);
+            case DelegateDeclarationSyntax @delegate:
+                return Declared(node, model.GetDeclaredSymbol(node, cancellationToken), path, "delegate",
+                    Collapse(@delegate.DescendantTokens().Where(token => token != @delegate.SemicolonToken)), @delegate.DescendantTokens());
+            case EnumMemberDeclarationSyntax member:
+                return Declared(node, model.GetDeclaredSymbol(node, cancellationToken), path, "enum_member",
+                    Collapse(member.DescendantTokens().TakeWhile(token => member.EqualsValue is null || token.SpanStart < member.EqualsValue.SpanStart)), member.DescendantTokens());
+            case BaseFieldDeclarationSyntax field:
+                var prefix = field.DescendantTokens().TakeWhile(token => token.SpanStart < field.Declaration.Variables[0].SpanStart).ToList();
+                return field.Declaration.Variables.SelectMany(variable => Declared(
+                    variable,
+                    model.GetDeclaredSymbol(variable, cancellationToken),
+                    path,
+                    field is EventFieldDeclarationSyntax ? "event" : model.GetDeclaredSymbol(variable, cancellationToken) is IFieldSymbol { IsConst: true } ? "constant" : "field",
+                    Collapse(prefix) + " " + variable.Identifier.Text,
+                    [.. prefix, .. variable.DescendantTokens(), field.SemicolonToken],
+                    Lines(field)));
+            case PropertyDeclarationSyntax property:
+                var accessors = property.AccessorList?.Accessors.Select(accessor => Collapse(Header(accessor).Where(token => token != accessor.SemicolonToken)) + ";") ?? ["get;"];
+                return Declared(node, model.GetDeclaredSymbol(node, cancellationToken), path, "property",
+                    $"{Collapse(Header(property))} {{ {string.Join(" ", accessors)} }}", WithoutBodies(property));
+            case EventDeclarationSyntax @event:
+                return Declared(node, model.GetDeclaredSymbol(node, cancellationToken), path, "event", Collapse(Header(@event)), WithoutBodies(@event));
+            case ParameterSyntax { Parent.Parent: RecordDeclarationSyntax record } parameter:
+                var positional = (model.GetDeclaredSymbol(record, cancellationToken) as INamedTypeSymbol)?.GetMembers(parameter.Identifier.Text).OfType<IPropertySymbol>()
+                    .FirstOrDefault(member => member.DeclaringSyntaxReferences.Any(reference => reference.Span == parameter.Span && reference.SyntaxTree == parameter.SyntaxTree));
+                return Declared(node, positional, path, "property", Collapse(parameter.DescendantTokens().TakeWhile(token => parameter.Default is null || token.SpanStart < parameter.Default.SpanStart)), parameter.DescendantTokens());
+            default:
+                return [];
+        }
+    }
+
+    private static IEnumerable<(SyntaxNode Node, Symbol Declaration)> Declared(
+        SyntaxNode node, ISymbol? symbol, string path, string kind, string signature, IEnumerable<SyntaxToken> hashed, LineRange? lines = null)
+    {
+        if (symbol is not null && Id(symbol) is { } id)
+        {
+            yield return (node, new Symbol(id, path, lines ?? Lines(node), kind, signature, Hashing.Sha256Hex(string.Join(" ", hashed.Select(token => token.Text))), null));
+        }
+    }
+
+    private static string? TypeKind(BaseTypeDeclarationSyntax type) => type switch
+    {
+        RecordDeclarationSyntax => "record",
+        ClassDeclarationSyntax => "class",
+        StructDeclarationSyntax => "struct",
+        InterfaceDeclarationSyntax => "interface",
+        EnumDeclarationSyntax => "enum",
+        _ => null,
+    };
+
+    // Accessor bodies are symbols of their own, so a declaration's hash changes with its shape and initializer, not with the code its accessors run.
+    private static IEnumerable<SyntaxToken> WithoutBodies(SyntaxNode node) =>
+        node.DescendantTokens(child => !(child is BlockSyntax or ArrowExpressionClauseSyntax && child.Parent is AccessorDeclarationSyntax or BasePropertyDeclarationSyntax));
 
     private static void CountCallSites(SyntaxNode declaration, SemanticModel model, DocumentMap map, CancellationToken cancellationToken)
     {
@@ -341,6 +421,8 @@ internal sealed class CodeMapBuilder(string repoRoot, IReadOnlyList<string> path
     private sealed class DocumentMap
     {
         public List<Symbol> Symbols { get; } = [];
+
+        public List<Symbol> Declarations { get; } = [];
 
         public List<Edge> Edges { get; } = [];
 

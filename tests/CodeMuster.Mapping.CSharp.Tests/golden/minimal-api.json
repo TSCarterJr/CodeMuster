@@ -48,5 +48,15 @@
     }
   ],
   "resolution": { "resolved": 1, "unresolved": 0, "top_unresolved_names": [] },
-  "diagnostics": []
+  "diagnostics": [],
+  "declarations": [
+    {
+      "id": "T:MinimalApi.Endpoints",
+      "path": "src/MinimalApi/Endpoints.cs",
+      "range": { "start_line": 3, "end_line": 19 },
+      "kind": "class",
+      "signature": "public static class Endpoints",
+      "body_hash": "e321dafc46d3f06ca9fd9200df39e07c64144f9cacc40a61208f2082de39e67d"
+    }
+  ]
 }
