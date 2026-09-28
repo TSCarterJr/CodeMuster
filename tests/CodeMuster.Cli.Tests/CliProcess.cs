@@ -12,6 +12,10 @@ public static class CliProcess
     public static Task<CliResult> RunAsync(string workingDirectory, IReadOnlyDictionary<string, string>? environment, params string[] args) =>
         StartAsync("dotnet", [Path.Combine(AppContext.BaseDirectory, "codemuster.dll"), .. args], workingDirectory, environment);
 
+    /// <summary>Runs the CLI with <paramref name="input"/> on standard input, which is closed after it, as an MCP client does at shutdown.</summary>
+    public static Task<CliResult> RunWithInputAsync(string workingDirectory, string input, params string[] args) =>
+        StartAsync("dotnet", [Path.Combine(AppContext.BaseDirectory, "codemuster.dll"), .. args], workingDirectory, null, input);
+
     /// <summary>
     /// Runs the executable the release ships (codemuster.exe or codemuster) instead of dotnet codemuster.dll. Its folder, not the
     /// dotnet install, is the first place Windows and .NET on Linux and macOS search for a program started by bare name.
@@ -25,11 +29,12 @@ public static class CliProcess
             new Dictionary<string, string> { ["DOTNET_ROOT"] = root });
     }
 
-    private static async Task<CliResult> StartAsync(string program, IEnumerable<string> args, string workingDirectory, IReadOnlyDictionary<string, string>? environment)
+    private static async Task<CliResult> StartAsync(string program, IEnumerable<string> args, string workingDirectory, IReadOnlyDictionary<string, string>? environment, string? input = null)
     {
         var start = new ProcessStartInfo(program)
         {
             WorkingDirectory = workingDirectory,
+            RedirectStandardInput = input is not null,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = new UTF8Encoding(false),
@@ -52,6 +57,12 @@ public static class CliProcess
         using var process = Process.Start(start) ?? throw new InvalidOperationException("dotnet did not start");
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
+        if (input is not null)
+        {
+            await using var stdin = new StreamWriter(process.StandardInput.BaseStream, new UTF8Encoding(false));
+            await stdin.WriteAsync(input);
+        }
+
         await process.WaitForExitAsync();
         return new CliResult(process.ExitCode, await stdout, await stderr);
     }

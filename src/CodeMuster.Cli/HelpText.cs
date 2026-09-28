@@ -24,6 +24,7 @@ public static class HelpText
           report     Render findings and coverage as Markdown
           map        Show callers, callees and flows from the stored code map
           impact     Show what changed symbols reach: callers, entry points and pages
+          mcp        Serve the code map to your agent over MCP (standard input and output)
 
         Fix
           fix        Fix confirmed findings and make local commits, one file per worker
@@ -269,6 +270,21 @@ public static class HelpText
             upstream or downstream. Turn impact units off with "impact": false in .codemuster/config.json.
 
             Example: codemuster impact --since main
+            """,
+        "mcp" => """
+            usage: codemuster mcp [--refresh]
+
+            Run a read-only Model Context Protocol server over standard input and output, so an agent can
+            query the stored code map like a language server. Agents start it themselves; the Claude and
+            Codex plugin and codemuster init register it. Never writes the ledger, calls a model or edits files.
+              --refresh   Before answering, run a scan when files changed since the stored map
+                          (skipped when another CodeMuster command is using the repository)
+
+            Tools: find_symbol, references, callers, callees, call_path, impact, http_links, entry_points
+            and duplicates. Answers name the cited files that changed since the scan as stale.
+            Without a map, tools answer with an error telling the agent to run codemuster scan.
+
+            Example (.mcp.json): {"mcpServers": {"codemuster": {"command": "codemuster", "args": ["mcp"]}}}
             """,
         "skill" => """
             usage: codemuster skill install --for <agent> [--global]

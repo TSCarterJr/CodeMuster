@@ -224,6 +224,8 @@ public class CommandLineTests
     [InlineData("map flow GET_/quotes --depth 3 --format json")]
     [InlineData("impact")]
     [InlineData("impact --since HEAD~1 --format json")]
+    [InlineData("mcp")]
+    [InlineData("mcp --refresh")]
     public void Parse_AcceptsEveryOptionTheCommandReads(string arguments)
     {
         var command = CommandLine.Parse(arguments.Split(' '));

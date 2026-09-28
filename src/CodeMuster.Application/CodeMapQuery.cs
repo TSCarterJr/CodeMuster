@@ -380,14 +380,14 @@ public sealed class CodeMapQuery(ILedger ledger)
         .Replace(">", "#gt;", StringComparison.Ordinal)
         .ReplaceLineEndings(" ");
 
-    private sealed record MapView(string Root, bool Callers, int Depth, EntryPoint? Entry);
+    internal sealed record MapView(string Root, bool Callers, int Depth, EntryPoint? Entry);
 
-    private sealed record MapNode(string Id, string Name, Symbol? Symbol);
+    internal sealed record MapNode(string Id, string Name, Symbol? Symbol, int Depth);
 
-    private sealed record MapGraph(MapView View, IReadOnlyList<MapNode> Nodes, IReadOnlyList<Edge> Edges, int Truncated);
+    internal sealed record MapGraph(MapView View, IReadOnlyList<MapNode> Nodes, IReadOnlyList<Edge> Edges, int Truncated);
 
     /// <summary>The stored map with duplicate symbols and edges removed and edges indexed in both directions.</summary>
-    private sealed class MapIndex
+    internal sealed class MapIndex
     {
         private readonly Dictionary<string, Symbol> byId = new(StringComparer.Ordinal);
         private readonly Dictionary<string, List<Edge>> outgoing = new(StringComparer.Ordinal);
@@ -470,14 +470,17 @@ public sealed class CodeMapQuery(ILedger ledger)
             return end < 0 ? member : member[..end];
         }
 
-        public IReadOnlyList<Symbol> FindSymbols(string query)
+        public IReadOnlyList<Symbol> FindSymbols(string query) => Match(Symbols, query);
+
+        /// <summary>The symbols an exact id names, else those whose qualified name is or ends with the query, else those containing it, ignoring case.</summary>
+        public static IReadOnlyList<Symbol> Match(IReadOnlyList<Symbol> symbols, string query)
         {
-            if (byId.TryGetValue(query, out var exact))
+            if (symbols.FirstOrDefault(symbol => symbol.Id == query) is { } exact)
             {
                 return [exact];
             }
 
-            var named = Symbols.Where(symbol =>
+            var named = symbols.Where(symbol =>
             {
                 var qualified = Qualified(symbol);
                 return qualified.Equals(query, StringComparison.OrdinalIgnoreCase)
@@ -486,7 +489,7 @@ public sealed class CodeMapQuery(ILedger ledger)
             }).ToList();
             if (named.Count == 0)
             {
-                named = Symbols.Where(symbol => Qualified(symbol).Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+                named = symbols.Where(symbol => Qualified(symbol).Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
             }
 
             return named.OrderBy(ShortName, StringComparer.Ordinal).ThenBy(symbol => symbol.Id, StringComparer.Ordinal).ToList();
@@ -549,11 +552,11 @@ public sealed class CodeMapQuery(ILedger ledger)
                 }
             }
 
-            var nodes = order.Select(id => new MapNode(id, Name(id), byId.GetValueOrDefault(id))).ToList();
+            var nodes = order.Select(id => new MapNode(id, Name(id), byId.GetValueOrDefault(id), levels[id])).ToList();
             return new MapGraph(view, nodes, edges, Reachable(view.Root, view.Callers) - nodes.Count);
         }
 
-        private List<Edge> Next(string id, bool callers) => (callers ? incoming : outgoing).GetValueOrDefault(id) ?? [];
+        public List<Edge> Next(string id, bool callers) => (callers ? incoming : outgoing).GetValueOrDefault(id) ?? [];
 
         private int Reachable(string root, bool callers)
         {

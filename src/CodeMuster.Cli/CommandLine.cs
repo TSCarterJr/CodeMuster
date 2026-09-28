@@ -36,6 +36,7 @@ public static class CommandLine
         ["validate"] = new([], []),
         ["map"] = new(["depth", "format", "out"], [], null, MapPositionals),
         ["impact"] = new(["since", "format"], []),
+        ["mcp"] = new([], ["refresh"]),
     };
 
     // map takes nothing (the summary) or a subcommand and its target, so it is checked on its own rather than as one placeholder.

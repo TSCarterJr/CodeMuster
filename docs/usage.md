@@ -516,6 +516,49 @@ Walks visit each symbol once, so cycles and recursion are shown once (`(see abov
 They stop at the depth and at 300 nodes, and every format says how many reachable nodes were
 left out: `truncated: N more nodes; use --depth or a narrower start`.
 
+## Use the map from your agent (MCP)
+
+`codemuster mcp` runs a read-only Model Context Protocol server over standard input and output
+(D73), so an agent can ask the stored map the questions a language server answers: who calls
+`login`, from which file, line and method, and what a change reaches. It speaks JSON-RPC 2.0, one
+message per line, and serves clients that open with `initialize` (protocol 2025-11-25 or
+2025-06-18) and clients that send the protocol version with every request (2026-07-28). Standard
+output carries only protocol messages; anything else goes to standard error. It never writes the
+ledger, calls a model or changes files, and it does not take the lock other commands use.
+
+Register it with the agent as a stdio server whose command is `codemuster` with the argument
+`mcp`, for example in a Claude Code `.mcp.json` at the repository root:
+
+```json
+{"mcpServers": {"codemuster": {"command": "codemuster", "args": ["mcp"]}}}
+```
+
+| Tool | Answers |
+|---|---|
+| `find_symbol {query, kind?, limit?}` | Symbols and declarations matching a name, `Type.Member`, id or path fragment, with id, kind, `path:line`, signature and container |
+| `references {symbol, kind?, limit?}` | Every reference with its kind (`call`, `read`, `write`, `type`, `inherit`, `implement`, `attribute`, `import`), path, line, column and containing symbol; for an endpoint also the UI calls that reach it (`http`) |
+| `callers {symbol, depth?}`, `callees {symbol, depth?}` | The call edges up or down (depth 1 by default, at most 6), with each call site's line and column when the map records references |
+| `call_path {from?, to}` | The shortest call path from each entry point that reaches the symbol, or from `from` |
+| `impact {symbol}` | Callers up to their entry points and pages, callees, and the readers, writers and type users with the entry points they reach |
+| `http_links {endpoint? \| symbol?}` | The UI functions that call an endpoint or the endpoints a UI function calls, plus UI calls that match no endpoint |
+| `entry_points {kind?}` | HTTP endpoints, background services and pages with their handlers |
+| `duplicates {symbol?}` | Groups of symbols whose bodies match apart from names and literals |
+
+A symbol is given as `find_symbol` returns it: an exact id, `Type.Member`, a bare name or part of
+one. A name that matches several symbols returns an error listing them with their ids. Every
+result has a short text for the agent and the same answer as structured JSON, with the commit and
+time of the scan it came from, how many results a cap left out, and `stale`: the files it cites
+whose content changed since that scan (their lines may have moved; run `codemuster scan`).
+References come from ledger schema 9; a map stored before it, or a language whose mapper does not
+record references, is named in the result rather than shown as "no references".
+
+The server loads the map on the first call and loads it again after any later `scan`, so a scan
+in another terminal is picked up by the next call. Before the first scan every tool answers with
+an error telling the agent to run `codemuster scan`, and in a folder without `codemuster init` it
+says to run `init`. With `--refresh`, a call first runs a scan when files changed since the map
+(the scan takes the coordinator lock; when another CodeMuster command holds it the refresh is
+skipped and the result says so).
+
 ## Impact review
 
 Slices go stale when code they hold changes, but they are then reviewed cold. An impact unit asks
@@ -745,6 +788,7 @@ and manage them.
 | `report` | `--out <file>`, `--include-refuted` |
 | `map` | `callers <symbol>`, `callees <symbol>` or `flow <entry point>`; `--depth N`, `--format text\|mermaid\|json`, `--out <file>` (`.html` writes an interactive page) |
 | `impact` | `--since <ref>`, `--format text\|json` |
+| `mcp` | `--refresh` to scan first when the map is stale; serves MCP over standard input and output |
 | `next` | `--batch N`, `--out <file>`, `--path <path>`, `--kind file\|slice\|orphan\|verify\|ux\|impact\|duplicate\|architecture\|api` |
 | `done <unit>` | Required `--fingerprint <fp>` and `--findings <json-file>` |
 | `skill install` | Required `--for claude\|codex\|gemini\|opencode`, optional `--global` |

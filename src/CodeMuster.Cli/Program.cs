@@ -140,6 +140,11 @@ public static class Program
             return await DoctorAsync(command, fileSystem, cancellationToken);
         }
 
+        if (command.Verb == "mcp")
+        {
+            return await McpAsync(command.Flags.Contains("refresh"), fileSystem, cancellationToken);
+        }
+
         var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
         var tree = new GitSourceTree(repoRoot);
         if (command.Verb == "init")
@@ -522,6 +527,93 @@ public static class Program
         await WriteOptionFileAsync("out", outPath, output, cancellationToken);
         Console.WriteLine($"wrote map to {outPath}");
         return 0;
+    }
+
+    private static async Task<int> McpAsync(bool refresh, PhysicalFileSystem fileSystem, CancellationToken cancellationToken)
+    {
+        // Only protocol messages may reach standard output, so anything else written through Console goes to standard error.
+        var protocol = Console.Out;
+        Console.SetOut(Console.Error);
+        using var input = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
+        string? repoRoot = null;
+        var problem = "";
+        try
+        {
+            repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The agent starts the server wherever it runs, so outside a repository the tools say why instead of the server failing to start.
+            problem = "codemuster mcp needs a Git repository: " + ex.Message;
+        }
+
+        SqliteLedger? ledger = null;
+        McpTools? tools = null;
+        try
+        {
+            await new McpServer(input, protocol, Console.Error, Version, CallAsync).RunAsync(cancellationToken);
+        }
+        finally
+        {
+            ledger?.Dispose();
+        }
+
+        return 0;
+
+        async Task<McpToolResult> CallAsync(string name, System.Text.Json.Nodes.JsonObject? arguments, CancellationToken token)
+        {
+            if (repoRoot is null)
+            {
+                return McpToolResult.Failure(problem);
+            }
+
+            if (tools is null)
+            {
+                // Opened on the first call after init and scan, so a server started before them still works without creating a ledger itself.
+                var path = Path.Combine(repoRoot, ".codemuster", "ledger.db");
+                if (!File.Exists(ConfigLoader.PathFor(repoRoot))) return McpToolResult.Failure("CodeMuster is not set up in this repository; run codemuster init, then codemuster scan");
+                if (!File.Exists(path)) return McpToolResult.Failure("no code map yet; run codemuster scan, then call this tool again");
+                ledger = await SqliteLedger.OpenAsync(path, token);
+                var tree = new GitSourceTree(repoRoot);
+                var root = repoRoot;
+                var opened = ledger;
+                tools = new McpTools(ledger, tree, new GitBlobHasher(repoRoot), refresh ? ct => RefreshAsync(root, fileSystem, opened, tree, ct) : null);
+            }
+
+            return await tools.CallAsync(name, arguments, token);
+        }
+    }
+
+    // mcp --refresh: scan before answering when the map is stale, unless another command holds the coordinator lock.
+    private static async Task<string> RefreshAsync(string repoRoot, PhysicalFileSystem fileSystem, SqliteLedger ledger, GitSourceTree tree, CancellationToken cancellationToken)
+    {
+        IDisposable coordinator;
+        try
+        {
+            coordinator = await CoordinatorLock.AcquireAsync(repoRoot, cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            return "refresh skipped: another CodeMuster command is using this repository, so these results come from the stored map";
+        }
+
+        using (coordinator)
+        {
+            try
+            {
+                var config = await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken);
+                var changes = ChangeTracker(repoRoot, config);
+                var snapshot = await changes.SnapshotAsync(cancellationToken);
+                var scan = await new Scan(ledger, tree, new GitBlobHasher(repoRoot), new SystemClock(), config, Mappers(), repoRoot, new ProgressWriter(Console.Error), new DependencyAuditor())
+                    .RunAsync(cancellationToken);
+                await changes.AcknowledgeAsync(snapshot, cancellationToken);
+                return $"refreshed: scanned {scan.FilesIncluded} files at {scan.HeadCommit[..7]} before answering";
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return $"refresh failed, so these results come from the stored map: {ex.Message}";
+            }
+        }
     }
 
     private static async Task<int> RunAgentAsync(Command command, string repoRoot, SqliteLedger ledger, GitSourceTree tree, SystemClock clock, Config config, IEngineEvents? events, IEngineControl? control, CancellationToken cancellationToken)

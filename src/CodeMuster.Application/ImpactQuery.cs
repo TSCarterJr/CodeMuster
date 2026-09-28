@@ -15,7 +15,7 @@ public sealed class ImpactQuery(ILedger ledger, ISourceTree tree)
 {
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
-    private sealed record Row(Symbol Symbol, Unit? Unit, ImpactReach Reach);
+    internal sealed record Row(Symbol Symbol, Unit? Unit, ImpactReach Reach);
 
     /// <summary>Answers one <c>impact</c> invocation; exit code 2 with no map or an unknown ref.</summary>
     public async Task<MapResult> RunAsync(string? since, MapFormat format, CancellationToken cancellationToken)
@@ -85,7 +85,7 @@ public sealed class ImpactQuery(ILedger ledger, ISourceTree tree)
 
     private static string Short(string commit) => commit.Length > 7 ? commit[..7] : commit;
 
-    private static void Append(StringBuilder text, Row row, string? status)
+    internal static void Append(StringBuilder text, Row row, string? status)
     {
         text.Append(CultureInfo.InvariantCulture, $"{CodeMapQuery.ShortName(row.Symbol)}  {row.Symbol.Path}:{row.Symbol.Range.StartLine}");
         text.Append(status is null ? "\n" : $"  {status}\n");

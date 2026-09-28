@@ -157,6 +157,11 @@ codemuster map --out map.html                   # one offline, interactive page
 
 `--format json` prints a machine-readable graph. Walks stop at 300 nodes and say when they were cut.
 
+Agents can query the same map over MCP: `codemuster mcp` serves `find_symbol`, `references`,
+`callers`, `callees`, `call_path`, `impact`, `http_links`, `entry_points` and `duplicates` over
+standard input and output, read-only, and marks results in files changed since the scan. See
+[Use the map from your agent](https://github.com/TSCarterJr/CodeMuster/blob/main/docs/usage.md#use-the-map-from-your-agent-mcp).
+
 When a later `scan` finds a method or function whose body or signature changed, it plans an
 `impact` unit: `run` shows the agent the old and new text, the callers up to their endpoints and
 pages, and the callees, and asks whether anything now breaks. `codemuster impact` lists those
