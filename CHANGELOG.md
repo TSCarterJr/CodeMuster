@@ -4,6 +4,33 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
+## Unreleased
+
+- The code map now records references as well as calls. `scan` stores the declarations that
+  have no body (types, fields, constants, properties, events, enum members, and in
+  TypeScript/JavaScript interfaces, type aliases and plain `const`, `let` and `var`) and every
+  use of a symbol or declaration in your code: calls, reads, writes, type uses, inheritance,
+  implementations, attributes and decorators, and imports, each with its file, line, column and
+  the method or function it sits in. Both the C# and the TypeScript/JavaScript mappers record
+  them; mapping takes about 6 to 8 percent longer. The ledger moves to schema 9 the first
+  time this version opens it, and CodeMuster 0.3.7 and earlier then refuse that ledger, so
+  back up `.codemuster` if you may need to roll back. Interface and abstract methods are not
+  yet recorded as declarations.
+- New `codemuster mcp`: a read-only MCP server over standard input and output, so an agent can
+  ask the stored map what a language server would answer. Its tools are `find_symbol`,
+  `references`, `callers`, `callees`, `call_path`, `impact`, `http_links`, `entry_points` and
+  `duplicates`; answers name files changed since the scan, and `--refresh` scans first when the
+  map is stale. The Claude and Codex plugin registers the server, and `init` adds it to
+  `.mcp.json`, `.codex/config.toml` or `.gemini/settings.json` for the agents it sets up
+  (`--no-mcp` skips that). Claude Code asks you once to approve a project's `.mcp.json` server.
+- Faster startup and scans: release builds are precompiled (ReadyToRun), which on Windows x64
+  takes about half a second off `doctor` and about a second off `scan`, for about 28 MB more
+  on disk. Only `scan` reads git history now, without rename detection, so `status`,
+  `doctor`, `run`, `verify` and `fix` no longer walk it (`doctor` went from 3.0 s to 1.1 s
+  on a 25,000-commit repository), and offline partial (blobless) clones can be scanned.
+- When `scan` cannot read git history it prints one warning, completes, and keeps the last
+  commit each file had from an earlier scan instead of clearing it.
+
 ## 0.3.7 - 2026-09-27
 
 The ledger moves to schema 8 the first time 0.3.7 opens it, and CodeMuster 0.3.6 and earlier
