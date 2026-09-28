@@ -2,8 +2,6 @@
 
 ## Current status
 
-- **2026-09-28, PROC1 (D77), committed on `main`, not released:** every child CodeMuster starts gets an empty stdin and ends with CodeMuster (Windows job object; ProcessExit, SIGTERM and SIGHUP elsewhere; SIGKILL cannot be caught on macOS/Linux). `0.5.0` is the published release; REL051 (release 0.5.1) is open. The notes below this line are from 2026-09-25 and older.
-
 Updated 2026-09-28. `MVP-Checklist.md` stays the source of truth and the dated entries at the top of `AGENTS.md` have the detail; this is the short version.
 
 - **Released:** `codemuster@0.5.1` (tag `v0.5.1`, commit `524660f`) and the six `@codemuster/*` platform packages are on npm, published by `release.yml` run 36450647121 (attempt 2, after a flaky Windows timing test failed attempt 1) with the GitHub release and its 9 assets. 0.5.1 ties every child process to CodeMuster's lifetime and gives it an empty stdin (PROC1, D77) after a `dotnet list package` audit ran orphaned for three days. 0.5.0 brought references, `codemuster mcp`, ReadyToRun and history-only-in-scan; its ledger is schema 9, which 0.3.7 and older refuse. CI runs the full suite on hosted Ubuntu, Windows, and macOS runners, and `main` requires all three.
