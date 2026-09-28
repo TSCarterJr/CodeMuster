@@ -2,6 +2,13 @@
 
 ## Current task status
 
+- 2026-09-28, claude: REL051 released 0.5.1 (PROC1: children end with codemuster, empty
+  stdin, D77). Tag v0.5.1 at 524660f; release 36450647121 attempt 1 failed a Windows test
+  with a 5 s wall-clock bound, attempt 2 on the same tag published all seven packages and the
+  GitHub release. The tag was not moved. 8f45bde makes that test count git processes instead.
+  Verified here: force-killing codemuster.exe during validate ends its test_command child.
+  Separately, a 20 GB node.exe seen on 2026-09-28 was Claude Code's TypeScript LSP plugin
+  (tsserver) indexing this session's scratch folders, not CodeMuster.
 - 2026-09-28, claude: PROC1 (D77) ties every child process to codemuster's lifetime
   and gives it an empty standard input, after a `dotnet list package` audit child of
   `scan` ran orphaned for three days. All seven launchers start children through
