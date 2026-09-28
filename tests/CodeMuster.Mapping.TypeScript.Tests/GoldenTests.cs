@@ -28,5 +28,13 @@ public class GoldenTests
         Assert.All(golden.Declarations, declaration => Assert.DoesNotContain(declaration.Id, ids));
         Assert.All(golden.Declarations, declaration => Assert.StartsWith(declaration.Path + "#", declaration.Id, StringComparison.Ordinal));
         Assert.All(golden.Declarations, declaration => Assert.Matches(new Regex("^[0-9a-f]{64}$"), declaration.BodyHash));
+        var targets = ids.Concat(golden.Declarations.Select(declaration => declaration.Id)).ToHashSet(StringComparer.Ordinal);
+        Assert.NotEmpty(golden.References);
+        Assert.All(golden.References, reference => Assert.Contains(reference.To, targets));
+        Assert.All(golden.References, reference => Assert.True(reference.From == reference.Path || (targets.Contains(reference.From) && reference.From.StartsWith(reference.Path + "#", StringComparison.Ordinal)), reference.From));
+        Assert.Equal(
+            golden.References.OrderBy(reference => reference.Path, StringComparer.Ordinal).ThenBy(reference => reference.Line).ThenBy(reference => reference.Column)
+                .ThenBy(reference => reference.From, StringComparer.Ordinal).ThenBy(reference => reference.To, StringComparer.Ordinal).ThenBy(reference => reference.Kind),
+            golden.References);
     }
 }

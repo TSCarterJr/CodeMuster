@@ -86,5 +86,22 @@
       "signature": "export type Quote",
       "body_hash": "faeec1c0fee643a44065f245ace9dcd5cd81e524f7efec13146d2e27fce357aa"
     }
+  ],
+  "references": [
+    { "from": "web/app/customers/page.tsx", "to": "web/lib/api.ts#fetchCustomers", "kind": "import", "path": "web/app/customers/page.tsx", "line": 2, "column": 10 },
+    { "from": "web/app/customers/page.tsx#CustomersPage", "to": "web/lib/api.ts#fetchCustomers", "kind": "call", "path": "web/app/customers/page.tsx", "line": 7, "column": 5 },
+    { "from": "web/app/quotes/page.tsx", "to": "web/components/QuoteTable.tsx#QuoteTable", "kind": "import", "path": "web/app/quotes/page.tsx", "line": 1, "column": 10 },
+    { "from": "web/app/quotes/page.tsx", "to": "web/hooks/useQuotes.ts#useQuotes", "kind": "import", "path": "web/app/quotes/page.tsx", "line": 2, "column": 10 },
+    { "from": "web/app/quotes/page.tsx#QuotesPage", "to": "web/hooks/useQuotes.ts#useQuotes", "kind": "call", "path": "web/app/quotes/page.tsx", "line": 5, "column": 18 },
+    { "from": "web/app/quotes/page.tsx#QuotesPage", "to": "web/components/QuoteTable.tsx#QuoteTable", "kind": "call", "path": "web/app/quotes/page.tsx", "line": 9, "column": 8 },
+    { "from": "web/components/QuoteTable.tsx", "to": "web/lib/api.ts#Quote", "kind": "import", "path": "web/components/QuoteTable.tsx", "line": 1, "column": 15 },
+    { "from": "web/components/QuoteTable.tsx#QuoteTable", "to": "web/lib/api.ts#Quote", "kind": "type", "path": "web/components/QuoteTable.tsx", "line": 3, "column": 50 },
+    { "from": "web/hooks/useQuotes.ts", "to": "web/lib/api.ts#fetchQuotes", "kind": "import", "path": "web/hooks/useQuotes.ts", "line": 2, "column": 10 },
+    { "from": "web/hooks/useQuotes.ts", "to": "web/lib/api.ts#Quote", "kind": "import", "path": "web/hooks/useQuotes.ts", "line": 2, "column": 28 },
+    { "from": "web/hooks/useQuotes.ts#useQuotes", "to": "web/lib/api.ts#Quote", "kind": "type", "path": "web/hooks/useQuotes.ts", "line": 4, "column": 46 },
+    { "from": "web/hooks/useQuotes.ts#useQuotes", "to": "web/lib/api.ts#Quote", "kind": "type", "path": "web/hooks/useQuotes.ts", "line": 5, "column": 40 },
+    { "from": "web/hooks/useQuotes.ts#useQuotes", "to": "web/lib/api.ts#fetchQuotes", "kind": "call", "path": "web/hooks/useQuotes.ts", "line": 7, "column": 5 },
+    { "from": "web/lib/api.ts#fetchQuotes", "to": "web/lib/api.ts#Quote", "kind": "type", "path": "web/lib/api.ts", "line": 8, "column": 62 },
+    { "from": "web/lib/api.ts#fetchQuotes", "to": "web/lib/api.ts#Quote", "kind": "type", "path": "web/lib/api.ts", "line": 10, "column": 37 }
   ]
 }

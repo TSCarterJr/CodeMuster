@@ -141,5 +141,32 @@
       "signature": "const users",
       "body_hash": "9bf4541f6ec927747cafd6b21d6740ad25d57b70d64e2deb7de4f6c9001e4d96"
     }
+  ],
+  "references": [
+    { "from": "routes/users.js", "to": "services/users.js#listUsers", "kind": "import", "path": "routes/users.js", "line": 2, "column": 9 },
+    { "from": "routes/users.js", "to": "services/users.js#findUser", "kind": "import", "path": "routes/users.js", "line": 2, "column": 20 },
+    { "from": "routes/users.js#GET /", "to": "routes/users.js#router", "kind": "read", "path": "routes/users.js", "line": 6, "column": 1 },
+    { "from": "routes/users.js#GET /", "to": "services/users.js#listUsers", "kind": "call", "path": "routes/users.js", "line": 7, "column": 18 },
+    { "from": "routes/users.js", "to": "routes/users.js#router", "kind": "read", "path": "routes/users.js", "line": 10, "column": 1 },
+    { "from": "routes/users.js", "to": "routes/users.js#getUser", "kind": "read", "path": "routes/users.js", "line": 10, "column": 20 },
+    { "from": "routes/users.js#getUser", "to": "services/users.js#findUser", "kind": "call", "path": "routes/users.js", "line": 13, "column": 22 },
+    { "from": "routes/users.js", "to": "routes/users.js#router", "kind": "read", "path": "routes/users.js", "line": 22, "column": 18 },
+    { "from": "server.js", "to": "routes/users.js#router", "kind": "import", "path": "server.js", "line": 2, "column": 7 },
+    { "from": "server.js", "to": "server.js#app", "kind": "read", "path": "server.js", "line": 6, "column": 1 },
+    { "from": "server.js", "to": "server.js#app", "kind": "read", "path": "server.js", "line": 7, "column": 1 },
+    { "from": "server.js", "to": "routes/users.js#router", "kind": "read", "path": "server.js", "line": 7, "column": 23 },
+    { "from": "server.js#GET /health", "to": "server.js#app", "kind": "read", "path": "server.js", "line": 9, "column": 1 },
+    { "from": "server.js", "to": "server.js#app", "kind": "read", "path": "server.js", "line": 13, "column": 1 },
+    { "from": "services/users.js#listUsers", "to": "services/users.js#users", "kind": "read", "path": "services/users.js", "line": 4, "column": 10 },
+    { "from": "services/users.js#findUser", "to": "services/users.js#listUsers", "kind": "call", "path": "services/users.js", "line": 8, "column": 21 },
+    { "from": "services/users.js", "to": "services/users.js#listUsers", "kind": "read", "path": "services/users.js", "line": 12, "column": 20 },
+    { "from": "services/users.js", "to": "services/users.js#findUser", "kind": "read", "path": "services/users.js", "line": 12, "column": 31 },
+    { "from": "web/pages/users/[id].jsx", "to": "web/lib/api.js#loadUser", "kind": "import", "path": "web/pages/users/[id].jsx", "line": 2, "column": 10 },
+    { "from": "web/pages/users/[id].jsx#UserPage", "to": "web/lib/api.js#loadUser", "kind": "call", "path": "web/pages/users/[id].jsx", "line": 7, "column": 5 },
+    { "from": "web/pages/users/[id].jsx", "to": "web/pages/users/[id].jsx#UserPage", "kind": "read", "path": "web/pages/users/[id].jsx", "line": 12, "column": 16 },
+    { "from": "web/pages/users/index.jsx", "to": "web/components/UserList.jsx#UserList", "kind": "import", "path": "web/pages/users/index.jsx", "line": 2, "column": 10 },
+    { "from": "web/pages/users/index.jsx", "to": "web/lib/api.js#loadUsers", "kind": "import", "path": "web/pages/users/index.jsx", "line": 3, "column": 10 },
+    { "from": "web/pages/users/index.jsx#UsersPage", "to": "web/lib/api.js#loadUsers", "kind": "call", "path": "web/pages/users/index.jsx", "line": 8, "column": 5 },
+    { "from": "web/pages/users/index.jsx#UsersPage", "to": "web/components/UserList.jsx#UserList", "kind": "call", "path": "web/pages/users/index.jsx", "line": 10, "column": 11 }
   ]
 }

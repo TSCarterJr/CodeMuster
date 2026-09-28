@@ -172,6 +172,7 @@ function mapRepo(request, programs) {
   const mapped = new Set();
   const symbols = new Map();
   const bodyless = new Map();
+  const references = [];
   const edges = new Map();
   const entryPoints = new Map();
   const unresolvedNames = new Map();
@@ -228,6 +229,7 @@ function mapRepo(request, programs) {
     // Mounts are read from every included file of the program, so a router mapped here still gets the prefix a file mapped earlier mounts it under.
     sources.forEach(mapper.collectMounts);
     const files = sources.filter((sourceFile) => !mapped.has(mapper.repoPath(sourceFile)));
+    const names = mapper.declaredNames(sources);
     let done = 0;
 
     for (const sourceFile of files) {
@@ -238,7 +240,9 @@ function mapRepo(request, programs) {
         report(`mapped ${done}/${files.length} files`);
       }
 
+      const scopes = new Map();
       for (const declaration of mapper.declarations(sourceFile)) {
+        scopes.set(mapper.scopeOf(declaration), declaration.id);
         if (symbols.has(declaration.id)) {
           continue;
         }
@@ -252,7 +256,14 @@ function mapRepo(request, programs) {
         calls.http.forEach((call) => httpCalls.push({ from: declaration.id, ...call, path: file }));
       }
 
-      mapper.bodyless(sourceFile).filter((declaration) => !bodyless.has(declaration.id)).forEach((declaration) => bodyless.set(declaration.id, declaration));
+      for (const declaration of mapper.bodyless(sourceFile)) {
+        scopes.set(declaration.node, declaration.id);
+        if (!bodyless.has(declaration.id)) {
+          bodyless.set(declaration.id, declaration);
+        }
+      }
+
+      references.push(...mapper.references(sourceFile, file, scopes, names));
 
       const route = pageRoute(file);
       const pageIds = route === undefined ? [] : mapper.defaultExportIds(sourceFile);
@@ -283,6 +294,14 @@ function mapRepo(request, programs) {
   const declarations = [...bodyless.values()].filter((declaration) => !symbols.has(declaration.id)).sort((a, b) => ordinal(a.id, b.id));
   if (declarations.length > 0) {
     map.declarations = declarations.map(({ node, ...declaration }) => declaration);
+  }
+
+  const known = new Set([...symbols.keys(), ...declarations.map((declaration) => declaration.id)]);
+  const unique = new Map(references.filter((reference) => known.has(reference.to))
+    .map((reference) => [[reference.path, reference.line, reference.column, reference.from, reference.to, reference.kind].join('\n'), reference]));
+  if (unique.size > 0) {
+    map.references = [...unique.values()].sort((a, b) => ordinal(a.path, b.path) || a.line - b.line || a.column - b.column
+      || ordinal(a.from, b.from) || ordinal(a.to, b.to) || ordinal(a.kind, b.kind));
   }
 
   return request.debug === true ? { ...map, parsed_files: parsedFiles } : map;
@@ -384,6 +403,180 @@ function createMapper(ts, checker, repoRoot) {
   function isAlias(variable) {
     const symbol = checker.getSymbolAtLocation(variable.name);
     return symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0;
+  }
+
+  // The node whose descendants a symbol contains: a function-valued const's own declaration, so a statement declaring several keeps them apart.
+  function scopeOf(declaration) {
+    return ts.isVariableStatement(declaration.node) ? declaration.fn.parent : declaration.node;
+  }
+
+  // D72: every identifier the checker resolves, with how it is used and the innermost symbol or declaration containing it; mapRepo keeps
+  // those whose target it mapped, which leaves out node_modules, lib files and anything outside the included files.
+  function references(sourceFile, file, scopes, names) {
+    const found = [];
+    const visit = (node, from) => {
+      const scope = scopes.get(node) ?? from;
+      if ((ts.isIdentifier(node) || ts.isPrivateIdentifier(node)) && !(ts.isPropertyAccessExpression(node.parent) && node.parent.name === node && !names.has(node.text))) {
+        const kind = referenceKind(node);
+        const symbol = kind === undefined ? undefined
+          : ts.isShorthandPropertyAssignment(node.parent) ? checker.getShorthandAssignmentValueSymbol(node.parent) : checker.getSymbolAtLocation(node);
+        const target = aliased(symbol);
+        const declared = (target && target.declarations) || [];
+        if (declared.length > 0 && !declared.some((declaration) => declaration.name === node) && !isExportAssignment(symbol, node)) {
+          const at = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+          new Set(declared.map((declaration) => referenceId(declaration, kind)).filter((id) => id !== undefined))
+            .forEach((to) => found.push({ from: scope, to, kind, path: file, line: at.line + 1, column: at.character + 1 }));
+        }
+      }
+
+      ts.forEachChild(node, (child) => visit(child, scope));
+    };
+    visit(sourceFile, file);
+    return found;
+  }
+
+  function referenceKind(node) {
+    const parent = node.parent;
+    if (ts.isImportSpecifier(parent) || ts.isExportSpecifier(parent) || (ts.isBindingElement(parent) && isRequireBinding(parent))) {
+      return (parent.propertyName || parent.name) === node ? 'import' : undefined;
+    }
+
+    if (ts.isImportClause(parent) || (ts.isVariableDeclaration(parent) && parent.name === node && parent.initializer !== undefined && requireOf(parent.initializer) !== undefined)) {
+      return 'import';
+    }
+
+    if (ts.isJsxClosingElement(parent) || ts.isJsxAttribute(parent) || (ts.isPropertyAssignment(parent) && parent.name === node)) {
+      return undefined;
+    }
+
+    let type = node;
+    while (ts.isQualifiedName(type.parent)) {
+      type = type.parent;
+    }
+
+    if (ts.isTypeReferenceNode(type.parent) || ts.isTypeQueryNode(type.parent) || ts.isImportTypeNode(type.parent)) {
+      return 'type';
+    }
+
+    const expression = ts.isPropertyAccessExpression(parent) && parent.name === node ? parent : node;
+    const user = expression.parent;
+    if (ts.isExpressionWithTypeArguments(user) && ts.isHeritageClause(user.parent)) {
+      return user.parent.token === ts.SyntaxKind.ImplementsKeyword ? 'implement' : 'inherit';
+    }
+
+    if (ts.isDecorator(user) || (ts.isCallExpression(user) && user.expression === expression && ts.isDecorator(user.parent))) {
+      return 'attribute';
+    }
+
+    if (((ts.isCallExpression(user) || ts.isNewExpression(user)) && user.expression === expression)
+      || ((ts.isJsxOpeningElement(user) || ts.isJsxSelfClosingElement(user)) && user.tagName === expression)
+      || (ts.isTaggedTemplateExpression(user) && user.tag === expression)) {
+      return 'call';
+    }
+
+    return isWritten(expression) ? 'write' : 'read';
+  }
+
+  // An assignment's target, the operand of ++ or --, a destructuring assignment's element or a for-in/of variable.
+  function isWritten(expression) {
+    const parent = expression.parent;
+    if (ts.isBinaryExpression(parent)) {
+      const operator = parent.operatorToken.kind;
+      return parent.left === expression && operator >= ts.SyntaxKind.FirstAssignment && operator <= ts.SyntaxKind.LastAssignment;
+    }
+
+    if (ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent)) {
+      return parent.operator === ts.SyntaxKind.PlusPlusToken || parent.operator === ts.SyntaxKind.MinusMinusToken;
+    }
+
+    if (ts.isShorthandPropertyAssignment(parent) || (ts.isPropertyAssignment(parent) && parent.initializer === expression)) {
+      return isWritten(parent.parent);
+    }
+
+    if (ts.isArrayLiteralExpression(parent) || ts.isSpreadElement(parent) || ts.isSpreadAssignment(parent) || ts.isParenthesizedExpression(parent)) {
+      return isWritten(parent);
+    }
+
+    return (ts.isForOfStatement(parent) || ts.isForInStatement(parent)) && parent.initializer === expression;
+  }
+
+  // Resolving a property access name type-checks the object it is read from, most of the cost of references, so only names a mapped file
+  // declares at the top level, exports under another name, or declares in a class or enum (a module's export read through a namespace or
+  // require()) are resolved.
+  function declaredNames(sources) {
+    const names = new Set(['default']);
+    const add = (member) => {
+      if (member.name !== undefined) {
+        names.add(ts.isIdentifier(member.name) || ts.isPrivateIdentifier(member.name) ? member.name.text : member.name.getText());
+      }
+    };
+    for (const statement of sources.flatMap((sourceFile) => sourceFile.statements)) {
+      add(statement);
+      if (ts.isExportDeclaration(statement) && statement.exportClause !== undefined && ts.isNamedExports(statement.exportClause)) {
+        statement.exportClause.elements.forEach(add);
+      } else if (ts.isVariableStatement(statement)) {
+        statement.declarationList.declarations.forEach(add);
+      } else if (ts.isClassDeclaration(statement)) {
+        statement.members.forEach((member) => {
+          add(member);
+          if (ts.isConstructorDeclaration(member)) {
+            member.parameters.forEach(add);
+          }
+        });
+      } else if (ts.isEnumDeclaration(statement)) {
+        statement.members.forEach(add);
+      }
+    }
+
+    return names;
+  }
+
+  // `module.exports = x` and `exports.y = x` declare the module's exports; their left side is not a use of x.
+  function isExportAssignment(symbol, node) {
+    return ((symbol && symbol.declarations) || []).some((declaration) => ts.isBinaryExpression(declaration)
+      && declaration.left.pos <= node.pos && node.end <= declaration.left.end);
+  }
+
+  function isRequireBinding(element) {
+    const variable = element.parent.parent;
+    return ts.isObjectBindingPattern(element.parent) && ts.isVariableDeclaration(variable) && variable.initializer !== undefined
+      && requireOf(variable.initializer) !== undefined;
+  }
+
+  // What a reference points at: a symbol id, or a declaration id (D72). A class is called through its constructor when it has one.
+  function referenceId(declaration, kind) {
+    const parent = declaration.parent;
+    const file = () => repoPath(declaration.getSourceFile());
+    if (ts.isClassDeclaration(declaration) && ts.isSourceFile(parent)) {
+      const constructor = kind === 'call' ? declaration.members.find((member) => ts.isConstructorDeclaration(member) && member.body) : undefined;
+      return constructor === undefined ? `${file()}#${className(declaration)}` : idFor(constructor);
+    }
+
+    const id = idFor(declaration);
+    if (id !== undefined) {
+      return id;
+    }
+
+    if ((ts.isInterfaceDeclaration(declaration) || ts.isTypeAliasDeclaration(declaration) || ts.isEnumDeclaration(declaration)) && ts.isSourceFile(parent)) {
+      return `${file()}#${declaration.name.text}`;
+    }
+
+    if (ts.isEnumMember(declaration) && ts.isSourceFile(parent.parent)) {
+      return `${file()}#${parent.name.text}.${declaration.name.getText()}`;
+    }
+
+    if (ts.isPropertyDeclaration(declaration) && ts.isClassDeclaration(parent) && ts.isSourceFile(parent.parent)) {
+      return `${file()}#${className(parent)}.${declaration.name.getText()}`;
+    }
+
+    if (ts.isParameter(declaration) && ts.isConstructorDeclaration(parent) && ts.isParameterPropertyDeclaration(declaration, parent)
+      && ts.isSourceFile(parent.parent.parent)) {
+      return `${file()}#${className(parent.parent)}.${declaration.name.getText()}`;
+    }
+
+    return ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name) && ts.isVariableStatement(parent.parent) && ts.isSourceFile(parent.parent.parent)
+      ? `${file()}#${declaration.name.text}`
+      : undefined;
   }
 
   const mounts = new Map();
@@ -1063,7 +1256,7 @@ function createMapper(ts, checker, repoRoot) {
       .join('');
   }
 
-  return { repoPath, declarations, bodyless, symbol, callSites, defaultExportIds, collectMounts, routes, uiElements, defaultExportLine };
+  return { repoPath, declarations, bodyless, scopeOf, references, declaredNames, symbol, callSites, defaultExportIds, collectMounts, routes, uiElements, defaultExportLine };
 }
 
 const AXIOS_VERBS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options']);
