@@ -84,18 +84,45 @@ public sealed class GitSourceTreeTests : IDisposable
     }
 
     [Fact]
-    public async Task LastCommit_and_LastCommitAt_match_git_log_per_path()
+    public async Task LastCommits_match_git_log_per_path()
     {
-        var files = await _tree.ListFilesAsync(CancellationToken.None);
+        var paths = (await _tree.ListFilesAsync(CancellationToken.None)).Select(f => f.Path).ToList();
 
-        foreach (var file in files)
+        var commits = await _tree.LastCommitsAsync(paths, CancellationToken.None);
+
+        foreach (var path in paths)
         {
-            Assert.Equal(NullIfEmpty(_repo.Run("log", "-1", "--format=%H", "--", file.Path)), file.LastCommit);
-            Assert.Equal(NullIfEmpty(_repo.Run("log", "-1", "--format=%cI", "--", file.Path)), file.LastCommitAt);
+            var sha = NullIfEmpty(_repo.Run("log", "-1", "--format=%H", "--", path));
+            Assert.Equal(sha, commits.GetValueOrDefault(path)?.Sha);
+            Assert.Equal(NullIfEmpty(_repo.Run("log", "-1", "--format=%cI", "--", path)), commits.GetValueOrDefault(path)?.At);
         }
 
-        Assert.Equal(_repo.Run("rev-parse", "HEAD").Trim(), files.Single(f => f.Path == "src/a/b.cs").LastCommit);
-        Assert.Null(files.Single(f => f.Path == "docs/new name.md").LastCommit);
+        Assert.Equal(_repo.Run("rev-parse", "HEAD").Trim(), commits["src/a/b.cs"].Sha);
+        Assert.Equal(_repo.Run("rev-list", "--max-parents=0", "HEAD").Trim(), commits["gen/out.cs"].Sha);
+        Assert.False(commits.ContainsKey("docs/new name.md"));
+    }
+
+    [Fact]
+    public async Task LastCommits_answers_only_the_paths_asked_for()
+    {
+        var commits = await _tree.LastCommitsAsync(["src/a/b.cs", "src/c/naïve.cs"], CancellationToken.None);
+
+        Assert.Equal(["src/a/b.cs", "src/c/naïve.cs"], commits.Keys.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task Listing_reads_no_history_so_it_works_when_history_cannot_be_read_while_LastCommits_throws()
+    {
+        // Losing the root commit's object leaves the index, HEAD and its tree readable, but git log cannot walk past it (D75).
+        var root = _repo.Run("rev-list", "--max-parents=0", "HEAD").Trim();
+        var loose = new FileInfo(Path.Combine(_repo.Root, ".git", "objects", root[..2], root[2..]));
+        loose.Attributes = FileAttributes.Normal;
+        loose.Delete();
+
+        var files = await _tree.ListFilesAsync(CancellationToken.None);
+
+        Assert.Equal(8, files.Count);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _tree.LastCommitsAsync(files.Select(f => f.Path).ToList(), CancellationToken.None));
     }
 
     [Fact]

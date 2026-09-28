@@ -27,7 +27,6 @@ public sealed class GitSourceTree(string repoRoot) : ISourceTree
     {
         var index = ParseIndex(await GitProcess.RunAsync(repoRoot, ["ls-files", "-s", "-z"], null, cancellationToken).ConfigureAwait(false));
         var dirty = ParseDirtyPaths(await GitProcess.RunAsync(repoRoot, ["status", "--porcelain", "-z", "--untracked-files=no"], null, cancellationToken).ConfigureAwait(false));
-        var lastCommits = ParseLastCommits(await GitProcess.RunAsync(repoRoot, ["-c", "core.quotePath=false", "log", "--name-only", "--format=%x01%H%x00%cI"], null, cancellationToken).ConfigureAwait(false));
         var pathList = string.Concat(index.Select(entry => entry.Path + "\0"));
         var generated = ParseGenerated(await GitProcess.RunAsync(repoRoot, ["check-attr", "linguist-generated", "-z", "--stdin"], pathList, cancellationToken).ConfigureAwait(false));
 
@@ -40,18 +39,23 @@ public sealed class GitSourceTree(string repoRoot) : ISourceTree
                 continue;
             }
 
-            var hasCommit = lastCommits.TryGetValue(path, out var commit);
             files.Add(new SourceFile(
                 path,
                 info.Length,
                 Timestamps.Format(new DateTimeOffset(info.LastWriteTimeUtc)),
                 dirty.Contains(path) ? null : sha,
-                hasCommit ? commit.Sha : null,
-                hasCommit ? commit.Date : null,
                 generated.Contains(path)));
         }
 
         return files;
+    }
+
+    // Without rename detection a name-only walk compares trees only, so a blobless clone fetches no blobs. The walk is not cut short
+    // once every path is found: some file usually dates from near the root (at 25,092 commits the last was found 27 from the end).
+    public async Task<IReadOnlyDictionary<string, CommitStamp>> LastCommitsAsync(IReadOnlyCollection<string> paths, CancellationToken cancellationToken)
+    {
+        var output = await GitProcess.RunAsync(repoRoot, ["log", "--no-renames", "-z", "--name-only", "--format=%x01%H%x00%cI"], null, cancellationToken).ConfigureAwait(false);
+        return ParseLastCommits(output, paths.ToHashSet(StringComparer.Ordinal));
     }
 
     public Task<string> ReadFileAsync(string path, CancellationToken cancellationToken) =>
@@ -128,21 +132,24 @@ public sealed class GitSourceTree(string repoRoot) : ISourceTree
         return dirty;
     }
 
-    private static Dictionary<string, (string Sha, string Date)> ParseLastCommits(string output)
+    // With -z each commit is "\x01<sha>", "<date>", then its paths, the first one after a newline, all NUL-terminated; a merge lists none.
+    private static Dictionary<string, CommitStamp> ParseLastCommits(string output, HashSet<string> wanted)
     {
-        var result = new Dictionary<string, (string Sha, string Date)>(StringComparer.Ordinal);
-        foreach (var chunk in output.Split('', StringSplitOptions.RemoveEmptyEntries))
+        var result = new Dictionary<string, CommitStamp>(StringComparer.Ordinal);
+        CommitStamp? commit = null;
+        var tokens = output.Split('\0');
+        for (var i = 0; i < tokens.Length; i++)
         {
-            var lines = chunk.Split('\n');
-            var header = lines[0].TrimEnd('\r').Split('\0');
-            var commit = (Sha: header[0], Date: header[1]);
-            foreach (var line in lines.Skip(1))
+            if (tokens[i].StartsWith('\u0001'))
             {
-                var path = line.TrimEnd('\r');
-                if (path.Length > 0)
-                {
-                    result.TryAdd(RepoPath.Normalize(path), commit);
-                }
+                commit = new CommitStamp(tokens[i][1..], tokens[++i]);
+                continue;
+            }
+
+            var path = RepoPath.Normalize(tokens[i].TrimStart('\n'));
+            if (commit is not null && path.Length > 0 && wanted.Contains(path))
+            {
+                result.TryAdd(path, commit);
             }
         }
 

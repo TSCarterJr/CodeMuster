@@ -24,9 +24,10 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         var now = Timestamps.Format(clock.UtcNow);
         var head = await tree.HeadCommitAsync(cancellationToken);
         var files = await tree.ListFilesAsync(cancellationToken);
+        var lastCommits = await LastCommitsAsync(files, cancellationToken);
         var existing = (await ledger.GetFilesAsync(cancellationToken)).ToDictionary(f => f.Path, StringComparer.Ordinal);
         var hashes = await ContentHashes.CurrentAsync(hasher, files, existing, cancellationToken);
-        var current = files.Select(file => Refresh(file, existing.GetValueOrDefault(file.Path), hashes[file.Path], now)).ToList();
+        var current = files.Select(file => Refresh(file, existing.GetValueOrDefault(file.Path), hashes[file.Path], lastCommits.GetValueOrDefault(file.Path), now)).ToList();
 
         var present = current.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
         var deleted = existing.Values
@@ -295,7 +296,21 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             DependencyFindings.Lens);
     }
 
-    private FileRecord Refresh(SourceFile file, FileRecord? previous, string hash, string now)
+    // Only scan reads history, and history it cannot read (an offline partial clone) costs the last-commit columns, not the scan (D75).
+    private async Task<IReadOnlyDictionary<string, CommitStamp>> LastCommitsAsync(IReadOnlyList<SourceFile> files, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await tree.LastCommitsAsync(files.Select(f => f.Path).ToList(), cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            progress?.Report($"warning: last commits not recorded, because git history could not be read: {ex.Message}");
+            return new Dictionary<string, CommitStamp>();
+        }
+    }
+
+    private FileRecord Refresh(SourceFile file, FileRecord? previous, string hash, CommitStamp? lastCommit, string now)
     {
         var unchanged = previous?.ContentHash == hash;
         return new FileRecord(
@@ -306,8 +321,8 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             file.Mtime,
             previous?.FirstSeen ?? now,
             now,
-            file.LastCommit,
-            file.LastCommitAt,
+            lastCommit?.Sha,
+            lastCommit?.At,
             config.ExcludedReason(file.Path, file.LinguistGenerated),
             null,
             unchanged ? previous!.Summary : null,

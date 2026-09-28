@@ -25,6 +25,8 @@ public sealed class Doctor(ISourceTree tree, IReadOnlyList<ICodeMapper> mappers,
         try
         {
             files = await tree.ListFilesAsync(cancellationToken);
+            // Listing reads no history (D75), so a repository without a commit is found here.
+            await tree.HeadCommitAsync(cancellationToken);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {

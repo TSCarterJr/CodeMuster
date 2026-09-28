@@ -147,6 +147,20 @@ public class DoctorFixTests
     }
 
     [Fact]
+    public async Task RepositoryWithNoCommit_WhoseFilesStillList_OffersAddAndFirstCommit()
+    {
+        // Listing reads no history (D75), so in a repository without a commit only HEAD fails.
+        tree.HeadError = new InvalidOperationException("git rev-parse HEAD exited with code 128: fatal: ambiguous argument 'HEAD'");
+        runner.Results["git rev-parse --verify --quiet HEAD"] = new CommandResult(1, "", "");
+
+        var report = await RunAsync();
+
+        Assert.False(report.Ready);
+        Assert.Equal(["git add -A && git commit -m \"Initial commit\""], Rendered(report));
+        Assert.Empty(csharp.Calls);
+    }
+
+    [Fact]
     public async Task GitThatFailsForAnotherReason_OffersNothing()
     {
         runner.Results["git rev-parse --verify --quiet HEAD"] = new CommandResult(128, "", "fatal: detected dubious ownership");
@@ -288,6 +302,8 @@ public class DoctorFixTests
 
         public Task<IReadOnlyList<SourceFile>> ListFilesAsync(CancellationToken cancellationToken) =>
             Task.FromException<IReadOnlyList<SourceFile>>(new InvalidOperationException("git log exited with code 128: fatal: your current branch 'main' does not have any commits yet"));
+
+        public Task<IReadOnlyDictionary<string, CommitStamp>> LastCommitsAsync(IReadOnlyCollection<string> paths, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<string> ReadFileAsync(string path, CancellationToken cancellationToken) => throw new NotSupportedException();
 

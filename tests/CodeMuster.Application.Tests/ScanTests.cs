@@ -358,6 +358,38 @@ public class ScanTests
     }
 
     [Fact]
+    public async Task EachFile_RecordsTheLastCommitHistoryGives_AndNoneWhenNoCommitTouchedIt()
+    {
+        AddThree();
+        tree.LastCommits["src/A.cs"] = new CommitStamp("a1", "2026-09-01T10:00:00+02:00");
+        tree.LastCommits["web/c.ts"] = new CommitStamp("c3", "2026-09-02T10:00:00Z");
+
+        await ScanAsync();
+
+        Assert.Equal(("a1", "2026-09-01T10:00:00+02:00"), (ledger.Files["src/A.cs"].LastCommit, ledger.Files["src/A.cs"].LastCommitAt));
+        Assert.Equal(("c3", "2026-09-02T10:00:00Z"), (ledger.Files["web/c.ts"].LastCommit, ledger.Files["web/c.ts"].LastCommitAt));
+        Assert.Null(ledger.Files["src/B.cs"].LastCommit);
+        Assert.Equal(1, tree.HistoryReads);
+    }
+
+    [Fact]
+    public async Task HistoryThatCannotBeRead_LeavesLastCommitsEmpty_WarnsOnce_AndTheScanStillCompletes()
+    {
+        AddThree();
+        tree.LastCommits["src/A.cs"] = new CommitStamp("a1", "2026-09-01T10:00:00Z");
+        tree.HistoryError = new InvalidOperationException("git log exited with code 128: fatal: could not fetch 1234 from promisor remote");
+        var progress = new ListProgress();
+
+        var result = await new Scan(ledger, tree, new FakeContentHasher(), clock, Config.Default, progress: progress).RunAsync(CancellationToken.None);
+
+        Assert.Equal(3, result.UnitsTotal);
+        Assert.All(ledger.Files.Values, file => Assert.Null(file.LastCommit));
+        Assert.All(ledger.Files.Values, file => Assert.Null(file.LastCommitAt));
+        var warning = Assert.Single(progress.Messages, message => message.StartsWith("warning:", StringComparison.Ordinal));
+        Assert.Contains("could not fetch 1234 from promisor remote", warning);
+    }
+
+    [Fact]
     public async Task RemovedFile_GetsDeletedAt_AndItsUnitIsRetired_WithRowsKept()
     {
         tree.Add("src/A.cs", "class A {}");

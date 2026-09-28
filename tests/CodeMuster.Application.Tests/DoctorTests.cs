@@ -170,6 +170,8 @@ public class DoctorTests
         public Task<IReadOnlyList<SourceFile>> ListFilesAsync(CancellationToken cancellationToken) =>
             Task.FromException<IReadOnlyList<SourceFile>>(new InvalidOperationException("git ls-files exited with code 128: not a git repository"));
 
+        public Task<IReadOnlyDictionary<string, CommitStamp>> LastCommitsAsync(IReadOnlyCollection<string> paths, CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public Task<string> ReadFileAsync(string path, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<bool> IsIgnoredAsync(string path, CancellationToken cancellationToken) => throw new NotSupportedException();

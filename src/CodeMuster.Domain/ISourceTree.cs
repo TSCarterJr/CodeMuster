@@ -6,8 +6,11 @@ public interface ISourceTree
     /// <summary>The HEAD commit SHA.</summary>
     Task<string> HeadCommitAsync(CancellationToken cancellationToken);
 
-    /// <summary>Every tracked file with its stat info and, for clean files, its blob hash.</summary>
+    /// <summary>Every tracked file with its stat info and, for clean files, its blob hash. It never reads history (D75).</summary>
     Task<IReadOnlyList<SourceFile>> ListFilesAsync(CancellationToken cancellationToken);
+
+    /// <summary>The last commit reachable from HEAD that touched each of <paramref name="paths"/>; a path no commit touched is absent. Only <c>scan</c> asks, and it throws when history cannot be read, for example offline in a partial clone (D75).</summary>
+    Task<IReadOnlyDictionary<string, CommitStamp>> LastCommitsAsync(IReadOnlyCollection<string> paths, CancellationToken cancellationToken);
 
     /// <summary>The current working-tree content of a tracked file.</summary>
     Task<string> ReadFileAsync(string path, CancellationToken cancellationToken);
