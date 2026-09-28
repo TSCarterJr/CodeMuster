@@ -54,6 +54,8 @@ public static class CompositeMapper
         {
             HttpCalls = maps.SelectMany(m => m.HttpCalls).ToList(),
             UiElements = maps.SelectMany(m => m.UiElements).ToList(),
+            Declarations = maps.SelectMany(m => m.Declarations).ToList(),
+            References = maps.SelectMany(m => m.References).ToList(),
         };
         return new CompositeMap(merged, failed, mapped);
     }

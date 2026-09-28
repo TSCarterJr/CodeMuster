@@ -50,6 +50,20 @@ public class CodeMapJsonTests
     }
 
     [Fact]
+    public void Declarations_and_references_are_read_when_present_and_left_out_when_empty()
+    {
+        const string json = """{"symbols":[],"edges":[],"entry_points":[],"resolution":{"resolved":0,"unresolved":0,"top_unresolved_names":[]},"diagnostics":[],"declarations":[{"id":"T:A","path":"a.cs","range":{"start_line":1,"end_line":3},"kind":"class","signature":"class A","body_hash":"h"}],"references":[{"from":"M:B.Run","to":"T:A","kind":"type","path":"b.cs","line":4,"column":9}]}""";
+
+        var map = CodeMapJson.Parse(json);
+
+        Assert.Equal("T:A", Assert.Single(map.Declarations).Id);
+        Assert.Equal(new Reference("M:B.Run", "T:A", ReferenceKind.Type, "b.cs", 4, 9), Assert.Single(map.References));
+        var empty = CodeMapJson.Serialize(map with { Declarations = [], References = [] });
+        Assert.DoesNotContain("declarations", empty);
+        Assert.DoesNotContain("references", empty);
+    }
+
+    [Fact]
     public void Serializes_with_snake_case_names_and_lowercase_enums()
     {
         var json = CodeMapJson.Serialize(SmallMap());

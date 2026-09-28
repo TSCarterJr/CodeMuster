@@ -52,7 +52,7 @@ public class SqliteLedgerSpendTests
         var call = new AgentCall("2026-09-27T10:00:00.0000000Z", "run x", "file:a.cs", UnitKind.File, new AgentIdentity("fake"), AgentUsage.Unknown, true, null, null);
         await ledger.RecordAgentCallAsync(call, CancellationToken.None);
 
-        Assert.Equal(8L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
+        Assert.Equal(9L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
         Assert.Equal([call], await ledger.GetAgentCallsAsync(CancellationToken.None));
         Assert.Contains("code_symbols", await RawSqlite.StringsAsync(temp.DatabasePath, Tables));
     }

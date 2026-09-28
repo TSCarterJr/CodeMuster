@@ -398,3 +398,19 @@ Tim asked on 2026-09-27 to implement everything discussed that day: JavaScript m
 | ID | Task | Status | Owner / Date | Notes |
 |---|---|---|---|---|
 | REL037 | Release 0.3.7: date the CHANGELOG, plugin manifests at 0.3.7, three-OS CI and a `release.yml` dry run, then push `main` and tag `v0.3.7`. | `[x]` | claude 2026-09-27 | Tim asked on 2026-09-27 to commit, push and release. `release/0.3.7` passed the test workflow on Linux, Windows and macOS and the dry run 36339171230 (six builds, installed-package smoke on win-x64, linux-x64, darwin-arm64). `main` fast-forwarded to `5376b43`, tag `v0.3.7`, release run 36339982756 passed validation, builds and smoke and published all seven npm packages and the GitHub release (9 assets); all seven reached the registry within about seven minutes. A fresh `npm install -g codemuster@0.3.7` on Tim's Windows machine reports 0.3.7, reuses an unchanged map, and draws the page-to-API flow. |
+
+## References, MCP and optimizations for 0.5.0 (user-directed priority)
+
+Tim asked on 2026-09-28 to track references as well as calls, expose the map to agents like a language server, make the remaining optimizations, and release it all as 0.5.0. Decisions D72 to D75.
+
+| ID | Task | Status | Owner / Date | Notes |
+|---|---|---|---|---|
+| REF0 | Domain declarations and references, merged by CompositeMapper and stored in ledger schema 9 with indexes (D72). | `[x]` | claude 2026-09-28 | `CodeMap.Declarations` and `CodeMap.References` (`Reference` with `ReferenceKind`), omitted from JSON when empty so goldens stay byte-identical; `code_declarations` and `code_references` with indexes on `to_id`, `from_id` and `path`; schema 8 upgrades to 9; an unknown reference kind is skipped with a diagnostic. The ledger round trip, unknown-kind, upgrade, JSON and merge tests failed first (compile errors, then the merge assertion); the pinned schema-version and table-list tests were updated deliberately. |
+| REF1 | Both mappers record declarations without a body (D72). | `[ ]` | | |
+| REF2 | Both mappers record every resolved reference with kind, position and container (D72). | `[ ]` | | |
+| REF3 | Impact units walk references; dead-code review counts them; `map` gains `references` (D72). | `[ ]` | | |
+| MCP1 | `codemuster mcp`: read-only stdio MCP server over the stored map, with freshness and refresh (D73). | `[ ]` | | |
+| MCP2 | Register the server in the Claude and Codex plugin, offer it in `init`, teach the skill (D73). | `[ ]` | | |
+| OPT1 | ReadyToRun release builds (D74). | `[ ]` | | Review `performance-12`. |
+| OPT2 | Git history walk only in scan, tolerant of failure (D75). | `[ ]` | | Review `gap2-1-2`, `core-loop-19`, `performance-14`. |
+| REL050 | Release 0.5.0. | `[ ]` | | |

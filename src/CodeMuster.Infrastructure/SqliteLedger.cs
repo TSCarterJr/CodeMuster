@@ -7,7 +7,7 @@ namespace CodeMuster.Infrastructure;
 
 public sealed class SqliteLedger : ILedger, IDisposable
 {
-    internal const int SchemaVersion = 8;
+    internal const int SchemaVersion = 9;
 
     internal const string Schema = """
         CREATE TABLE files (
@@ -159,6 +159,30 @@ public sealed class SqliteLedger : ILedger, IDisposable
             succeeded INTEGER NOT NULL,
             cost_usd TEXT,
             cost_source TEXT);
+        """;
+
+    // Schema 9 (D72): declarations without a body and every resolved reference, indexed for "who uses this" lookups.
+    internal const string SchemaVersion9 = """
+        CREATE TABLE IF NOT EXISTS code_declarations (
+            id TEXT NOT NULL,
+            path TEXT NOT NULL,
+            start_line INTEGER NOT NULL,
+            end_line INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            signature TEXT NOT NULL,
+            body_hash TEXT NOT NULL,
+            container TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS code_declarations_id ON code_declarations (id);
+        CREATE TABLE IF NOT EXISTS code_references (
+            from_id TEXT NOT NULL,
+            to_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            path TEXT NOT NULL,
+            line INTEGER NOT NULL,
+            col INTEGER NOT NULL);
+        CREATE INDEX IF NOT EXISTS code_references_to_id ON code_references (to_id);
+        CREATE INDEX IF NOT EXISTS code_references_from_id ON code_references (from_id);
+        CREATE INDEX IF NOT EXISTS code_references_path ON code_references (path);
         """;
 
     // Part of schema 8 as well (D69): the UI structure the mappers read, stored with the rest of the map so a pack can render it after the scan.
@@ -624,7 +648,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
     public async Task ReplaceCodeMapAsync(StoredCodeMap map, CancellationToken cancellationToken)
     {
         await using var transaction = await _connection.BeginTransactionAsync(cancellationToken);
-        await ExecuteAsync("DELETE FROM code_map; DELETE FROM code_symbols; DELETE FROM code_edges; DELETE FROM code_entry_points; DELETE FROM code_ui_elements;", cancellationToken);
+        await ExecuteAsync("DELETE FROM code_map; DELETE FROM code_symbols; DELETE FROM code_edges; DELETE FROM code_entry_points; DELETE FROM code_ui_elements; DELETE FROM code_declarations; DELETE FROM code_references;", cancellationToken);
 
         await using (var header = CreateCommand("""
             INSERT INTO code_map (id, head_commit, scanned_at, mapped_languages, failed_languages, resolved, unresolved, top_unresolved_names, diagnostics, inputs_digest)
@@ -663,6 +687,16 @@ public sealed class SqliteLedger : ILedger, IDisposable
             map.Map.UiElements,
             element => [element.Kind, element.Text, element.Path, element.Line, Db(element.Control), Db(element.Target), Db(element.Section), Db(element.Route)],
             cancellationToken);
+        await InsertRowsAsync(
+            "INSERT INTO code_declarations (id, path, start_line, end_line, kind, signature, body_hash, container) VALUES ($p1, $p2, $p3, $p4, $p5, $p6, $p7, $p8)",
+            map.Map.Declarations,
+            declaration => [declaration.Id, declaration.Path, declaration.Range.StartLine, declaration.Range.EndLine, declaration.Kind, declaration.Signature, declaration.BodyHash, SymbolContainer.Of(declaration)],
+            cancellationToken);
+        await InsertRowsAsync(
+            "INSERT INTO code_references (from_id, to_id, kind, path, line, col) VALUES ($p1, $p2, $p3, $p4, $p5, $p6)",
+            map.Map.References,
+            reference => [reference.From, reference.To, Name(reference.Kind), reference.Path, reference.Line, reference.Column],
+            cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 
@@ -683,6 +717,11 @@ public sealed class SqliteLedger : ILedger, IDisposable
         await using var edges = CreateCommand("SELECT from_id, to_id, kind FROM code_edges ORDER BY rowid");
         await using var entries = CreateCommand("SELECT symbol_id, kind, display FROM code_entry_points ORDER BY rowid");
         await using var ui = CreateCommand("SELECT kind, text, path, line, control, target, section, route FROM code_ui_elements ORDER BY rowid");
+        await using var declarations = CreateCommand("SELECT id, path, start_line, end_line, kind, signature, body_hash FROM code_declarations ORDER BY rowid");
+        await using var references = CreateCommand("SELECT from_id, to_id, kind, path, line, col FROM code_references ORDER BY rowid");
+        var rawReferences = await ReadAllAsync(references, reader => (From: reader.GetString(0), To: reader.GetString(1), Kind: reader.GetString(2), Path: reader.GetString(3), Line: reader.GetInt32(4), Column: reader.GetInt32(5)), cancellationToken);
+        var unknownReferenceKinds = rawReferences.Where(reference => !IsKnown<ReferenceKind>(reference.Kind)).GroupBy(reference => reference.Kind, StringComparer.Ordinal)
+            .Select(group => string.Create(CultureInfo.InvariantCulture, $"{group.Count()} reference(s) of kind '{group.Key}' are unknown to this version of codemuster and were skipped"));
         var rawEdges = await ReadAllAsync(edges, reader => (From: reader.GetString(0), To: reader.GetString(1), Kind: reader.GetString(2)), cancellationToken);
         // A newer build may store an edge kind this one does not know; the rest of the map is still worth reading.
         var unknownKinds = rawEdges.Where(edge => !IsKnownEdgeKind(edge.Kind)).GroupBy(edge => edge.Kind, StringComparer.Ordinal)
@@ -694,15 +733,21 @@ public sealed class SqliteLedger : ILedger, IDisposable
             rawEdges.Where(edge => IsKnownEdgeKind(edge.Kind)).Select(edge => new Edge(edge.From, edge.To, Enum.Parse<EdgeKind>(edge.Kind, ignoreCase: true))).ToList(),
             await ReadAllAsync(entries, reader => new EntryPoint(reader.GetString(0), reader.GetString(1), reader.GetString(2)), cancellationToken),
             headers[0].Resolution,
-            [.. headers[0].Diagnostics, .. unknownKinds])
+            [.. headers[0].Diagnostics, .. unknownKinds, .. unknownReferenceKinds])
         {
+            Declarations = await ReadAllAsync(declarations, reader => new Symbol(
+                reader.GetString(0), reader.GetString(1), new LineRange(reader.GetInt32(2), reader.GetInt32(3)), reader.GetString(4), reader.GetString(5), reader.GetString(6)), cancellationToken),
+            References = rawReferences.Where(reference => IsKnown<ReferenceKind>(reference.Kind))
+                .Select(reference => new Reference(reference.From, reference.To, Enum.Parse<ReferenceKind>(reference.Kind, ignoreCase: true), reference.Path, reference.Line, reference.Column)).ToList(),
             UiElements = await ReadAllAsync(ui, reader => new UiElement(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3),
                 Text(reader, 4), Text(reader, 5), Text(reader, 6), Text(reader, 7)), cancellationToken),
         };
         return new StoredCodeMap(headers[0].Head, headers[0].At, map, headers[0].Mapped, headers[0].Failed) { InputsDigest = headers[0].Digest };
     }
 
-    private static bool IsKnownEdgeKind(string kind) => Enum.TryParse<EdgeKind>(kind, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) && !char.IsAsciiDigit(kind[0]);
+    private static bool IsKnownEdgeKind(string kind) => IsKnown<EdgeKind>(kind);
+
+    private static bool IsKnown<T>(string kind) where T : struct, Enum => Enum.TryParse<T>(kind, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) && !char.IsAsciiDigit(kind[0]);
 
     /// <summary>Inserts every row through one prepared command whose parameters are created once, because a large repository's map has tens of thousands of rows.</summary>
     private async Task InsertRowsAsync<T>(string sql, IReadOnlyList<T> rows, Func<T, object[]> values, CancellationToken cancellationToken)
@@ -775,6 +820,11 @@ public sealed class SqliteLedger : ILedger, IDisposable
         if (version < 8)
         {
             await ExecuteAsync(SchemaVersion8, cancellationToken);
+        }
+
+        if (version < 9)
+        {
+            await ExecuteAsync(SchemaVersion9, cancellationToken);
         }
 
         await ExecuteAsync(AgentCallsSql, cancellationToken);

@@ -182,6 +182,56 @@ public class SqliteLedgerCodeMapTests
     }
 
     [Fact]
+    public async Task ReplaceCodeMap_RoundTripsDeclarationsAndReferences()
+    {
+        using var temp = new TempDirectory();
+        var quote = new Symbol("T:MixedRepo.Api.Data.Quote", "src/Api/Quote.cs", new LineRange(3, 9), "class", "public sealed class Quote", "decl-1");
+        var status = new Symbol("P:MixedRepo.Api.Data.Quote.Status", "src/Api/Quote.cs", new LineRange(6, 6), "property", "public string Status { get; set; }", "decl-2");
+        var map = First() with
+        {
+            Map = First().Map with
+            {
+                Declarations = [quote, status],
+                References =
+                [
+                    new Reference(ServiceList, quote.Id, ReferenceKind.Type, "src/Api/QuoteService.cs", 13, 20),
+                    new Reference(ServiceList, status.Id, ReferenceKind.Read, "src/Api/QuoteService.cs", 14, 31),
+                    new Reference(ListQuotes, ServiceList, ReferenceKind.Call, "src/Api/QuotesController.cs", 11, 16),
+                ],
+            },
+        };
+        using (var writer = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None))
+        {
+            await writer.ReplaceCodeMapAsync(map, CancellationToken.None);
+        }
+
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+        var stored = (await ledger.GetCodeMapAsync(CancellationToken.None))!;
+
+        Assert.Equal(map.Map.Declarations, stored.Map.Declarations);
+        Assert.Equal(map.Map.References, stored.Map.References);
+        Assert.Equal(map.Map.Symbols, stored.Map.Symbols);
+    }
+
+    [Fact]
+    public async Task GetCodeMap_SkipsAReferenceKindThisBuildDoesNotKnow_AndSaysSo()
+    {
+        using var temp = new TempDirectory();
+        var map = First() with { Map = First().Map with { References = [new Reference(ListQuotes, ServiceList, ReferenceKind.Call, "src/Api/QuotesController.cs", 11, 16)] } };
+        using (var writer = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None))
+        {
+            await writer.ReplaceCodeMapAsync(map, CancellationToken.None);
+        }
+
+        await RawSqlite.ExecuteAsync(temp.DatabasePath, "UPDATE code_references SET kind = 'teleport'");
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+        var stored = (await ledger.GetCodeMapAsync(CancellationToken.None))!;
+
+        Assert.Empty(stored.Map.References);
+        Assert.Contains("1 reference(s) of kind 'teleport' are unknown to this version of codemuster and were skipped", stored.Map.Diagnostics);
+    }
+
+    [Fact]
     public async Task ReplaceCodeMap_StoresEachSymbolsContainer_AndNoSourceText()
     {
         using var temp = new TempDirectory();

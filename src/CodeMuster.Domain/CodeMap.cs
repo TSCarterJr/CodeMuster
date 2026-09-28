@@ -83,6 +83,32 @@ public sealed record CodeMap(IReadOnlyList<Symbol> Symbols, IReadOnlyList<Edge> 
         init => SkippedLanguages = value ?? [];
     }
 
+    /// <summary>Declarations without a body that references can point at (D72): types, fields, properties, constants, enum members, and TypeScript interfaces, type aliases and exported constants. Slices never read them.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<Symbol> Declarations { get; init; } = [];
+
+    /// <summary>Every use of a symbol or declaration the mapper resolved (D72): calls, reads, writes, type uses, inheritance, attributes and imports, each at its position.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<Reference> References { get; init; } = [];
+
+    [JsonInclude]
+    [JsonPropertyName("declarations")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    private IReadOnlyList<Symbol>? SerializedDeclarations
+    {
+        get => Declarations.Count == 0 ? null : Declarations;
+        init => Declarations = value ?? [];
+    }
+
+    [JsonInclude]
+    [JsonPropertyName("references")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    private IReadOnlyList<Reference>? SerializedReferences
+    {
+        get => References.Count == 0 ? null : References;
+        init => References = value ?? [];
+    }
+
     // Written only when there is at least one element, so a map without UI reads and writes as before.
     [JsonInclude]
     [JsonPropertyName("ui_elements")]
@@ -126,3 +152,40 @@ public sealed record HttpCall(string From, string Method, string? Url, string Te
     /// <summary>Starts every map diagnostic the UI-to-API join records, so a reader can tell them from mapper diagnostics.</summary>
     public const string DiagnosticPrefix = "http: ";
 }
+
+/// <summary>How a reference uses what it points at (D72).</summary>
+public enum ReferenceKind
+{
+    /// <summary>A call or constructor invocation.</summary>
+    Call,
+
+    /// <summary>A read of a field, property, constant, enum member or variable.</summary>
+    Read,
+
+    /// <summary>An assignment to a field, property or variable.</summary>
+    Write,
+
+    /// <summary>A use of a type: parameter, return, variable, generic argument, cast, <c>typeof</c> or <c>new</c>.</summary>
+    Type,
+
+    /// <summary>A class deriving from a class.</summary>
+    Inherit,
+
+    /// <summary>A type implementing an interface.</summary>
+    Implement,
+
+    /// <summary>An attribute or decorator applied to a declaration.</summary>
+    Attribute,
+
+    /// <summary>A TypeScript or JavaScript import of a symbol.</summary>
+    Import,
+}
+
+/// <summary>One resolved use of a symbol or declaration (D72).</summary>
+/// <param name="From">Id of the symbol or declaration that contains the use, or the file's path when nothing contains it.</param>
+/// <param name="To">Id of the symbol or declaration used.</param>
+/// <param name="Kind">How it is used.</param>
+/// <param name="Path">Repo-relative path of the file holding the use.</param>
+/// <param name="Line">1-based line of the use.</param>
+/// <param name="Column">1-based column of the use.</param>
+public sealed record Reference(string From, string To, ReferenceKind Kind, string Path, int Line, int Column);

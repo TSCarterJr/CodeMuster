@@ -70,6 +70,22 @@ public class CompositeMapperTests
     }
 
     [Fact]
+    public async Task DeclarationsAndReferences_OfEveryMapper_AreMergedInMapperOrder()
+    {
+        Symbol[] csharpDeclarations = [new("T:MixedRepo.Api.Data.Quote", MixedRepo.ControllerPath, new LineRange(3, 9), "class", "public sealed class Quote", "decl-cs")];
+        Symbol[] typescriptDeclarations = [new("web/lib/api.ts#Quote", "web/lib/api.ts", new LineRange(1, 4), "interface", "export interface Quote", "decl-ts")];
+        Reference[] csharpReferences = [new(MixedRepo.ControllerListQuotes, "T:MixedRepo.Api.Data.Quote", ReferenceKind.Type, MixedRepo.ControllerPath, 9, 20)];
+        Reference[] typescriptReferences = [new("web/lib/api.ts#fetchQuotes", "web/lib/api.ts#Quote", ReferenceKind.Type, "web/lib/api.ts", 8, 60)];
+        var csharp = new FakeCodeMapper(Languages.CSharp, MixedRepo.CSharp() with { Declarations = csharpDeclarations, References = csharpReferences });
+        var typescript = new FakeCodeMapper(Languages.TypeScript, MixedRepo.TypeScript() with { Declarations = typescriptDeclarations, References = typescriptReferences });
+
+        var mapped = await MapAsync(csharp, typescript);
+
+        Assert.Equal(csharpDeclarations.Concat(typescriptDeclarations), mapped.Map.Declarations);
+        Assert.Equal(csharpReferences.Concat(typescriptReferences), mapped.Map.References);
+    }
+
+    [Fact]
     public async Task MapperWhoseLanguageHasNoIncludedFile_IsNotRun()
     {
         var go = new FakeCodeMapper(Languages.Go, MixedRepo.CSharp());

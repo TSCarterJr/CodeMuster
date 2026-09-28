@@ -8,7 +8,7 @@ public class SqliteLedgerSchemaTests
     private const string Tables = "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name";
 
     private static readonly List<string> AllTables =
-        ["agent_calls", "analyses", "code_edges", "code_entry_points", "code_map", "code_symbols", "code_ui_elements", "files", "findings", "runs", "unit_members", "units"];
+        ["agent_calls", "analyses", "code_declarations", "code_edges", "code_entry_points", "code_map", "code_references", "code_symbols", "code_ui_elements", "files", "findings", "runs", "unit_members", "units"];
 
     [Fact]
     public async Task VersionSixUpgradesWithoutChangingRows_BeforeSkippedStatusIsWritten()
@@ -22,7 +22,7 @@ public class SqliteLedgerSchemaTests
 
         using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
 
-        Assert.Equal(8L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
+        Assert.Equal(9L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
         var unit = Assert.Single(await ledger.GetUnitsAsync(CancellationToken.None));
         Assert.Equal(UnitStatus.Done, unit.Status);
         Assert.Equal("retained", unit.Summary);
@@ -42,7 +42,7 @@ public class SqliteLedgerSchemaTests
 
         using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
 
-        Assert.Equal(8L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
+        Assert.Equal(9L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
         Assert.Equal(AllTables, await RawSqlite.StringsAsync(temp.DatabasePath, Tables));
         var unit = Assert.Single(await ledger.GetUnitsAsync(CancellationToken.None));
         Assert.Equal((UnitStatus.Skipped, "too large"), (unit.Status, unit.Summary));
@@ -62,7 +62,7 @@ public class SqliteLedgerSchemaTests
     }
 
     [Fact]
-    public async Task Open_TwiceIsIdempotentAndLeavesUserVersionAtEight()
+    public async Task Open_TwiceIsIdempotentAndLeavesUserVersionAtNine()
     {
         using var temp = new TempDirectory();
         using (await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None))
@@ -71,8 +71,8 @@ public class SqliteLedgerSchemaTests
 
         using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
 
-        Assert.Equal(8L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
-        Assert.Equal(8L, await RawSqlite.ScalarAsync<long>(temp.DatabasePath, "PRAGMA user_version"));
+        Assert.Equal(9L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
+        Assert.Equal(9L, await RawSqlite.ScalarAsync<long>(temp.DatabasePath, "PRAGMA user_version"));
         Assert.Equal(AllTables, await RawSqlite.StringsAsync(temp.DatabasePath, Tables));
     }
 
@@ -88,7 +88,7 @@ public class SqliteLedgerSchemaTests
 
         using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
 
-        Assert.Equal(8L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
+        Assert.Equal(9L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
         Assert.Equal([new UnitMember("file:src/A.cs", "src/A.cs", null, "h1", 0)], await ledger.GetMembersAsync(["file:src/A.cs"], CancellationToken.None));
         var run = await ledger.GetLastRunAsync(CancellationToken.None);
         Assert.NotNull(run);
@@ -108,7 +108,7 @@ public class SqliteLedgerSchemaTests
 
         using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
 
-        Assert.Equal(8L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
+        Assert.Equal(9L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
         var finding = Assert.Single(await ledger.GetCurrentFindingsAsync(CancellationToken.None));
         Assert.Equal((1L, "claim"), (finding.Id, finding.Finding.Claim));
         Assert.Null(finding.Verification);
@@ -126,7 +126,7 @@ public class SqliteLedgerSchemaTests
 
         using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
 
-        Assert.Equal(8L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
+        Assert.Equal(9L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
         Assert.Empty(await ledger.GetProvenanceAsync(CancellationToken.None));
         Assert.Equal(UnitStatus.Done, Assert.Single(await ledger.GetUnitsAsync(CancellationToken.None)).Status);
     }
@@ -144,7 +144,7 @@ public class SqliteLedgerSchemaTests
 
         using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
 
-        Assert.Equal(8L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
+        Assert.Equal(9L, await ledger.ReadPragmaAsync("user_version", CancellationToken.None));
         var finding = Assert.Single(await ledger.GetCurrentFindingsAsync(CancellationToken.None));
         Assert.Equal(Verdict.Confirmed, finding.Verification!.Verdict);
         Assert.Null(finding.Fix);
@@ -154,12 +154,29 @@ public class SqliteLedgerSchemaTests
     public async Task Open_RefusesALedgerWrittenByANewerVersion()
     {
         using var temp = new TempDirectory();
-        await RawSqlite.ExecuteAsync(temp.DatabasePath, "PRAGMA user_version = 9");
+        await RawSqlite.ExecuteAsync(temp.DatabasePath, "PRAGMA user_version = 10");
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None));
 
         Assert.Contains("newer codemuster", error.Message);
+        Assert.Equal(10L, await RawSqlite.ScalarAsync<long>(temp.DatabasePath, "PRAGMA user_version"));
+    }
+
+    [Fact]
+    public async Task Open_UpgradesASchema8Ledger_WithDeclarationAndReferenceTables()
+    {
+        using var temp = new TempDirectory();
+        using (await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None))
+        {
+        }
+
+        await RawSqlite.ExecuteAsync(temp.DatabasePath, "DROP TABLE code_declarations; DROP TABLE code_references; PRAGMA user_version = 8;");
+        using (await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None))
+        {
+        }
+
         Assert.Equal(9L, await RawSqlite.ScalarAsync<long>(temp.DatabasePath, "PRAGMA user_version"));
+        Assert.Equal(2L, await RawSqlite.ScalarAsync<long>(temp.DatabasePath, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('code_declarations', 'code_references')"));
     }
 
     [Fact]
