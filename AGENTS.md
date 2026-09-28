@@ -2,6 +2,20 @@
 
 ## Current task status
 
+- 2026-09-28, claude: PROC1 (D77) ties every child process to codemuster's lifetime
+  and gives it an empty standard input, after a `dotnet list package` audit child of
+  `scan` ran orphaned for three days. All seven launchers start children through
+  Infrastructure's `ChildProcesses.Start` (TypeScriptMapper receives it from the
+  composition root): stdin is closed unless the launcher writes input; on Windows
+  the child joins one non-inheritable KILL_ON_JOB_CLOSE job (best effort); live
+  children's trees are killed on ProcessExit, SIGTERM and SIGHUP, and Ctrl+C keeps
+  SIG1's drain. A test keeps `Process.Start` out of every other source file. The new
+  CLI tests failed first on Windows and on Ubuntu under WSL (the killed codemuster's
+  `test_command` child survived; `validate` hung on a child reading stdin) and pass
+  after, SIGHUP included on Linux. SIGKILL cannot be caught on macOS and Linux, and
+  a SIGKILLed npm launcher there leaves the native binary running (on Windows
+  libuv's job takes it). macOS was not run. All 2,079 .NET and 74 npm tests pass.
+  Not pushed or tagged; REL051 (release 0.5.1) is open.
 - 2026-09-28, claude: 0.5.0 work on main at Tim's request: references (REF0-REF4, D72, D76,
   schema 9), impact and dead code over references and `map references` (REF3), the read-only
   `codemuster mcp` server and its registration in the plugin, init and skill (MCP1-2, D73),

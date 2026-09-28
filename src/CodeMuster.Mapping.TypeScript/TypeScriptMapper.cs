@@ -11,11 +11,14 @@ public sealed class TypeScriptMapper : ICodeMapper
     private const string ProgressPrefix = "progress: ";
 
     private readonly Func<string> _node;
+    private readonly Func<ProcessStartInfo, Process> _start;
 
     // Resolved only when there is TypeScript or JavaScript to map, so a machine without Node.js can still map C#.
-    public TypeScriptMapper(Func<string> node)
+    // start is Infrastructure's ChildProcesses.Start (D77), passed in because Mapping references only Domain.
+    public TypeScriptMapper(Func<string> node, Func<ProcessStartInfo, Process> start)
     {
         _node = node;
+        _start = start;
     }
 
     public string Language => Domain.Languages.TypeScript;
@@ -116,6 +119,7 @@ public sealed class TypeScriptMapper : ICodeMapper
                 process.Kill(entireProcessTree: true);
             }
 
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
             throw;
         }
     }
@@ -135,11 +139,11 @@ public sealed class TypeScriptMapper : ICodeMapper
         }
     }
 
-    private static Process StartNode(string node, ProcessStartInfo startInfo)
+    private Process StartNode(string node, ProcessStartInfo startInfo)
     {
         try
         {
-            return Process.Start(startInfo) ?? throw new InvalidOperationException($"{node} did not start.");
+            return _start(startInfo);
         }
         catch (Win32Exception error)
         {

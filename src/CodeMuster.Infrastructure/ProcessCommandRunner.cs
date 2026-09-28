@@ -50,7 +50,7 @@ public sealed class ProcessCommandRunner : ICommandRunner
         Process process;
         try
         {
-            process = Process.Start(startInfo) ?? throw new InvalidOperationException($"{command[0]} did not start.");
+            process = ChildProcesses.Start(startInfo);
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
         {

@@ -248,7 +248,7 @@ public sealed class DependencyAuditor : IDependencyAuditor
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromMinutes(5));
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"{executable} did not start.");
+        using var process = ChildProcesses.Start(startInfo);
         try
         {
             var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
@@ -263,6 +263,7 @@ public sealed class DependencyAuditor : IDependencyAuditor
                 process.Kill(entireProcessTree: true);
             }
 
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
             throw;
         }
     }

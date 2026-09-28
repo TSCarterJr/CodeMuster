@@ -39,7 +39,7 @@ internal static class HeadlessProcess
         foreach (var (key, value) in environment ?? new Dictionary<string, string>()) startInfo.Environment[key] = value;
         startInfo.Environment["CODEMUSTER_WORKER"] = "1";
 
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"{executable} did not start.");
+        using var process = ChildProcesses.Start(startInfo);
         try
         {
             var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);

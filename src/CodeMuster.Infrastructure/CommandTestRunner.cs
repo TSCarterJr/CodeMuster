@@ -24,7 +24,7 @@ public sealed class CommandTestRunner(string repoRoot, IReadOnlyList<string> com
             startInfo.ArgumentList.Add(argument);
         }
 
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"{command[0]} did not start.");
+        using var process = ChildProcesses.Start(startInfo);
         try
         {
             var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);

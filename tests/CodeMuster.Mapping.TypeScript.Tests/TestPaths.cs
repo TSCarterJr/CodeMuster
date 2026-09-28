@@ -13,6 +13,10 @@ internal static class TestPaths
         .Select(directory => Path.Combine(directory, OperatingSystem.IsWindows() ? "node.exe" : "node"))
         .First(File.Exists);
 
+    /// <summary>Starts node as the mapper asks; the CLI passes Infrastructure's ChildProcesses.Start, which this project cannot reference.</summary>
+    public static Func<System.Diagnostics.ProcessStartInfo, System.Diagnostics.Process> Start { get; } =
+        startInfo => System.Diagnostics.Process.Start(startInfo) ?? throw new InvalidOperationException($"{startInfo.FileName} did not start.");
+
     public static string MixedRepo => Path.Combine(RepoRoot, "fixtures", "mixed-repo");
 
     public static string Golden => GoldenFor("mixed-repo");

@@ -51,7 +51,7 @@ public static class CodexSettingsResolver
         try
         {
             token.ThrowIfCancellationRequested();
-            using var process = Process.Start(start) ?? throw new InvalidOperationException(Failure);
+            using var process = ChildProcesses.Start(start);
             var stderr = DrainAsync(process.StandardError, token);
             try
             {

@@ -29,6 +29,32 @@ public static class CliProcess
             new Dictionary<string, string> { ["DOTNET_ROOT"] = root });
     }
 
+    /// <summary>
+    /// Starts the CLI and returns its running process (the dotnet host is the codemuster process) with output drained in the
+    /// background. Its standard input is a pipe held open and never written, as an MCP client or an agent's shell holds it.
+    /// </summary>
+    public static Process Start(string workingDirectory, params string[] args)
+    {
+        var start = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = workingDirectory,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var arg in (string[])[Path.Combine(AppContext.BaseDirectory, "codemuster.dll"), .. args])
+        {
+            start.ArgumentList.Add(arg);
+        }
+
+        start.Environment["CODEMUSTER_TEST_AGENT"] = "1";
+        var process = Process.Start(start) ?? throw new InvalidOperationException("dotnet did not start");
+        _ = process.StandardOutput.ReadToEndAsync();
+        _ = process.StandardError.ReadToEndAsync();
+        return process;
+    }
+
     private static async Task<CliResult> StartAsync(string program, IEnumerable<string> args, string workingDirectory, IReadOnlyDictionary<string, string>? environment, string? input = null)
     {
         var start = new ProcessStartInfo(program)

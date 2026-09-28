@@ -378,6 +378,8 @@ script run by `test_command` or by an agent must name a program in the current f
 for example `["cmd", "/c", ".\\build.cmd"]` rather than `build.cmd`.
 
 Choose a command that terminates, returns nonzero on failure, and covers the affected project.
+The command's standard input is empty, so a command that prompts reads end of input at once
+instead of waiting.
 Install its dependencies beforehand. `fix` runs it once on the unmodified tree before any agent
 call: if it fails, its program cannot start, or it changes tracked files, `fix` prints the
 command's last lines, restores any stash, and exits 1 without calling the agent. Fix the suite or
@@ -960,6 +962,14 @@ the 0.2.7 candidate with completed coverage preserved; this is not a guarantee f
 the common Git directory. A competing command, including in a linked worktree, fails clearly.
 The lock is released when the process exits; a leftover lock file need not be deleted. Reading
 packs is not a work lease, so manual reviewers still need one owner per assigned unit.
+
+Every process CodeMuster starts (git, the audit tools, the agents, `test_command`, node) gets an
+empty standard input and ends with CodeMuster (D77). On Windows the operating system kills them
+however CodeMuster exits, including a forced kill. On macOS and Linux CodeMuster kills them when it
+exits or receives SIGTERM or SIGHUP; SIGKILL cannot be caught, so after `kill -9` its children, and
+the native binary under a SIGKILLed npm launcher, keep running until you stop them. Build servers
+started by `test_command`, such as MSBuild worker nodes, end with CodeMuster as well. Roslyn's build
+host, started by C# mapping itself, exits when its pipe to CodeMuster breaks.
 
 Validation edits outside the selected tracked-file scope stop integration and are preserved
 for inspection. A failed commit never records a successful fix. If a commit succeeds but the

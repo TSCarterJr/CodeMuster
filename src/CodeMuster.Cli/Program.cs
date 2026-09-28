@@ -472,7 +472,7 @@ public static class Program
         };
     }
 
-    private static IReadOnlyList<ICodeMapper> Mappers() => [new RoslynMapper(), new TypeScriptMapper(() => ExecutableResolver.Resolve("node"))];
+    private static IReadOnlyList<ICodeMapper> Mappers() => [new RoslynMapper(), new TypeScriptMapper(() => ExecutableResolver.Resolve("node"), ChildProcesses.Start)];
 
     private static async Task<int> NextAsync(Command command, SqliteLedger ledger, GitSourceTree tree, Config config, CancellationToken cancellationToken)
     {

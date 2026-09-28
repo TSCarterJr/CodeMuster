@@ -43,7 +43,7 @@ internal static class GitProcess
             startInfo.Environment[name] = value;
         }
 
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("git did not start.");
+        using var process = ChildProcesses.Start(startInfo);
         try
         {
             var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);

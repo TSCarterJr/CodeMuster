@@ -4,6 +4,18 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
+## Unreleased
+
+- A child process CodeMuster starts (git, the audit tools, the agents, `test_command`, `doctor
+  --fix` commands, node for TypeScript mapping) no longer outlives it. On Windows the children
+  end with CodeMuster however it exits, even when it is force-killed; on macOS and Linux they
+  are killed when CodeMuster exits or receives SIGTERM or SIGHUP, but not after SIGKILL, which
+  cannot be caught. Ctrl+C still stops a run gracefully. Children also get an empty standard
+  input instead of CodeMuster's, so one that asks a question fails at once instead of waiting
+  forever. A `dotnet list package` audit started by `scan` had been left running for three
+  days after its parent was killed. Build servers a `test_command` starts (MSBuild nodes,
+  VBCSCompiler) now end with CodeMuster too, so the next build may start more slowly.
+
 ## 0.5.0 - 2026-09-28
 
 The ledger moves to schema 9 the first time 0.5.0 opens it, and CodeMuster 0.3.7 and earlier

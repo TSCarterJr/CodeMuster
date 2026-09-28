@@ -9,7 +9,7 @@ public class JavaScriptTests
     {
         using var temp = TestPaths.ExpressJsWithTypeScript();
 
-        var map = await new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None);
+        var map = await new TypeScriptMapper(TestPaths.Node, TestPaths.Start).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None);
 
         GoldenAssert.Matches(map, "express-js");
     }
@@ -19,7 +19,7 @@ public class JavaScriptTests
     {
         using var temp = TestPaths.ExpressJsWithTypeScript();
 
-        var map = await new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None);
+        var map = await new TypeScriptMapper(TestPaths.Node, TestPaths.Start).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None);
 
         Assert.Equal(
             [
@@ -47,7 +47,7 @@ public class JavaScriptTests
         temp.Write("src/app.js", "export function start() {\n  return helper();\n}\n\nfunction helper() {\n  return 1;\n}\n");
         temp.Write("scripts/build.js", "function build() {\n  return 2;\n}\n");
 
-        var map = await new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None);
+        var map = await new TypeScriptMapper(TestPaths.Node, TestPaths.Start).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None);
 
         Assert.Equal(["src/app.js#helper", "src/app.js#start"], map.Symbols.Select(symbol => symbol.Id));
         Assert.Equal([new Edge("src/app.js#start", "src/app.js#helper", EdgeKind.Call)], map.Edges);
@@ -99,7 +99,7 @@ public class JavaScriptTests
             server.get("/health", health);
             """ + "\n");
 
-        var map = await new TypeScriptMapper(TestPaths.Node).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None);
+        var map = await new TypeScriptMapper(TestPaths.Node, TestPaths.Start).MapAsync(temp.Root, TestPaths.RepoPaths(temp.Root), null, CancellationToken.None);
 
         Assert.Equal(
             [
