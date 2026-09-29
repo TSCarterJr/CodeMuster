@@ -2,6 +2,14 @@
 
 ## Current task status
 
+- 2026-09-29, claude: REL055 released 0.5.5: EST1 (estimate priced per recorded call, D82),
+  TESTS1 (test files kept out of AI review, still mapped; D79, D83), VERIFYB1 (up to six findings
+  of one analysis per verify call, ids like `verify:12,13`, no schema change; D78) and BATCH1 (up
+  to four small same-folder, same-lens units per `run` call; D80). Tag v0.5.5 at ace0ba2; release
+  36590909532 published all seven packages and the GitHub release; a fresh install reports 0.5.5.
+  All 2,147 .NET and 74 npm tests passed before release. Tim then agreed D84 to D86 (agent
+  questions at a terminal, `codemuster auto` and bare `codemuster`, remembered choices);
+  ASK1, AUTO1 and AUTO2 are in progress for 0.5.6.
 - 2026-09-29, claude: EST1 (D82) done: `estimate` prices pending calls per kind at the
   recorded cost per call and adds expected verify calls. ToolbagCRM: 14,007 calls, ~$5,136,
   against $59.76 from tokens. All 2,084 .NET tests pass. Next: VERIFYB1 (D78).
