@@ -22,6 +22,9 @@ public sealed class TempRepo : IDisposable
     /// <summary>Turns the dependency audit off, so end-to-end tests never reach the network.</summary>
     public void WithoutVulnerabilityScan() => AppendConfig("\"vulnerabilities\": false");
 
+    /// <summary>Gives every unit its own agent call (D80), for tests that count calls or usage per unit.</summary>
+    public void WithoutBatching() => AppendConfig("\"batch_units\": 1");
+
     /// <summary>Points the repository's test command at <paramref name="command"/>, as fix mode reads it.</summary>
     public void WithTestCommand(params string[] command)
     {

@@ -6,6 +6,10 @@ start with 0.2.8.
 
 ## Unreleased
 
+- `run` reviews up to four small units from the same folder, with the same lenses, in one agent
+  call. Each unit still gets its own analysis, findings and coverage, and a unit the reply leaves
+  out runs alone next. Each call carries the agent's full harness overhead, so this cuts the cost
+  of repositories with many small files. `batch_units` in config sets the limit, and `1` turns it off.
 - Verification sends each unit's code once for up to six of its findings, instead of once per
   finding, and records a separate verdict and reason for each. A finding the model leaves out is
   verified again on its own. `verify_batch` in config sets the batch size, and `1` restores one

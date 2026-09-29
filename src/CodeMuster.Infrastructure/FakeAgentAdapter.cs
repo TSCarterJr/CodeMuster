@@ -39,6 +39,19 @@ public sealed class FakeAgentAdapter : IAgentAdapter
     private string Respond(string pack)
     {
         if (_rawResponse is not null) return _rawResponse;
+        if (pack.StartsWith("# CodeMuster batch", StringComparison.Ordinal))
+        {
+            // A batched pack (D80): each unit's section is its own pack with headings one level down.
+            var sections = pack.Split("\n## Unit ").Skip(1).Select(section => (
+                Unit: section[(section.IndexOf(": ", StringComparison.Ordinal) + 2)..section.IndexOf('\n')],
+                Pack: string.Join('\n', section.Split('\n').Select(line => line.StartsWith("##", StringComparison.Ordinal) ? line[1..] : line))));
+            return BatchAnalysisResponseJson.Serialize(new BatchAnalysisResponse([.. sections.Select(section =>
+            {
+                var path = FirstFilePath(section.Pack);
+                return new UnitAnalysis(section.Unit, _template.Summary, [.. _template.Findings.Select(finding => finding with { Path = path })]);
+            })]));
+        }
+
         if (FixTargets(pack) is { Count: > 0 } targets)
         {
             if (_workingDirectory is not null)

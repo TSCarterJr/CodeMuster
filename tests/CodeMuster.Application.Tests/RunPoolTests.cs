@@ -43,7 +43,7 @@ public class RunPoolTests
         pack.Split('\n').Single(line => line.StartsWith("- unit: ", StringComparison.Ordinal))["- unit: ".Length..];
 
     private Run Running(FakeAgentAdapter adapter) =>
-        new(ledger, tree, clock, Config.Default, adapter, new Recording(reports));
+        new(ledger, tree, clock, Config.Default with { BatchUnits = 1 }, adapter, new Recording(reports));
 
     // Each call sleeps for its unit's ticks of virtual time, so the test decides when every call ends.
     private FakeAgentAdapter Sleeping(Dictionary<string, int> ticks) => new(async (pack, _) =>

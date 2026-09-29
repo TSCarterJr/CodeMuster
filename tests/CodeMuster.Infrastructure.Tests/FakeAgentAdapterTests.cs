@@ -89,6 +89,23 @@ public class FakeAgentAdapterTests
     }
 
     [Fact]
+    public async Task A_batched_analysis_pack_answers_every_unit_with_the_template_on_its_own_first_file()
+    {
+        var template = AnalysisResponseJson.Serialize(new AnalysisResponse("planted", [new Finding("x", 1, 1, Severity.Low, "correctness", "claim", "evidence", 0.9, "default")]));
+        var adapter = new FakeAgentAdapter(template);
+        var pack = string.Join('\n',
+            "# CodeMuster batch", "", "This call reviews 2 separate units.", "",
+            "## Unit 1 of 2: file:src/A.cs", "", "- unit: file:src/A.cs", "", "### Files", "", "#### src/A.cs (csharp)", "", "```csharp", "class A {}", "```", "",
+            "## Unit 2 of 2: file:src/B.cs", "", "- unit: file:src/B.cs", "", "### Files", "", "#### src/B.cs (csharp)", "", "```csharp", "class B {}", "```", "",
+            "## Response", "");
+
+        var response = BatchAnalysisResponseJson.Parse((await adapter.RunAsync(pack, CancellationToken.None)).Text);
+
+        Assert.Equal(["file:src/A.cs", "file:src/B.cs"], response.Units.Select(u => u.Unit));
+        Assert.Equal(["src/A.cs", "src/B.cs"], response.Units.Select(u => Assert.Single(u.Findings).Path));
+    }
+
+    [Fact]
     public async Task A_batch_verify_pack_answers_every_finding_by_id_on_the_same_confidence_rule()
     {
         var confident = new Finding("src/A.cs", 1, 2, Severity.High, "security", "claim", "evidence", 0.9, "default");

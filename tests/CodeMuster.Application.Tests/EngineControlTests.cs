@@ -35,7 +35,7 @@ public class EngineControlTests
     private static object? Field(EngineEvent e, string name) => e.Fields.TryGetValue(name, out var value) ? value : null;
 
     private Task<RunResult> RunAsync(IAgentAdapter adapter, int workers, Func<AgentIdentity, IAgentAdapter>? retarget = null) =>
-        new Run(ledger, tree, clock, Config.Default, adapter, new Progress<RunProgress>(), null, events, control, retarget)
+        new Run(ledger, tree, clock, Config.Default with { BatchUnits = 1 }, adapter, new Progress<RunProgress>(), null, events, control, retarget)
             .RunAsync(new RunOptions(workers, 1, false), guard.Token);
 
     // Each unit's call waits for its own release, so the test decides when every call ends.

@@ -38,7 +38,7 @@ public class RunTests
     private List<Unit> AddFileUnits(params string[] names) => names.Select(name => AddFileUnit($"src/{name}.cs")).ToList();
 
     private Task<RunResult> RunAsync(FakeAgentAdapter adapter, RunOptions options, CancellationToken cancellationToken = default, Action<RunProgress>? onReport = null) =>
-        new Run(ledger, tree, clock, Config.Default, adapter, new RecordingProgress(reports, onReport), notes).RunAsync(options, cancellationToken);
+        new Run(ledger, tree, clock, Config.Default with { BatchUnits = 1 }, adapter, new RecordingProgress(reports, onReport), notes).RunAsync(options, cancellationToken);
 
     private static FakeAgentAdapter Always(string response) => new((_, _) => Task.FromResult(response));
 
@@ -123,7 +123,7 @@ public class RunTests
         Assert.Contains("slice_token_budget", report);
 
         var retry = await new Run(ledger, tree, clock,
-            Config.Default with { SliceTokenBudget = Config.Default.SliceTokenBudget + 1 },
+            Config.Default with { BatchUnits = 1, SliceTokenBudget = Config.Default.SliceTokenBudget + 1 },
             adapter, new RecordingProgress(reports, null)).RunAsync(new RunOptions(parallelism, 2, true, Path: bad.Key), guard.Token);
 
         Assert.Equal(1, retry.Completed);

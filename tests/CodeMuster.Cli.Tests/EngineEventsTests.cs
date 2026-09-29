@@ -21,6 +21,7 @@ public class EngineEventsTests
         using var repo = TempRepo.FromFixture("mixed-repo");
         Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "init", "--yes", "--no-skills")).ExitCode);
         repo.WithoutVulnerabilityScan();
+        repo.WithoutBatching();
         var folder = Path.Combine(Path.GetTempPath(), "codemuster-engine-" + Guid.NewGuid().ToString("N"));
         var scanEvents = Path.Combine(folder, "scan.jsonl");
         var runEvents = Path.Combine(folder, "run.jsonl");

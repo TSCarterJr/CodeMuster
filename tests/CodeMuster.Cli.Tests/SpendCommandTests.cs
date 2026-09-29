@@ -11,6 +11,7 @@ public class SpendCommandTests
         using var repo = TempRepo.FromFixture("mixed-repo");
         Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "init", "--yes")).ExitCode);
         repo.WithoutVulnerabilityScan();
+        repo.WithoutBatching();
         Assert.Equal(0, (await CliProcess.RunAsync(repo.Root, "scan", "--mode", "file")).ExitCode);
         Assert.DoesNotContain("spend", (await CliProcess.RunAsync(repo.Root, "status")).Stdout);
 

@@ -27,7 +27,7 @@ public class SpendRecordingTests
     }
 
     private Task<RunResult> RunAsync(IAgentAdapter adapter, Config? config = null, int attempts = 1) =>
-        new Run(ledger, tree, clock, config ?? Config.Default, adapter, new Progress<RunProgress>()).RunAsync(new RunOptions(1, attempts, false), CancellationToken.None);
+        new Run(ledger, tree, clock, (config ?? Config.Default) with { BatchUnits = 1 }, adapter, new Progress<RunProgress>()).RunAsync(new RunOptions(1, attempts, false), CancellationToken.None);
 
     [Fact]
     public async Task Run_RecordsEachCall_WithItsUsageAndACostFixedFromTheTable()
@@ -97,9 +97,9 @@ public class SpendRecordingTests
         var adapter = new FakeAgentAdapter((_, _) => Task.FromResult(EmptyResponse)) { Usage = new AgentUsage(1_000_000, 0, 0, 0, "in-house-7", null) };
         var cheap = Config.Default with { Prices = [new ModelPrice("in-house-7", 1, 1)] };
         var dear = Config.Default with { Prices = [new ModelPrice("in-house-7", 9, 9)] };
-        await new Run(ledger, tree, clock, cheap, adapter, new Progress<RunProgress>()).RunAsync(new RunOptions(1, 1, false, Path: "src/a.cs"), CancellationToken.None);
+        await new Run(ledger, tree, clock, cheap with { BatchUnits = 1 }, adapter, new Progress<RunProgress>()).RunAsync(new RunOptions(1, 1, false, Path: "src/a.cs"), CancellationToken.None);
 
-        await new Run(ledger, tree, clock, dear, adapter, new Progress<RunProgress>()).RunAsync(new RunOptions(1, 1, false), CancellationToken.None);
+        await new Run(ledger, tree, clock, dear with { BatchUnits = 1 }, adapter, new Progress<RunProgress>()).RunAsync(new RunOptions(1, 1, false), CancellationToken.None);
 
         Assert.Equal([(1m, "config"), (9m, "config")], ledger.Calls.Select(c => (c.CostUsd!.Value, c.CostSource!)));
         var status = await new Status(ledger, dear).RunAsync(CancellationToken.None);
@@ -118,7 +118,7 @@ public class SpendRecordingTests
         ledger.Members.AddRange(verify.Members);
         var adapter = new FakeAgentAdapter((_, _) => Task.FromResult("""{"verdict": "confirmed", "reason": "it holds"}""")) { Usage = Sonnet };
 
-        await new Run(ledger, tree, clock, Config.Default, adapter, new Progress<RunProgress>()).RunAsync(new RunOptions(1, 1, false, UnitKind.Verify), CancellationToken.None);
+        await new Run(ledger, tree, clock, Config.Default with { BatchUnits = 1 }, adapter, new Progress<RunProgress>()).RunAsync(new RunOptions(1, 1, false, UnitKind.Verify), CancellationToken.None);
 
         var call = Assert.Single(ledger.Calls);
         Assert.Equal((verify.Id, UnitKind.Verify, "verify " + At2(clock), true), (call.UnitId, call.Kind, call.Run, call.Succeeded));

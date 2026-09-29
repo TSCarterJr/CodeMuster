@@ -251,7 +251,7 @@ public class ImpactTests
         var events = new RecordingEvents();
         var adapter = new FakeAgentAdapter((pack, _) => Task.FromResult("""{ "summary": "No caller breaks.", "findings": [] }""")) { Usage = new AgentUsage(10, 2, 0, 0, "fake", null) };
 
-        var result = await new Run(ledger, tree, clock, Config.Default with { Verify = false }, adapter, new Progress<RunProgress>(), null, events)
+        var result = await new Run(ledger, tree, clock, Config.Default with { BatchUnits = 1, Verify = false }, adapter, new Progress<RunProgress>(), null, events)
             .RunAsync(new RunOptions(1, 1, false, UnitKind.Impact), CancellationToken.None);
 
         Assert.Equal(1, result.Completed);

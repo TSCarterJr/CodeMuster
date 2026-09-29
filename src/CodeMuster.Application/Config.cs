@@ -37,6 +37,9 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     /// <summary>Most findings of one analysis verified in one agent call (D78); 1 gives every finding its own verify unit (D27).</summary>
     public int VerifyBatch { get; init; } = 6;
 
+    /// <summary>Most small units <c>run</c> reviews in one agent call (D80): units whose pack is at most a quarter of <see cref="SliceTokenBudget"/>, with the same lenses and the same directories; 1 turns batching off.</summary>
+    public int BatchUnits { get; init; } = 4;
+
     /// <summary>Whether test files are reviewed like any other file. Off by default: test files are recorded excluded with reason <c>test</c> but still mapped (D79).</summary>
     public bool ReviewTests { get; init; }
 

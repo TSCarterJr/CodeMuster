@@ -31,7 +31,7 @@ public class EngineEventTests
         pack.Split('\n').Single(line => line.StartsWith("- unit: ", StringComparison.Ordinal))["- unit: ".Length..];
 
     private Task<RunResult> RunAsync(IAgentAdapter adapter, RunOptions options, CancellationToken cancellationToken = default) =>
-        new Run(ledger, tree, clock, Config.Default, adapter, new Progress<RunProgress>(), null, events).RunAsync(options, cancellationToken);
+        new Run(ledger, tree, clock, Config.Default with { BatchUnits = 1 }, adapter, new Progress<RunProgress>(), null, events).RunAsync(options, cancellationToken);
 
     private static object? Field(EngineEvent e, string name) => e.Fields.TryGetValue(name, out var value) ? value : null;
 

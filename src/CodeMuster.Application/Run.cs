@@ -33,8 +33,10 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
         var calls = new CallRecorder(ledger, clock, config, adapter.Identity, command);
         var attempts = new Dictionary<string, int>(StringComparer.Ordinal);
         // In start order, so when several calls have ended the oldest is recorded first and none waits behind newer ones.
-        var running = new List<(Task<Attempt> Call, UnitPack Pack, AgentIdentity By, int Worker, DateTimeOffset StartedAt)>();
+        var running = new List<(Task<Attempt> Call, IReadOnlyList<UnitPack> Packs, AgentIdentity By, int Worker, DateTimeOffset StartedAt)>();
         var gaveUp = new List<string>();
+        // Units a batched call failed, or left out of its reply, are retried alone (D80).
+        var solo = new HashSet<string>(StringComparer.Ordinal);
         var skipped = new List<string>();
         var completed = 0;
         using var calling = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -56,15 +58,21 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                 var remaining = false;
                 if (free > 0)
                 {
-                    var busy = running.Select(entry => entry.Pack.UnitId).ToHashSet(StringComparer.Ordinal);
+                    var busy = running.SelectMany(entry => entry.Packs).Select(pack => pack.UnitId).ToHashSet(StringComparer.Ordinal);
                     var needing = await ledger.NextAsync(int.MaxValue, options.Kind, options.Path, cancellationToken);
                     total = completed + skipped.Count + needing.Count;
                     var startable = needing.Where(unit => !gaveUp.Contains(unit.Id) && !busy.Contains(unit.Id)).ToList();
                     remaining = startable.Count > 0;
-                    foreach (var unit in steering.Paused ? [] : startable.Take(free))
+                    var claimed = new HashSet<string>(StringComparer.Ordinal);
+                    var built = new Dictionary<string, UnitPack>(StringComparer.Ordinal);
+                    var slots = steering.Paused ? 0 : free;
+                    for (var i = 0; i < startable.Count && slots > 0; i++)
                     {
+                        if (!claimed.Add(startable[i].Id)) continue;
                         started = true;
-                        await StartAsync(unit);
+                        if (await BuildAsync(startable[i], built) is not { } pack) continue;
+                        Launch([pack, .. await CompanionsAsync(pack, startable.Skip(i + 1).Where(unit => !claimed.Contains(unit.Id)).Take(Lookahead).ToList(), claimed, built)]);
+                        slots--;
                     }
                 }
 
@@ -85,28 +93,36 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                     continue;
                 }
 
-                var (call, pack, by, _, startedAt) = running[index];
+                var (call, packs, by, _, startedAt) = running[index];
                 running.RemoveAt(index);
                 var attempt = await call;
                 cancellationToken.ThrowIfCancellationRequested();
-                var result = attempt.Failure ?? await new Done(ledger, clock, config, by).RunAsync(pack.UnitId, pack.Fingerprint, ResponseText.ExtractJson(attempt.Text), cancellationToken);
-                var spent = attempt.Paid is { } paid ? await calls.RecordAsync(pack.UnitId, pack.Kind, paid, result.Outcome == DoneOutcome.Recorded, cancellationToken, by) : null;
-                var report = Record(pack.UnitId, pack.Kind, pack.Key, result);
-                events.UnitFinished(pack.UnitId, pack.Kind, pack.Key, report.Attempt, EngineStream.Name(result.Outcome), report.Message,
-                    gaveUp.Contains(pack.UnitId), EngineStream.Milliseconds(startedAt, clock.UtcNow), spent);
-                foreach (var finding in result.Findings)
+                if (packs.Count == 1)
                 {
-                    events.Emit("finding_recorded", ("unit", pack.UnitId), ("path", finding.Path), ("line", finding.LineStart), ("severity", finding.Severity.ToString().ToLowerInvariant()), ("category", finding.Category));
+                    var single = attempt.Failure ?? await new Done(ledger, clock, config, by).RunAsync(packs[0].UnitId, packs[0].Fingerprint, ResponseText.ExtractJson(attempt.Text), cancellationToken);
+                    await FinishAsync(packs[0], single, attempt.Paid, by, startedAt);
+                    continue;
                 }
 
-                if (result.Verdict is { } verdict)
+                IReadOnlyDictionary<string, AnalysisResponse>? answers = null;
+                string? unreadable = null;
+                if (attempt.Failure is null)
                 {
-                    events.Emit("verify_outcome", ("unit", pack.UnitId), ("key", pack.Key), ("verdict", verdict.ToString().ToLowerInvariant()));
+                    try { answers = BatchPack.Split(ResponseText.ExtractJson(attempt.Text)); }
+                    catch (System.Text.Json.JsonException ex) { unreadable = ex.Message; }
                 }
 
-                foreach (var each in result.Verdicts)
+                var shares = Shares(attempt.Paid, packs);
+                for (var p = 0; p < packs.Count; p++)
                 {
-                    events.Emit("verify_outcome", ("unit", pack.UnitId), ("key", pack.Key), ("finding", each.Finding), ("verdict", each.Verdict.ToString().ToLowerInvariant()));
+                    var pack = packs[p];
+                    var each = attempt.Failure
+                        ?? (unreadable is not null ? new DoneResult(DoneOutcome.Rejected, $"the batched response was not valid ({unreadable}); this unit runs alone next")
+                        : answers!.TryGetValue(pack.UnitId, out var answer)
+                            ? await new Done(ledger, clock, config, by).RunAsync(pack.UnitId, pack.Fingerprint, AnalysisResponseJson.Serialize(answer), cancellationToken)
+                            : new DoneResult(DoneOutcome.Rejected, "the batched response left this unit out; it runs alone next"));
+                    if (each.Outcome != DoneOutcome.Recorded) solo.Add(pack.UnitId);
+                    await FinishAsync(pack, each, shares?[p], by, startedAt);
                 }
             }
         }
@@ -121,12 +137,35 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
             events.Emit("run_summary", ("command", command), ("completed", completed), ("gave_up", gaveUp.Count), ("skipped", skipped.Count), ("cancelled", cancellationToken.IsCancellationRequested));
         }
 
-        async Task StartAsync(Unit unit)
+        async Task FinishAsync(UnitPack pack, DoneResult result, AgentUsage? paid, AgentIdentity by, DateTimeOffset startedAt)
+        {
+            var spent = paid is not null ? await calls.RecordAsync(pack.UnitId, pack.Kind, paid, result.Outcome == DoneOutcome.Recorded, cancellationToken, by) : null;
+            var report = Record(pack.UnitId, pack.Kind, pack.Key, result);
+            events.UnitFinished(pack.UnitId, pack.Kind, pack.Key, report.Attempt, EngineStream.Name(result.Outcome), report.Message,
+                gaveUp.Contains(pack.UnitId), EngineStream.Milliseconds(startedAt, clock.UtcNow), spent);
+            foreach (var finding in result.Findings)
+            {
+                events.Emit("finding_recorded", ("unit", pack.UnitId), ("path", finding.Path), ("line", finding.LineStart), ("severity", finding.Severity.ToString().ToLowerInvariant()), ("category", finding.Category));
+            }
+
+            if (result.Verdict is { } verdict)
+            {
+                events.Emit("verify_outcome", ("unit", pack.UnitId), ("key", pack.Key), ("verdict", verdict.ToString().ToLowerInvariant()));
+            }
+
+            foreach (var each in result.Verdicts)
+            {
+                events.Emit("verify_outcome", ("unit", pack.UnitId), ("key", pack.Key), ("finding", each.Finding), ("verdict", each.Verdict.ToString().ToLowerInvariant()));
+            }
+        }
+
+        // Builds a unit's pack, or handles it without a call: an oversized pack is skipped, a pack that cannot be built is a rejected attempt, and browser work is given up to a browser-capable session.
+        async Task<UnitPack?> BuildAsync(Unit unit, Dictionary<string, UnitPack> built)
         {
             UnitPack pack;
             try
             {
-                pack = await next.ForUnitAsync(unit.Id, cancellationToken);
+                pack = built.Remove(unit.Id, out var ready) ? ready : await next.ForUnitAsync(unit.Id, cancellationToken);
             }
             catch (PackTooLargeException ex)
             {
@@ -135,13 +174,13 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                 progress.Report(new RunProgress(unit.Id, unit.Kind, unit.Key, 0, DoneOutcome.Skipped,
                     "skipped: " + ex.Message, completed, total));
                 events.Skipped(unit.Id, unit.Kind, unit.Key, ex.Message);
-                return;
+                return null;
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
                 var report = Record(unit.Id, unit.Kind, unit.Key, new DoneResult(DoneOutcome.Rejected, ex.Message));
                 events.Emit("unit_not_started", ("unit", unit.Id), ("kind", EngineStream.Name(unit.Kind)), ("key", unit.Key), ("attempt", report.Attempt), ("reason", report.Message), ("gave_up", gaveUp.Contains(unit.Id)));
-                return;
+                return null;
             }
 
             if (pack.RequiresBrowser)
@@ -150,15 +189,63 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                 gaveUp.Add(pack.UnitId);
                 progress.Report(new RunProgress(pack.UnitId, pack.Kind, pack.Key, 0, DoneOutcome.Rejected, BrowserOnly, completed, total));
                 events.Emit("unit_not_started", ("unit", pack.UnitId), ("kind", EngineStream.Name(pack.Kind)), ("key", pack.Key), ("attempt", 0), ("reason", BrowserOnly), ("gave_up", true));
-                return;
+                return null;
             }
 
-            notes?.Report($"starting {Name(pack.Kind)} {pack.Key}");
+            return pack;
+        }
+
+        // A small first-attempt pack takes following units with the same lenses and directories while they fit (D80); the rest wait for their own turn.
+        async Task<IReadOnlyList<UnitPack>> CompanionsAsync(UnitPack first, IReadOnlyList<Unit> following, HashSet<string> claimed, Dictionary<string, UnitPack> built)
+        {
+            if (config.BatchUnits <= 1 || !Batchable(first) || following.Count == 0) return [];
+            var members = (await ledger.GetMembersAsync([first.UnitId, .. following.Select(unit => unit.Id)], cancellationToken))
+                .ToLookup(member => member.UnitId, StringComparer.Ordinal);
+            var key = GroupKey(first, members);
+            var group = new List<UnitPack>();
+            var tokens = Tokens(first);
+            foreach (var unit in following.Where(unit => unit.Kind is not (UnitKind.Verify or UnitKind.Fix)))
+            {
+                if (group.Count + 1 >= config.BatchUnits) break;
+                UnitPack pack;
+                try
+                {
+                    pack = built.TryGetValue(unit.Id, out var ready) ? ready : built[unit.Id] = await next.ForUnitAsync(unit.Id, cancellationToken);
+                }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    continue;
+                }
+
+                if (!Batchable(pack) || GroupKey(pack, members) != key || tokens + Tokens(pack) > config.SliceTokenBudget) continue;
+                tokens += Tokens(pack);
+                group.Add(pack);
+                claimed.Add(unit.Id);
+                built.Remove(unit.Id);
+            }
+
+            return group;
+        }
+
+        bool Batchable(UnitPack pack) =>
+            pack.Kind is not (UnitKind.Verify or UnitKind.Fix) && !pack.RequiresBrowser && !solo.Contains(pack.UnitId)
+            && attempts.GetValueOrDefault(pack.UnitId) == 0 && Tokens(pack) <= config.SliceTokenBudget / 4;
+
+        void Launch(IReadOnlyList<UnitPack> packs)
+        {
+            notes?.Report(packs.Count == 1
+                ? $"starting {Name(packs[0].Kind)} {packs[0].Key}"
+                : string.Create(CultureInfo.InvariantCulture, $"starting {packs.Count} units together: {string.Join(", ", packs.Select(pack => pack.Key))}"));
             var identity = steering.Identity;
             if (!adapters.TryGetValue(identity, out var agent)) adapters[identity] = agent = retarget!(identity);
             var worker = EngineStream.FreeWorker(running.Select(entry => entry.Worker));
-            events.UnitStarted(pack.UnitId, pack.Kind, pack.Key, worker, attempts.GetValueOrDefault(pack.UnitId) + 1);
-            running.Add((CallAsync(agent, pack.Markdown, calling.Token), pack, identity, worker, clock.UtcNow));
+            foreach (var pack in packs)
+            {
+                events.UnitStarted(pack.UnitId, pack.Kind, pack.Key, worker, attempts.GetValueOrDefault(pack.UnitId) + 1);
+            }
+
+            var markdown = packs.Count == 1 ? packs[0].Markdown : BatchPack.Compose(packs);
+            running.Add((CallAsync(agent, markdown, calling.Token), packs, identity, worker, clock.UtcNow));
         }
 
         RunProgress Record(string unitId, UnitKind kind, string key, DoneResult result)
@@ -180,6 +267,33 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
             progress.Report(report);
             return report;
         }
+    }
+
+    private const int Lookahead = 16;
+
+    private static long Tokens(UnitPack pack) => pack.Markdown.Length / 4;
+
+    // Units batch only with the same lens line and the same member directories (D80).
+    private static string GroupKey(UnitPack pack, ILookup<string, UnitMember> members) =>
+        pack.Markdown.Split('\n').FirstOrDefault(line => line.StartsWith("- lenses: ", StringComparison.Ordinal)) + "\n"
+        + string.Join(",", members[pack.UnitId].Select(member => member.Path.LastIndexOf('/') is var slash and >= 0 ? member.Path[..slash] : "").Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
+
+    // A batch call's usage split across its units in proportion to pack size, the last unit taking what rounding leaves.
+    private static IReadOnlyList<AgentUsage>? Shares(AgentUsage? paid, IReadOnlyList<UnitPack> packs)
+    {
+        if (paid is null) return null;
+        var weights = packs.Select(pack => (decimal)Math.Max(1, pack.Markdown.Length)).ToList();
+        var total = weights.Sum();
+        long? Part(long? value, int i) => value is not { } v ? null
+            : i == packs.Count - 1 ? v - Enumerable.Range(0, i).Sum(j => (long)Math.Floor(v * weights[j] / total))
+            : (long)Math.Floor(v * weights[i] / total);
+        decimal? Money(decimal? value, int i) => value is not { } v ? null
+            : i == packs.Count - 1 ? v - Enumerable.Range(0, i).Sum(j => Math.Round(v * weights[j] / total, 6))
+            : Math.Round(v * weights[i] / total, 6);
+        return [.. packs.Select((_, i) => new AgentUsage(Part(paid.InputTokens, i), Part(paid.OutputTokens, i), Part(paid.CacheReadTokens, i), Part(paid.CacheWriteTokens, i), paid.Model, Money(paid.ReportedCostUsd, i))
+        {
+            CacheWrite1hTokens = Part(paid.CacheWrite1hTokens, i),
+        })];
     }
 
     // Never throws, so the loop can wait on every call at once; a failed call becomes a rejected attempt.

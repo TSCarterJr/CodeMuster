@@ -310,6 +310,7 @@ Edit the existing `.codemuster/config.json`; keep lenses that are already useful
 | `slice_token_budget` | `24000` | Approximate amount of full code in a slice before farther members are reduced to signatures. |
 | `resolution_threshold` | `0.9` | Required fraction of resolved calls for slice coverage to be considered complete. |
 | `verify` | `true` | Create a verification pass for reported findings. |
+| `batch_units` | `4` | Most small units `run` reviews in one agent call. A unit qualifies when its pack is at most a quarter of `slice_token_budget` and it is on its first attempt; units share a call only with the same lenses and the same folders, and together stay within `slice_token_budget`. Each unit keeps its own analysis and findings, and a unit the reply leaves out runs alone next. The call's usage is split across its units by pack size, so `status` and `report` count one priced row per unit. `1` turns batching off. |
 | `verify_batch` | `6` | Most findings of one analysis verified in one agent call. The code is sent once and each finding still gets its own verdict and reason. `1` gives every finding its own call. |
 | `vulnerabilities` | `true` | Run ecosystem dependency audit tools during scanning. |
 | `dead_code` | `false` | Record conservative static usage assessments and report-only unused candidates during scan. |
