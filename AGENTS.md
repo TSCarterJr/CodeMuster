@@ -2,6 +2,20 @@
 
 ## Current task status
 
+- 2026-09-29, claude: Tim agreed D78 to D82 (D83: tests do not count for dead code; Jev's
+  reversed verify scores come from one repo's English-only admin policy, so no flip). Proposed: verify in
+  batches of up to six findings per reporting unit (D78), test files classified and kept out
+  of AI review by default (D79), small units batched up to four per call by shared directory
+  and lens set (D80), no Jev integration (D81), and `estimate` priced from recorded cost per
+  call (D82). Evidence from ToolbagCRM's ledger: its 56 recorded Claude calls cost $0.30 to
+  $0.44 each, against the estimate's ~$0.02 per unit; 26% of pending units are tests; and
+  2.6 to 4.3 findings per unit means 6,700 to 11,000 more verify calls. `scripts/jev-measure.py`
+  (stdlib Python, reads the ledger read-only, API key from an environment variable) measured
+  Jev for $0.25: it scored LLM-confirmed findings lower than refuted ones, and 55 of 56
+  analysed units had findings, so there was nothing clean to skip. No production code
+  changed. Raw Jev answers are in ignored TestResults/jev-2026-09-29/. The script is
+  untracked and must be committed with the decisions, since D81 cites it; nothing is committed. Tim pasted an OpenRouter key
+  into chat: it should be rotated.
 - 2026-09-28, claude: REL051 released 0.5.1 (PROC1: children end with codemuster, empty
   stdin, D77). Tag v0.5.1 at 524660f; release 36450647121 attempt 1 failed a Windows test
   with a 5 s wall-clock bound, attempt 2 on the same tag published all seven packages and the
