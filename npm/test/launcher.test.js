@@ -567,3 +567,38 @@ for (const platform of ['win32', 'darwin', 'linux']) {
     for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) assert.equal(parent.listenerCount(signal), 0);
   });
 }
+
+test('auto and a bare codemuster at a terminal offer the update; --yes installs, and --skip or --steps without update do neither (D85)', () => {
+  const mode = launcher.autoUpdateMode;
+  assert.equal(mode([], true), 'ask');
+  assert.equal(mode([], false), null);
+  assert.equal(mode(['auto'], true), 'ask');
+  assert.equal(mode(['AUTO', '--agent', 'claude'], true), 'ask');
+  assert.equal(mode(['auto', '--yes'], false), 'install');
+  assert.equal(mode(['auto', '--yes'], true), 'install');
+  assert.equal(mode(['auto'], false), null);
+  assert.equal(mode(['auto', '--skip', 'verify,update'], true), null);
+  assert.equal(mode(['auto', '--skip=update'], true), null);
+  assert.equal(mode(['auto', '--steps', 'scan,run'], true), null);
+  assert.equal(mode(['auto', '--steps', 'update,scan'], true), 'ask');
+  assert.equal(mode(['run', '--agent', 'claude'], true), null);
+});
+
+test('offering an update installs it only when the answer or --yes says so, then runs the newer build', async () => {
+  const installed = [];
+  const run = (mode, answer, latest = '0.5.6') => launcher.offerUpdate({
+    mode,
+    currentVersion: '0.5.5',
+    check: async () => latest,
+    ask: async (question) => { assert.match(question, /Install codemuster 0\.5\.6 now/); return answer; },
+    install: async () => { installed.push(mode); return 0; },
+  });
+
+  assert.equal(await run('ask', 'n'), false);
+  assert.equal(await run('ask', ''), true);
+  assert.equal(await run('ask', 'yes'), true);
+  assert.equal(await run('install', null), true);
+  assert.equal(await run('ask', 'y', '0.5.5'), false);
+  assert.equal(await run('ask', 'y', null), false);
+  assert.deepEqual(installed, ['ask', 'ask', 'install']);
+});

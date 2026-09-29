@@ -304,6 +304,44 @@ async function updateNow({ args, stateDir, platform, arch, currentVersion, regis
   return 0;
 }
 
+// Whether this command offers an update before it runs (D85): auto, or a bare codemuster at a terminal, which opens auto.
+// 'ask' asks first, 'install' installs without asking (--yes), and null leaves updates to the usual background check.
+// --skip naming update, or --steps not naming it, turns the offer off.
+function autoUpdateMode(args, isTTY) {
+  const verb = args[0]?.toLowerCase();
+  if (args.length === 0 ? !isTTY : verb !== 'auto') return null;
+  const named = (option) => {
+    const index = args.findIndex((arg) => arg === option || arg.startsWith(option + '='));
+    if (index < 0) return null;
+    const value = args[index].includes('=') ? args[index].slice(option.length + 1) : args[index + 1] || '';
+    return value.split(',').map((name) => name.trim().toLowerCase());
+  };
+  if (named('--skip')?.includes('update')) return null;
+  const steps = named('--steps');
+  if (steps && !steps.includes('update')) return null;
+  if (args.includes('--yes')) return 'install';
+  return isTTY ? 'ask' : null;
+}
+
+// Offers a newer version and installs it when the answer, or --yes, says so; true when the next build to run is the new one.
+async function offerUpdate({ mode, currentVersion, check, ask, install }) {
+  const latest = await check();
+  if (!latest || compareVersions(latest, currentVersion) <= 0) return false;
+  if (mode === 'ask') {
+    const answer = ((await ask(`Install codemuster ${latest} now and continue on it? [Y/n] `)) || '').trim().toLowerCase();
+    if (answer === 'n' || answer === 'no') return false;
+  }
+  return (await install()) === 0;
+}
+
+function askLine(question) {
+  const rl = require('node:readline').createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => { rl.close(); resolve(answer); });
+    rl.on('close', () => resolve(null));
+  });
+}
+
 async function main(args, env = process.env) {
   // The CLI reads its verb in any case, so the launcher's own verbs (update, and hook's exemptions) match the same way.
   const verb = args[0]?.toLowerCase();
@@ -342,6 +380,21 @@ async function main(args, env = process.env) {
     return updateNow({ args: args.slice(1), stateDir, platform, arch, currentVersion: build.version });
   }
 
+  const offer = !env.CI && !env.CODEMUSTER_NO_UPDATE && !pinnedVersion && env.CODEMUSTER_WORKER === undefined
+    ? autoUpdateMode(args, Boolean(process.stdin.isTTY && process.stdout.isTTY)) : null;
+  if (offer) {
+    const current = build.version;
+    const updated = await offerUpdate({
+      mode: offer,
+      currentVersion: current,
+      check: () => checkForUpdate({ currentVersion: current, out: process.stdout }),
+      ask: askLine,
+      install: () => updateNow({ args: [], stateDir, platform, arch, currentVersion: current }),
+    });
+    if (updated) build = newestBuild({ versionsDir, pinnedVersion, bundled: bundledBuild(platformPackage(platform, arch)), platform });
+    return runBuild(build.binary, args);
+  }
+
   // hook fires after every agent edit, an agent starts mcp as its server, and workers are CodeMuster's own agent processes; none is a command someone typed.
   const automated = verb === 'hook' || verb === 'mcp' || env.CODEMUSTER_WORKER !== undefined;
   if (!env.CI && !env.CODEMUSTER_NO_UPDATE && !pinnedVersion && !automated) {
@@ -363,6 +416,8 @@ async function main(args, env = process.env) {
 
 module.exports = {
   REGISTRY,
+  autoUpdateMode,
+  offerUpdate,
   versionsDirectory,
   binaryName,
   compareVersions,

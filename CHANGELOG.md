@@ -14,6 +14,9 @@ start with 0.2.8.
 - `run`, `verify` and `fix` ask which installed agent, model, thinking level and jobs to use when
   `--agent` is missing at a terminal. `--yes` asks nothing and skips the start countdown.
 - `run --no-verify` leaves the checks of new findings queued for `codemuster verify`.
+- `auto` and a bare `codemuster` at a terminal offer a newer CodeMuster before anything else, show
+  its release notes, and continue on it. `--yes` installs it without asking; `--skip update` does not
+  offer it.
 
 ## 0.5.5 - 2026-09-29
 
