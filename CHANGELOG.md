@@ -4,7 +4,10 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
-## Unreleased
+## 0.5.5 - 2026-09-29
+
+Use `npm install -g codemuster@0.5.5` to update. The ledger stays at schema 9; run `scan` once so
+test files are classified and waiting verify checks are regrouped.
 
 - `run` reviews up to four small units from the same folder, with the same lenses, in one agent
   call. Each unit still gets its own analysis, findings and coverage, and a unit the reply leaves
