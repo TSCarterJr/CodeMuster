@@ -2,6 +2,9 @@
 
 ## Current task status
 
+- 2026-09-29, claude: EST1 (D82) done: `estimate` prices pending calls per kind at the
+  recorded cost per call and adds expected verify calls. ToolbagCRM: 14,007 calls, ~$5,136,
+  against $59.76 from tokens. All 2,084 .NET tests pass. Next: VERIFYB1 (D78).
 - 2026-09-29, claude: Tim agreed D78 to D82 (D83: tests do not count for dead code; Jev's
   reversed verify scores come from one repo's English-only admin policy, so no flip). Proposed: verify in
   batches of up to six findings per reporting unit (D78), test files classified and kept out

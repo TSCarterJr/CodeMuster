@@ -44,6 +44,7 @@ public class SpendCommandTests
         var estimate = (await CliProcess.RunAsync(repo.Root, "estimate")).Stdout.ReplaceLineEndings("\n");
         Assert.Contains("\nAPI-equivalent cost of ~", estimate);
         Assert.Matches(@"\nfake ~\$\d+\.\d+\n", estimate);
-        Assert.Contains($"recorded calls averaged $0.0081 each over {calls} priced call(s)", estimate);
+        Assert.Contains("\nrecorded cost per call with fake, harness overhead included:\n", estimate);
+        Assert.Matches(@"\nfile \d+ call\(s\) at \$0\.0081 each, ", estimate);
     }
 }

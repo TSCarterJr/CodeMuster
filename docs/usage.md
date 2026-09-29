@@ -174,9 +174,10 @@ in `package.json` is used if its lockfile is there, otherwise pnpm, then Yarn, t
 that is not installed is passed over for the next one, and scan prints a warning naming the
 lockfiles, the tool that ran and any it passed over.
 
-`estimate` uses roughly four bytes per input token. It is not a price quote: responses, retries,
-and verification work created by future findings can add to usage. It also prices those tokens
-per model; see [Spend](#spend).
+`estimate` uses roughly four bytes per input token. It is not a price quote: responses and
+retries can add to usage. It prices those tokens per model and, once calls are recorded, prices
+each pending call at its recorded cost, including the verify calls future findings will create;
+see [Spend](#spend).
 
 ### 3. Analyze and verify
 
@@ -444,8 +445,11 @@ harness runs on a subscription, you pay the subscription, not this amount.
   run (each `run`, `verify` or `fix` invocation), the price table date, and why calls are unpriced.
 - `estimate` prices the pending input tokens per model: the models already used, any in
   `prices`, else a few representative ones. Output is assumed at 10% of input until 20 calls
-  with usage are recorded, then measured from them. Once priced calls exist it also shows their
-  average cost and what the pending units would cost at that rate.
+  with usage are recorded, then measured from them. Once priced calls exist it also prices the
+  pending calls per unit kind for the agent used most recently: at the mean cost of that kind's
+  calls once 20 are recorded, else at the mean of all that agent's calls, each line saying which.
+  With verification on and at least 20 units analysed, the verify line adds the calls expected
+  from the recorded findings per analysed unit. The last line is the total call count and cost.
 - `intelligent-config` prints its one call's usage and cost; it does not open the ledger, so that
   call is not in the totals.
 
@@ -453,7 +457,8 @@ Harness overhead dominates small units. Each Claude Code call carries about 45K 
 own system prompt and tools before any of the pack. The first call writes them to the prompt
 cache at the one-hour rate (2x input), about $0.36 on Claude Opus 5.5, and calls within the
 cache lifetime read them back at the much lower cache-read rate. The pack-based token estimate
-does not include this overhead; the recorded average per call does.
+does not include this overhead; the recorded cost per call does, which is why the two totals
+can differ by more than ten times.
 
 To price a model the table lacks, or to use your own negotiated rates, add `prices` to
 `.codemuster/config.json`. Rates are US dollars per million tokens; a missing cache rate is

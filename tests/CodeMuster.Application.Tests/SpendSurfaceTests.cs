@@ -130,7 +130,12 @@ public class SpendSurfaceTests
         var lines = report.Render().Split('\n');
         Assert.Equal("API-equivalent cost of ~300000 input and ~27027 output tokens (output assumed 9% of input, measured from 20 recorded calls; harness prompts and tool calls not counted):", lines[2]);
         Assert.Equal(["claude-sonnet-4-6 ~$1.31", "in-house-7 ~$0.35"], lines[3..5]);
-        Assert.Equal("recorded calls averaged $0.50 each over 20 priced call(s), harness overhead included; 1 pending unit(s) at that rate ~$0.50", lines[5]);
+        Assert.Equal(
+        [
+            "recorded cost per call with claude, harness overhead included:",
+            "file 1 call(s) at $0.50 each, the mean of 20 file calls ~$0.50",
+            "total 1 call(s) ~$0.50 at recorded rates",
+        ], lines[5..]);
     }
 
     [Fact]

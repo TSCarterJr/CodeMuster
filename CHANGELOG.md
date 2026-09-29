@@ -4,6 +4,13 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
+## Unreleased
+
+- `estimate` prices the pending work per call at what your recorded calls actually cost, per unit
+  kind, and counts the verify calls that future findings will create from the recorded findings
+  per analysed unit. On a repository where Claude Code calls cost about $0.37 each, the token
+  estimate alone understated the cost of a full run by more than ten times.
+
 ## 0.5.1 - 2026-09-28
 
 Use `npm install -g codemuster@0.5.1` to update. The ledger stays at schema 9.
