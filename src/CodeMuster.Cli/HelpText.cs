@@ -10,6 +10,7 @@ public static class HelpText
         Audit a Git repository, verify findings, and fix them with your coding agent.
 
         Get started
+          auto       Run the whole flow with the steps you choose (also: codemuster, at a terminal)
           init       Create the repository configuration and ignore the local ledger
           intelligent-config  Use AI to tailor exclusions, lenses and test setup
           doctor     Check Git and the repository's code mappers
@@ -51,7 +52,8 @@ public static class HelpText
         """;
 
     private const string AgentOptions = """
-          --agent <name>   Required: claude, codex, gemini, opencode (fake is for tests)
+          --agent <name>   claude, codex, gemini, opencode; at a terminal, asked when omitted
+          --yes            Ask nothing; --agent is then required
           -j, --jobs N     Run up to N agent calls concurrently (default: 1)
           --attempts N    Maximum attempts per unit, including the first (default: 3)
           --path <path>   Select work under a repo-relative file or folder
@@ -69,6 +71,29 @@ public static class HelpText
 
     public static string? For(string command) => command switch
     {
+        "auto" => """
+            usage: codemuster auto [--steps <names> | --skip <names>] [--agent <name>] [options]
+
+            Run the audit flow in one command: doctor, scan, estimate, run, verify, report,
+            and on request fix and validate. At a terminal it lists the steps to toggle, asks
+            for the agent settings once, shows the estimate and asks before spending. A bare
+            codemuster at a terminal opens it. Your choices are remembered for this repository.
+
+              --steps <names>  Run only these steps, comma-separated (update, doctor, scan,
+                               estimate, run, verify, report, fix, validate)
+              --skip <names>   Run the default steps except these
+              --yes            Ask nothing: the default steps unless --steps or --skip say
+                               otherwise, and no pause after the estimate
+              --max-cost <usd> Stop after the estimate when it is above this many dollars
+              --agent <name>   claude, codex, gemini, opencode; asked at a terminal when omitted
+              -j, --jobs N     Agent calls at once (asked at a terminal; default 1 with --agent)
+              --model <id>     Pass a model to the agent
+              --effort <level> Pass a thinking level to the agent
+              --path <path>    Limit estimate, run, verify and fix to a file or folder
+
+            Without a terminal, pass --steps, --skip or --yes, and --agent when a step needs one.
+            Example: codemuster auto --skip verify,fix --agent claude -j 4 --yes
+            """,
         "intelligent-config" => """
             usage: codemuster intelligent-config [--agent <name>] [--model <id>] [--effort <level>]
 
@@ -181,7 +206,8 @@ public static class HelpText
             + AgentOptions + "\n"
             + "  --kind <kind>  Limit work to file, slice, orphan, verify, ux, impact, duplicate,\n"
             + "                 architecture, or api\n"
-            + "  --force        Re-run completed units in the selected scope\n\n"
+            + "  --force        Re-run completed units in the selected scope\n"
+            + "  --no-verify    Leave the checks of new findings queued for codemuster verify\n\n"
             + "Repeat the command to resume unfinished work. Use fix to edit code.\n"
             + "Browser work stays incomplete without model calls here; use next --kind ux in a browser-capable session.\n"
             + "Example: codemuster run --agent codex -j 4 --path src\n",

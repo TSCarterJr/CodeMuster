@@ -49,6 +49,8 @@ public static class CliProcess
         }
 
         start.Environment["CODEMUSTER_TEST_AGENT"] = "1";
+        // Remembered choices (D86) go to a scratch folder, never the developer's own ~/.codemuster.
+        start.Environment["CODEMUSTER_STATE_DIR"] = Path.Combine(Path.GetTempPath(), "codemuster-cli-tests-state");
         var process = Process.Start(start) ?? throw new InvalidOperationException("dotnet did not start");
         _ = process.StandardOutput.ReadToEndAsync();
         _ = process.StandardError.ReadToEndAsync();
@@ -75,6 +77,8 @@ public static class CliProcess
         // Claude Code's shell sets this, which hides a program in the working directory from Windows' search; a normal terminal does not.
         start.Environment.Remove("NoDefaultCurrentDirectoryInExePath");
         start.Environment["CODEMUSTER_TEST_AGENT"] = "1";
+        // Remembered choices (D86) go to a scratch folder, never the developer's own ~/.codemuster.
+        start.Environment["CODEMUSTER_STATE_DIR"] = Path.Combine(Path.GetTempPath(), "codemuster-cli-tests-state");
         foreach (var (name, value) in environment ?? new Dictionary<string, string>())
         {
             start.Environment[name] = value;

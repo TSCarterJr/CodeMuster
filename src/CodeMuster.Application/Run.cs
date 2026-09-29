@@ -59,7 +59,8 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                 if (free > 0)
                 {
                     var busy = running.SelectMany(entry => entry.Packs).Select(pack => pack.UnitId).ToHashSet(StringComparer.Ordinal);
-                    var needing = await ledger.NextAsync(int.MaxValue, options.Kind, options.Path, cancellationToken);
+                    var needing = (await ledger.NextAsync(int.MaxValue, options.Kind, options.Path, cancellationToken))
+                        .Where(unit => !(options.SkipVerify && unit.Kind == UnitKind.Verify)).ToList();
                     total = completed + skipped.Count + needing.Count;
                     var startable = needing.Where(unit => !gaveUp.Contains(unit.Id) && !busy.Contains(unit.Id)).ToList();
                     remaining = startable.Count > 0;

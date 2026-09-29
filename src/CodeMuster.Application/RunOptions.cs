@@ -16,6 +16,9 @@ public sealed record RunOptions(int Parallelism, int MaxAttempts, bool Force, Un
     /// <summary>Attempts per unit before the run gives up on it.</summary>
     public int MaxAttempts { get; } = AtLeastOne(MaxAttempts, nameof(MaxAttempts));
 
+    /// <summary>Leave verify units queued for a later <c>verify</c> instead of checking findings in the same run (D85, refining D27).</summary>
+    public bool SkipVerify { get; init; }
+
     private static int AtLeastOne(int value, string name)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, name);

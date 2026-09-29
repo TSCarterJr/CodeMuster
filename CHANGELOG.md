@@ -4,6 +4,17 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
+## Unreleased
+
+- `codemuster auto` runs the flow in one command: it lists the steps to toggle (doctor, scan,
+  estimate, run, verify, report, and on request fix and validate), asks for the agent settings once,
+  and asks before spending after the estimate. At a terminal, a bare `codemuster` opens it; in a
+  script it still prints help. Without a terminal use `--steps`, `--skip` or `--yes`, and
+  `--max-cost` to stop above a budget. Choices are remembered per repository.
+- `run`, `verify` and `fix` ask which installed agent, model, thinking level and jobs to use when
+  `--agent` is missing at a terminal. `--yes` asks nothing and skips the start countdown.
+- `run --no-verify` leaves the checks of new findings queued for `codemuster verify`.
+
 ## 0.5.5 - 2026-09-29
 
 Use `npm install -g codemuster@0.5.5` to update. The ledger stays at schema 9; run `scan` once so

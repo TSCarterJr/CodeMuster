@@ -7,6 +7,9 @@ public static class AgentAdapters
     // The test-only fake agent is accepted but never offered to users.
     public static readonly IReadOnlyList<string> Names = ["claude", "codex", "gemini", "opencode"];
 
+    /// <summary>The agents whose CLI is on PATH, in <see cref="Names"/> order (D84).</summary>
+    public static IReadOnlyList<string> Installed() => [.. Names.Where(name => ExecutableResolver.TryResolve(name) is not null)];
+
     public static IAgentAdapter Create(string name, string? fakeTemplateJson, string? model = null, string? effort = null, bool write = false, string? workingDirectory = null, TimeSpan fakeDelay = default) => name switch
     {
         "fake" => new FakeAgentAdapter(fakeTemplateJson ?? FakeAgentAdapter.DefaultTemplate, model, effort, workingDirectory: write ? workingDirectory : null, delay: fakeDelay),

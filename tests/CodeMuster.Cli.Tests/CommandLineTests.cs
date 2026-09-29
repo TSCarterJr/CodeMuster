@@ -149,10 +149,10 @@ public class CommandLineTests
     [InlineData("status --bogus", "codemuster status: unknown option --bogus (status takes no options)")]
     [InlineData("skill install --for claude --dir x", "codemuster skill: unknown option --dir (options: --for, --global)")]
     [InlineData("done u --fingerprint f --findings x --bogus y", "codemuster done: unknown option --bogus (options: --fingerprint, --findings)")]
-    [InlineData("run --agent fake --verbose", "codemuster run: unknown option --verbose (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --kind, --force)")]
-    [InlineData("run --agent fake --bogus x", "codemuster run: unknown option --bogus (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --kind, --force)")]
-    [InlineData("verify --agent fake --kind file", "codemuster verify: unknown option --kind (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --force)")]
-    [InlineData("run --agnet=fake", "codemuster run: unknown option --agnet; did you mean --agent? (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --kind, --force)")]
+    [InlineData("run --agent fake --verbose", "codemuster run: unknown option --verbose (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --kind, --force, --yes, --no-verify)")]
+    [InlineData("run --agent fake --bogus x", "codemuster run: unknown option --bogus (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --kind, --force, --yes, --no-verify)")]
+    [InlineData("verify --agent fake --kind file", "codemuster verify: unknown option --kind (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --force, --yes)")]
+    [InlineData("run --agnet=fake", "codemuster run: unknown option --agnet; did you mean --agent? (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --kind, --force, --yes, --no-verify)")]
     [InlineData("scan --yes", "codemuster scan: unknown option --yes (options: --mode, --remap)")]
     [InlineData("doctor --fix --force", "codemuster doctor: unknown option --force (options: --fix, --yes)")]
     [InlineData("validate --fix", "codemuster validate: unknown option --fix (validate takes no options)")]
@@ -288,5 +288,18 @@ public class CommandLineTests
 
         Assert.Equal(message, error.Message);
         Assert.Equal("usage: codemuster impact [--since <ref>] [--format text|json]; see codemuster impact --help", error.Usage);
+    }
+
+    [Theory]
+    [InlineData("run")]
+    [InlineData("verify")]
+    [InlineData("fix")]
+    public void AtATerminal_AMissingAgentIsLeftToAsk_AndYesIsAccepted(string verb)
+    {
+        var command = CommandLine.Parse([verb, "--yes"], interactive: true);
+
+        Assert.False(command.Options.ContainsKey("agent"));
+        Assert.Contains("yes", command.Flags);
+        Assert.Throws<UsageException>(() => CommandLine.Parse([verb]));
     }
 }

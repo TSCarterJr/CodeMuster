@@ -198,7 +198,7 @@ public class HeadlessTests
     [Theory]
     [InlineData("run")]
     [InlineData("run --agent fake -j 0")]
-    [InlineData("run --agent fake --yes")]
+    [InlineData("run --agent fake --quiet")]
     [InlineData("skill install")]
     [InlineData("skill install --for gpt5")]
     [InlineData("skill remove --for claude")]

@@ -27,11 +27,12 @@ public static class CommandLine
         ["estimate"] = new(["path"], []),
         ["next"] = new(["batch", "out", "path", "kind"], []),
         ["done"] = new(["fingerprint", "findings"], [], ["fingerprint", "findings"], "<unit>"),
-        ["run"] = new(["agent", "jobs", "attempts", "path", "model", "effort", "kind"], ["force"], ["agent"]),
-        ["verify"] = new(["agent", "jobs", "attempts", "path", "model", "effort"], ["force"], ["agent"]),
+        ["auto"] = new(["steps", "skip", "max-cost", "agent", "jobs", "model", "effort", "path"], ["yes"]),
+        ["run"] = new(["agent", "jobs", "attempts", "path", "model", "effort", "kind"], ["force", "yes", "no-verify"], ["agent"]),
+        ["verify"] = new(["agent", "jobs", "attempts", "path", "model", "effort"], ["force", "yes"], ["agent"]),
         ["report"] = new(["out"], ["include-refuted"]),
         ["skill"] = new(["for"], ["global"], ["for"], "install"),
-        ["fix"] = new(["agent", "jobs", "attempts", "path", "model", "effort", "include-related", "include"], ["stash", "retry-declined", "allow-failing-tests"], ["agent"]),
+        ["fix"] = new(["agent", "jobs", "attempts", "path", "model", "effort", "include-related", "include"], ["stash", "retry-declined", "allow-failing-tests", "yes"], ["agent"]),
         ["hook"] = new([], []),
         ["validate"] = new([], []),
         ["map"] = new(["depth", "format", "kind", "out"], [], null, MapPositionals),
@@ -48,7 +49,8 @@ public static class CommandLine
 
     private static readonly string[] Kinds = Enum.GetNames<UnitKind>().Select(name => name.ToLowerInvariant()).Except(["fix", "dependency", "deadcode"]).ToArray();
 
-    public static Command Parse(string[] args)
+    /// <summary>Parses the arguments; at a terminal (<paramref name="interactive"/>) a missing <c>--agent</c> is left for the agent questions to answer (D84).</summary>
+    public static Command Parse(string[] args, bool interactive = false)
     {
         var verb = args.Length == 0 ? "" : args[0].ToLowerInvariant();
         if (!Verbs.TryGetValue(verb, out var spec))
@@ -117,7 +119,7 @@ public static class CommandLine
             throw Mistake(verb, $"fix units are recorded by codemuster fix, which applies, tests and commits the repair; run codemuster fix --agent <agent> --path {positionals[0][UnitIds.Fix("").Length..]}");
         }
 
-        foreach (var required in spec.Required ?? [])
+        foreach (var required in (spec.Required ?? []).Where(required => !(interactive && required == "agent")))
         {
             var choices = required == "agent" ? AgentAdapters.Names : Choices(verb, required);
             if (!options.ContainsKey(required)) throw Mistake(verb, $"--{required} is required" + (choices is null ? "" : $" ({string.Join(", ", choices)})"));

@@ -15,6 +15,19 @@ public static class ExecutableResolver
         return Resolve(name, directories, extensions, OperatingSystem.IsWindows());
     }
 
+    /// <summary>The program's path, or null when it is not on PATH.</summary>
+    public static string? TryResolve(string name)
+    {
+        try
+        {
+            return Resolve(name);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     public static string Resolve(string name, IEnumerable<string> pathDirectories, IEnumerable<string> pathExtensions, bool isWindows)
     {
         List<string> fileNames = isWindows ? [.. pathExtensions.Select(extension => name + extension)] : [name];

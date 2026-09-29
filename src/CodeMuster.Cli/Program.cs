@@ -55,8 +55,14 @@ public static class Program
 
         if (args.Length == 0)
         {
-            Console.Error.WriteLine(Usage);
-            return 2;
+            // At a terminal a bare codemuster opens auto (D85); a script gets help and never starts spending.
+            if (!AtTerminal(args))
+            {
+                Console.Error.WriteLine(Usage);
+                return 2;
+            }
+
+            args = ["auto"];
         }
 
         if (args[0].Equals("hook", StringComparison.OrdinalIgnoreCase))
@@ -67,9 +73,10 @@ public static class Program
         }
 
         Command command;
+        var interactive = AtTerminal(args);
         try
         {
-            command = CommandLine.Parse(args);
+            command = CommandLine.Parse(args, interactive);
         }
         catch (UsageException ex)
         {
@@ -145,8 +152,18 @@ public static class Program
             return await McpAsync(command.Flags.Contains("refresh"), fileSystem, cancellationToken);
         }
 
+        if (command.Verb == "auto")
+        {
+            return await AutoAsync(command, fileSystem, cancellationToken);
+        }
+
         var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
         var tree = new GitSourceTree(repoRoot);
+        if (command.Verb is "run" or "verify" or "fix" && !command.Options.ContainsKey("agent"))
+        {
+            command = AskForAgent(command, repoRoot);
+        }
+
         if (command.Verb == "init")
         {
             return await InitAsync(command, repoRoot, fileSystem, tree, cancellationToken);
@@ -337,7 +354,7 @@ public static class Program
             if (options.Parallelism != 1 || options.Path is null || !tracked.Contains(options.Path) || options.RelatedFiles.Any(p => !tracked.Contains(p)))
                 throw new ArgumentException("--include-related requires -j 1, an exact tracked --path, and exact existing tracked related files");
         }
-        await PreviewAgentAsync(adapter.Identity, options.Parallelism, clock, cancellationToken);
+        await PreviewAgentAsync(adapter.Identity, options.Parallelism, clock, cancellationToken, !command.Flags.Contains("yes"));
         var concurrency = options.Parallelism == 1 ? "one file at a time" : string.Create(CultureInfo.InvariantCulture, $"up to {options.Parallelism} files at a time");
         Console.WriteLine($"fixing with {command.Options["agent"]}, {concurrency}; each file it changes becomes a commit");
         ITestRunner? tests = config.TestCommand.Count > 0 ? new CommandTestRunner(repoRoot, config.TestCommand) : null;
@@ -634,8 +651,11 @@ public static class Program
             int.Parse(command.Options.GetValueOrDefault("attempts", "3")),
             command.Flags.Contains("force"),
             kind is null ? null : Enum.Parse<UnitKind>(kind, ignoreCase: true),
-            command.Options.GetValueOrDefault("path"));
-        await PreviewAgentAsync(adapter.Identity, options.Parallelism, clock, cancellationToken);
+            command.Options.GetValueOrDefault("path"))
+        {
+            SkipVerify = command.Flags.Contains("no-verify"),
+        };
+        await PreviewAgentAsync(adapter.Identity, options.Parallelism, clock, cancellationToken, !command.Flags.Contains("yes"));
         if (kind == "verify") await new RefreshVerification(ledger, tree, config, new GitBlobHasher(repoRoot)).RunAsync(cancellationToken);
         Console.WriteLine($"running {command.Options["agent"]} on up to {options.Parallelism} unit(s) at a time; a line prints as each unit finishes");
         var result = await new Run(ledger, tree, clock, config, adapter, new RunProgressWriter(Console.Out, ConsoleStyle()), new ProgressWriter(Console.Out, ConsoleStyle()), events, control, Agent).RunAsync(options, cancellationToken);
@@ -653,10 +673,11 @@ public static class Program
         CodexSettingsResolver.ResolveAsync(new AgentIdentity(command.Options.GetValueOrDefault("agent", "codex"),
             command.Options.GetValueOrDefault("model"), command.Options.GetValueOrDefault("effort")), repoRoot, cancellationToken);
 
-    private static Task PreviewAgentAsync(AgentIdentity identity, int parallelism, IClock clock, CancellationToken cancellationToken)
+    // With --yes the preview prints without its countdown: the person already said go.
+    private static Task PreviewAgentAsync(AgentIdentity identity, int parallelism, IClock clock, CancellationToken cancellationToken, bool countdown = true)
     {
         var style = ConsoleStyle();
-        var interactive = style.Enabled && !Console.IsInputRedirected;
+        var interactive = countdown && style.Enabled && !Console.IsInputRedirected;
         return new AgentStartPreview(Console.Error, clock,
             () => Console.KeyAvailable ? Console.ReadKey(intercept: true).Key : null,
             Task.Delay, style).RunAsync(identity, parallelism, interactive, cancellationToken);
@@ -808,6 +829,177 @@ public static class Program
 
     private static string Version =>
         (typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0").Split('+')[0];
+
+    // The audit flow in one command (D85): choose the steps and the agent once, then run each step as its own command, stopping at the first that fails.
+    private static async Task<int> AutoAsync(Command command, IFileSystem fileSystem, CancellationToken cancellationToken)
+    {
+        var repoRoot = await GitSourceTree.FindTopLevelAsync(Directory.GetCurrentDirectory(), cancellationToken);
+        var interactive = !Console.IsInputRedirected && !Console.IsOutputRedirected && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI")) && !command.Flags.Contains("yes");
+        var store = new ChoiceStore(StateDirectory());
+        var remembered = store.Load(repoRoot);
+        var named = command.Options.ContainsKey("steps") || command.Options.ContainsKey("skip");
+        if (!interactive && !named && !command.Flags.Contains("yes")) return AutoMistake("no terminal to ask which steps to run; pass --steps, --skip or --yes");
+        if (command.Options.TryGetValue("max-cost", out var limitText) && (!decimal.TryParse(limitText, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) || parsed <= 0))
+            return AutoMistake($"--max-cost must be a positive number of dollars (got \"{limitText}\")");
+
+        var configured = File.Exists(Path.Combine(repoRoot, ".codemuster", "config.json"));
+        if (!configured && interactive)
+        {
+            Console.Write("This repository has no CodeMuster setup yet. Run codemuster init now? [Y/n] ");
+            if (Console.ReadLine()?.Trim().ToLowerInvariant() is "n" or "no") return 1;
+            var init = await RunAsync(CommandLine.Parse(["init"]), cancellationToken);
+            if (init != 0) return init;
+        }
+
+        IReadOnlyList<AutoStep> steps;
+        try
+        {
+            steps = named || !interactive
+                ? AutoSteps.Select(command.Options.GetValueOrDefault("steps"), command.Options.GetValueOrDefault("skip"))
+                : new StepMenu(Console.In, Console.Out).Choose(remembered?.Steps is { } names ? AutoSteps.Select(string.Join(',', names), null) : AutoSteps.Defaults);
+        }
+        catch (ArgumentException ex)
+        {
+            return AutoMistake(ex.Message);
+        }
+
+        if (steps.Count == 0) return AutoMistake("no steps are left to run");
+        if (AutoSteps.FixWarning([.. steps], await ConfirmedFindingsAsync(repoRoot, cancellationToken)) is { } warning) Console.Error.WriteLine("warning: " + warning);
+
+        var agentOptions = command.Options.Where(o => o.Key is "agent" or "jobs" or "model" or "effort").ToDictionary(o => o.Key, o => o.Value, StringComparer.Ordinal);
+        if (AutoSteps.NeedsAgent(steps) && !agentOptions.ContainsKey("agent"))
+        {
+            if (!interactive) return AutoMistake($"--agent is required for run, verify and fix ({string.Join(", ", AgentAdapters.Names)})");
+            var answers = new AgentQuestions(Console.In, Console.Out).Ask(AgentAdapters.Installed(), remembered, agentOptions);
+            agentOptions["agent"] = answers.Agent;
+            agentOptions["jobs"] = answers.Jobs.ToString(CultureInfo.InvariantCulture);
+            if (answers.Model is { } model) agentOptions["model"] = model;
+            if (answers.Effort is { } effort) agentOptions["effort"] = effort;
+        }
+
+        if (interactive || named)
+        {
+            store.Save(repoRoot, new RememberedChoices(
+                agentOptions.GetValueOrDefault("agent") ?? remembered?.Agent,
+                agentOptions.GetValueOrDefault("model") ?? (agentOptions.ContainsKey("agent") ? null : remembered?.Model),
+                agentOptions.GetValueOrDefault("effort") ?? (agentOptions.ContainsKey("agent") ? null : remembered?.Effort),
+                agentOptions.TryGetValue("jobs", out var jobsText) ? int.Parse(jobsText, CultureInfo.InvariantCulture) : remembered?.Jobs,
+                [.. steps.Select(AutoSteps.Name)]));
+        }
+
+        List<string> Agent(string verb)
+        {
+            List<string> args = [verb, .. agentOptions.SelectMany(o => new[] { o.Key == "jobs" ? "-j" : "--" + o.Key, o.Value }), "--yes"];
+            if (command.Options.TryGetValue("path", out var path)) args.AddRange(["--path", path]);
+            return args;
+        }
+
+        foreach (var step in steps)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Console.WriteLine($"== {AutoSteps.Name(step)}");
+            if (step == AutoStep.Verify && steps.Contains(AutoStep.Run))
+            {
+                Console.WriteLine("findings were verified during run");
+                continue;
+            }
+
+            if (step == AutoStep.Estimate)
+            {
+                var gate = await EstimateGateAsync(command, repoRoot, fileSystem, interactive, steps, cancellationToken);
+                if (gate is { } stop) return stop;
+                continue;
+            }
+
+            List<string> stepArgs = step switch
+            {
+                AutoStep.Doctor => ["doctor"],
+                AutoStep.Scan => ["scan"],
+                AutoStep.Run => [.. Agent("run"), .. steps.Contains(AutoStep.Verify) ? Array.Empty<string>() : ["--no-verify"]],
+                AutoStep.Verify => Agent("verify"),
+                AutoStep.Report => ["report"],
+                AutoStep.Fix => Agent("fix"),
+                _ => ["validate"],
+            };
+            var exit = await RunAsync(CommandLine.Parse([.. stepArgs]), cancellationToken);
+            if (exit != 0)
+            {
+                Console.Error.WriteLine($"stopped: {AutoSteps.Name(step)} exited with {exit}");
+                return exit;
+            }
+        }
+
+        return 0;
+    }
+
+    private static int AutoMistake(string problem)
+    {
+        Console.Error.WriteLine($"codemuster auto: {problem}");
+        Console.Error.WriteLine(HelpText.UsageLine("auto"));
+        return 2;
+    }
+
+    // Prints the estimate; stops when it is above --max-cost, or when the person at the terminal says no, but only if an agent step follows.
+    private static async Task<int?> EstimateGateAsync(Command command, string repoRoot, IFileSystem fileSystem, bool interactive, IReadOnlyList<AutoStep> steps, CancellationToken cancellationToken)
+    {
+        var config = await new ConfigLoader(fileSystem).LoadAsync(repoRoot, cancellationToken);
+        using var ledger = await SqliteLedger.OpenAsync(Path.Combine(repoRoot, ".codemuster", "ledger.db"), cancellationToken);
+        var report = await new Estimate(ledger, config, command.Options.GetValueOrDefault("path")).RunAsync(cancellationToken);
+        Console.WriteLine(report.Render());
+        var later = steps.SkipWhile(step => step != AutoStep.Estimate).Skip(1).ToList();
+        if (!AutoSteps.NeedsAgent(later)) return null;
+
+        var cost = report.PerCall?.Lines.Sum(line => line.CostUsd) ?? (report.Costs.Count == 0 ? 0 : report.Costs.Max(c => c.CostUsd));
+        if (command.Options.TryGetValue("max-cost", out var limitText) && cost > decimal.Parse(limitText, NumberStyles.Number, CultureInfo.InvariantCulture))
+        {
+            Console.Error.WriteLine($"error: the estimate (~{Spend.Money(cost)}) exceeds --max-cost {Spend.Money(decimal.Parse(limitText, NumberStyles.Number, CultureInfo.InvariantCulture))}; nothing was run");
+            return 1;
+        }
+
+        if (!interactive) return null;
+        Console.Write($"Continue with {string.Join(", ", later.Select(AutoSteps.Name))}? [Y/n] ");
+        if (Console.ReadLine()?.Trim().ToLowerInvariant() is "n" or "no")
+        {
+            Console.WriteLine("stopped after the estimate; nothing was run");
+            return 0;
+        }
+
+        return null;
+    }
+
+    private static async Task<int> ConfirmedFindingsAsync(string repoRoot, CancellationToken cancellationToken)
+    {
+        var path = Path.Combine(repoRoot, ".codemuster", "ledger.db");
+        if (!File.Exists(path)) return 0;
+        using var ledger = await SqliteLedger.OpenAsync(path, cancellationToken);
+        return (await ledger.GetCurrentFindingsAsync(cancellationToken)).Count(f => f.Verification?.Verdict == Verdict.Confirmed && f.Fix?.State != FixState.Fixed);
+    }
+
+    // A person is at a terminal (D84): nothing is redirected, CI is unset, and --yes did not ask for no questions.
+    private static bool AtTerminal(string[] args) =>
+        !Console.IsInputRedirected && !Console.IsOutputRedirected && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI")) && !args.Contains("--yes");
+
+    // Only reached at a terminal, since parsing requires --agent everywhere else (D84); the answers are remembered for this repository (D86).
+    private static Command AskForAgent(Command command, string repoRoot)
+    {
+        var store = new ChoiceStore(StateDirectory());
+        var remembered = store.Load(repoRoot);
+        var answers = new AgentQuestions(Console.In, Console.Out).Ask(AgentAdapters.Installed(), remembered, command.Options);
+        store.Save(repoRoot, new RememberedChoices(answers.Agent, answers.Model, answers.Effort, answers.Jobs, remembered?.Steps));
+        var options = new Dictionary<string, string>(command.Options, StringComparer.Ordinal)
+        {
+            ["agent"] = answers.Agent,
+            ["jobs"] = answers.Jobs.ToString(CultureInfo.InvariantCulture),
+        };
+        if (answers.Model is { } model) options["model"] = model;
+        if (answers.Effort is { } effort) options["effort"] = effort;
+        Console.WriteLine($"next time, skip these questions with: codemuster {command.Verb} {string.Join(' ', options.Where(o => o.Key is "agent" or "model" or "effort" or "jobs").Select(o => o.Key == "jobs" ? "-j " + o.Value : $"--{o.Key} {o.Value}"))}");
+        return command with { Options = options };
+    }
+
+    // Where remembered choices live (D86); CODEMUSTER_STATE_DIR moves it, which the CLI tests use.
+    private static string StateDirectory() =>
+        Environment.GetEnvironmentVariable("CODEMUSTER_STATE_DIR") is { Length: > 0 } state ? state : Path.Combine(HomeDirectory(), ".codemuster");
 
     private static string HomeDirectory() =>
         Environment.GetEnvironmentVariable(OperatingSystem.IsWindows() ? "USERPROFILE" : "HOME")

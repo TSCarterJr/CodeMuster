@@ -15,6 +15,37 @@ The ledger remembers completed work between invocations. Scanning discovers code
 refreshes the queue; running processes that queue. Scanning alone does not call an AI agent.
 Fixing is a separate, explicit command that edits code and creates commits.
 
+### The one-command way: `codemuster auto`
+
+At a terminal, `codemuster` on its own (or `codemuster auto`) walks the whole flow. It offers a
+newer version first. It then lists the steps (doctor, scan, estimate, run, verify, report, fix,
+validate, with fix and validate unticked); type step numbers to toggle them and press Enter.
+If a ticked step needs an agent, it asks once for the agent (from those installed), the model, the
+thinking level and the jobs. After the estimate it shows the call count and cost and asks before
+spending. Each step then runs as its own command, and the first failure stops the rest; running
+`auto` again resumes, because every step resumes from the ledger. The steps and agent settings
+you choose are remembered for the repository in `~/.codemuster/choices` and offered next time.
+
+Unticking verify leaves the new findings' checks queued (`run --no-verify`) for a later
+`codemuster verify`. Fix repairs only confirmed findings, so choosing fix without verify warns
+how many are confirmed.
+
+In a script or CI job a bare `codemuster` prints help and never starts work. There, name the steps
+and the agent:
+
+```sh
+codemuster auto --steps scan,run,report --agent claude -j 4
+codemuster auto --yes --skip doctor --agent codex --max-cost 50
+```
+
+`--yes` asks nothing (the default steps unless `--steps` or `--skip` say otherwise), and
+`--max-cost` stops after the estimate when it is above that many dollars.
+
+`run`, `verify` and `fix` also ask for the agent settings at a terminal when `--agent` is missing,
+and print the flags that skip the questions next time. With `--agent` given, nothing is asked:
+a missing `--model` or `--effort` uses the provider default and `-j` stays 1. `--yes` also skips
+the ten-second start countdown.
+
 ### 1. Set up
 
 For AI-driven use, install the [Claude or Codex plugin](distribution.md), start a new session

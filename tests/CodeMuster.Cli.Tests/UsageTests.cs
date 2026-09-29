@@ -113,7 +113,7 @@ public class UsageTests
     [Theory]
     [InlineData("run", "codemuster run: --agent is required (claude, codex, gemini, opencode)", "usage: codemuster run --agent <name> [options]; see codemuster run --help")]
     [InlineData("run --agent claude -j 0", "codemuster run: -j must be a positive whole number (got \"0\")", "usage: codemuster run --agent <name> [options]; see codemuster run --help")]
-    [InlineData("run --agent claude --bogus x", "codemuster run: unknown option --bogus (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --kind, --force)", "usage: codemuster run --agent <name> [options]; see codemuster run --help")]
+    [InlineData("run --agent claude --bogus x", "codemuster run: unknown option --bogus (options: --agent, -j/--jobs, --attempts, --path, --model, --effort, --kind, --force, --yes, --no-verify)", "usage: codemuster run --agent <name> [options]; see codemuster run --help")]
     [InlineData("stauts", "codemuster: unknown command \"stauts\"; did you mean \"status\"?", "usage: codemuster <command> [options]; see codemuster --help")]
     [InlineData("next --pth web", "codemuster next: unknown option --pth; did you mean --path? (options: --batch, --out, --path, --kind)", "usage: codemuster next [--batch N] [--out <file>] [--path <path>] [--kind <kind>]; see codemuster next --help")]
     [InlineData("status --since yesterday", "codemuster status: unknown option --since (status takes no options)", "usage: codemuster status; see codemuster status --help")]
