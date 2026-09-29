@@ -59,7 +59,7 @@ public class DoneTests
     [Fact]
     public async Task RecordedFindings_EachGetAPendingVerifyUnit_WithTheUnitsMembers()
     {
-        var result = await RunAsync(responseJson: Respond((18, 21), (30, 30)));
+        var result = await RunAsync(responseJson: Respond((18, 21), (30, 30)), config: Config.Default with { VerifyBatch = 1 });
 
         Assert.Equal("recorded 2 finding(s)", result.Message);
         var verify = ledger.Units.Where(u => u.Kind == UnitKind.Verify).ToList();

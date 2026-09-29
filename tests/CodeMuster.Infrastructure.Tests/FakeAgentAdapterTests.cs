@@ -88,6 +88,23 @@ public class FakeAgentAdapterTests
         Assert.Equal(VerifyResponseJson.Serialize(new VerifyResponse(verdict, "fake verification")), output);
     }
 
+    [Fact]
+    public async Task A_batch_verify_pack_answers_every_finding_by_id_on_the_same_confidence_rule()
+    {
+        var confident = new Finding("src/A.cs", 1, 2, Severity.High, "security", "claim", "evidence", 0.9, "default");
+        var doubtful = confident with { Confidence = 0.2 };
+        var adapter = new FakeAgentAdapter(FakeAgentAdapter.DefaultTemplate);
+        var pack = string.Join('\n',
+            "# CodeMuster unit", "", "- unit: verify:4,9", "- kind: verify", "", "## Instructions", "", "Try to refute each.", "",
+            "## Findings", "", "```json", JsonSerializer.Serialize(new[] { new { id = 4, finding = confident }, new { id = 9, finding = doubtful } }, DomainJson.Options), "```", "",
+            "## Files", "", "### src/A.cs (csharp)", "", "```csharp", "class A {}", "```", "", "## Response", "");
+
+        var output = (await adapter.RunAsync(pack, CancellationToken.None)).Text;
+
+        Assert.Equal(VerifyBatchResponseJson.Serialize(new VerifyBatchResponse(
+            [new FindingVerdict(4, Verdict.Confirmed, "fake verification"), new FindingVerdict(9, Verdict.Refuted, "fake verification")])), output);
+    }
+
     [Theory]
     [InlineData("src/Api/Quotes.cs", "class Quotes { }\n")]
     [InlineData("web/lib/api.ts", "export const api = 1;\n")]

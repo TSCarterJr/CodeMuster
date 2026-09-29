@@ -106,7 +106,19 @@ public sealed class FakeLedger : ILedger
         return RecordAnalysisAsync(analysis, [], cancellationToken);
     }
 
+    public Task RecordVerificationsAsync(Analysis analysis, IReadOnlyList<(long FindingId, VerifyResponse Verification)> verdicts, CancellationToken cancellationToken)
+    {
+        foreach (var (findingId, verification) in verdicts) RecordVerdict(findingId, verification, cancellationToken);
+        return RecordAnalysisAsync(analysis, [], cancellationToken);
+    }
+
     public Task RecordVerificationAsync(Analysis analysis, long findingId, VerifyResponse verification, CancellationToken cancellationToken)
+    {
+        RecordVerdict(findingId, verification, cancellationToken);
+        return RecordAnalysisAsync(analysis, [], cancellationToken);
+    }
+
+    private void RecordVerdict(long findingId, VerifyResponse verification, CancellationToken cancellationToken)
     {
         if (verification.Verdict == Verdict.Resolved) Fixes[findingId] = new FixOutcome(FixState.Fixed, verification.Reason);
         if (verification.Verdict == Verdict.Confirmed && Fixes.GetValueOrDefault(findingId)?.State == FixState.Fixed)
@@ -117,7 +129,6 @@ public sealed class FakeLedger : ILedger
             if (index >= 0) Units[index] = Units[index] with { Status = UnitStatus.Stale };
         }
         Verifications[findingId] = verification;
-        return RecordAnalysisAsync(analysis, [], cancellationToken);
     }
 
     public Task<IReadOnlyDictionary<string, AgentIdentity>> GetProvenanceAsync(CancellationToken cancellationToken)

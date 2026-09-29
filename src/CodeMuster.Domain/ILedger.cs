@@ -33,6 +33,9 @@ public interface ILedger
     /// <summary>Stores a verify unit's successful analysis and its verdict on finding <paramref name="findingId"/> atomically, and moves the unit to Done with summary, summary hash, and lens hash.</summary>
     Task RecordVerificationAsync(Analysis analysis, long findingId, VerifyResponse verification, CancellationToken cancellationToken);
 
+    /// <summary>Stores a batched verify unit's successful analysis once and the verdict on each of its findings atomically, and moves the unit to Done with summary, summary hash, and lens hash (D78).</summary>
+    Task RecordVerificationsAsync(Analysis analysis, IReadOnlyList<(long FindingId, VerifyResponse Verification)> verdicts, CancellationToken cancellationToken);
+
     /// <summary>The findings of the most recent successful analysis of every non-retired unit, each with the fingerprint that analysis was made against, so a stale unit's findings still show and can be flagged, oldest first, each with its id and latest verdict.</summary>
     Task<IReadOnlyList<UnitFinding>> GetCurrentFindingsAsync(CancellationToken cancellationToken);
 

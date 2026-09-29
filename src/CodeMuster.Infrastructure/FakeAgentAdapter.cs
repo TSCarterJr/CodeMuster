@@ -52,6 +52,12 @@ public sealed class FakeAgentAdapter : IAgentAdapter
             return FixResponseJson.Serialize(new FixResponse("fake fix", targets, []));
         }
 
+        if (FindingsUnderTest(pack) is { Count: > 0 } batch)
+        {
+            return VerifyBatchResponseJson.Serialize(new VerifyBatchResponse([.. batch.Select(f => new FindingVerdict(
+                f.Id, f.Finding.Confidence < RefutesBelowConfidence ? Verdict.Refuted : Verdict.Confirmed, "fake verification"))]));
+        }
+
         if (FindingUnderTest(pack) is { } finding)
         {
             var verdict = finding.Confidence < RefutesBelowConfidence ? Verdict.Refuted : Verdict.Confirmed;
@@ -76,6 +82,22 @@ public sealed class FakeAgentAdapter : IAgentAdapter
         using var document = JsonDocument.Parse(string.Join('\n', json));
         return document.RootElement.EnumerateArray()
             .Select(finding => finding.GetProperty("id").GetInt64())
+            .ToList();
+    }
+
+    private static IReadOnlyList<(long Id, Finding Finding)> FindingsUnderTest(string pack)
+    {
+        var lines = pack.Split('\n').Select(line => line.TrimEnd('\r')).TakeWhile(line => line != "## Files").ToList();
+        var heading = lines.IndexOf("## Findings");
+        if (!lines.Contains("- kind: verify") || heading < 0)
+        {
+            return [];
+        }
+
+        var json = lines.Skip(heading + 3).TakeWhile(line => line != "```");
+        using var document = JsonDocument.Parse(string.Join('\n', json));
+        return document.RootElement.EnumerateArray()
+            .Select(item => (item.GetProperty("id").GetInt64(), item.GetProperty("finding").Deserialize<Finding>(DomainJson.Options)!))
             .ToList();
     }
 

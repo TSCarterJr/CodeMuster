@@ -442,10 +442,24 @@ public sealed class SqliteLedger : ILedger, IDisposable
         await transaction.CommitAsync(cancellationToken);
     }
 
-    public async Task RecordVerificationAsync(Analysis analysis, long findingId, VerifyResponse verification, CancellationToken cancellationToken)
+    public Task RecordVerificationAsync(Analysis analysis, long findingId, VerifyResponse verification, CancellationToken cancellationToken) =>
+        RecordVerificationsAsync(analysis, [(findingId, verification)], cancellationToken);
+
+    public async Task RecordVerificationsAsync(Analysis analysis, IReadOnlyList<(long FindingId, VerifyResponse Verification)> verdicts, CancellationToken cancellationToken)
     {
         await using var transaction = await _connection.BeginTransactionAsync(cancellationToken);
         await InsertAnalysisAsync(analysis, cancellationToken);
+        foreach (var (findingId, verification) in verdicts)
+        {
+            await RecordVerdictAsync(findingId, verification, cancellationToken);
+        }
+
+        await UpdateUnitAsync(analysis, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private async Task RecordVerdictAsync(long findingId, VerifyResponse verification, CancellationToken cancellationToken)
+    {
         if (verification.Verdict == Verdict.Confirmed)
         {
             await using var reopen = CreateCommand("UPDATE units SET status = 'stale' WHERE id = (SELECT 'fix:' || path FROM findings WHERE id = $id AND fix_status = 'fixed') AND status != 'retired'");
@@ -462,8 +476,6 @@ public sealed class SqliteLedger : ILedger, IDisposable
         verdict.Parameters.AddWithValue("$status", Name(verification.Verdict));
         verdict.Parameters.AddWithValue("$reason", verification.Reason);
         await verdict.ExecuteNonQueryAsync(cancellationToken);
-        await UpdateUnitAsync(analysis, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
     }
 
     private async Task<long> InsertAnalysisAsync(Analysis analysis, CancellationToken cancellationToken)

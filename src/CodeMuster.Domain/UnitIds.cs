@@ -14,6 +14,24 @@ public static class UnitIds
     /// <summary>Id of the verify unit that tests one finding.</summary>
     public static string Verify(long findingId) => "verify:" + findingId.ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>Id of the verify unit that tests several findings of one analysis together (D78); one finding keeps <see cref="Verify(long)"/>'s id.</summary>
+    public static string Verify(IReadOnlyList<long> findingIds) =>
+        "verify:" + string.Join(',', findingIds.Select(id => id.ToString(CultureInfo.InvariantCulture)));
+
+    /// <summary>The finding ids a verify unit tests, in the order its id lists them; empty for any other unit id.</summary>
+    public static IReadOnlyList<long> VerifiedFindings(string unitId)
+    {
+        if (!unitId.StartsWith("verify:", StringComparison.Ordinal)) return [];
+        var ids = new List<long>();
+        foreach (var part in unitId["verify:".Length..].Split(','))
+        {
+            if (!long.TryParse(part, NumberStyles.None, CultureInfo.InvariantCulture, out var id)) return [];
+            ids.Add(id);
+        }
+
+        return ids;
+    }
+
     /// <summary>Id of the fix unit for a repo-relative path (D37).</summary>
     public static string Fix(string path) => "fix:" + path;
 

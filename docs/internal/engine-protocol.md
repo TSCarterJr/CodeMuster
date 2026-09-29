@@ -50,7 +50,7 @@ ids are integers, `cost_usd` and `reported_cost_usd` are decimals in US dollars.
 | `unit_started` | `unit` (unit id), `kind` (`file`, `slice`, `orphan`, `verify`, `ux`, `fix`, ...), `key` (short human name), `worker` (1-based lane), `attempt` (1-based, counting this one) |
 | `unit_finished` | `unit`, `kind`, `key`, `attempt`, `outcome`, `message` (one line, the text the console prints), `gave_up` (bool: true when this was the unit's last attempt), `duration_ms` (integer), `usage` (object or `null`), `cost_usd` (decimal or `null`), `cost_source` (string or `null`) |
 | `finding_recorded` | `unit`, `path`, `line` (first line), `severity` (`critical`, `high`, `medium`, `low`, `info`), `category` |
-| `verify_outcome` | `unit`, `key`, `verdict` (`confirmed`, `refuted`, `unsure`, `resolved`) |
+| `verify_outcome` | `unit`, `key`, `verdict` (`confirmed`, `refuted`, `unsure`, `resolved`); a batched verify unit (D78) emits one per finding it answered, each with `finding` (the finding id) |
 | `fix_outcome` | `unit`, `path`, `fixed` (array of finding ids changed in code), `declined` (array of finding ids left alone with a reason) |
 | `skipped` | `unit`, `kind`, `key`, `reason`: the pack exceeded `slice_token_budget`, so no agent was called (D50, D56) |
 | `unit_not_started` | `unit`, `kind`, `key`, `attempt`, `reason`, `gave_up`: run or verify could not build the unit's pack, or the unit needs browser evidence; no agent was called |

@@ -26,9 +26,9 @@ public sealed class RefreshVerification(ILedger ledger, ISourceTree tree, Config
         var checkedUi = new HashSet<string>(StringComparer.Ordinal);
         var planned = new List<Unit>();
         var updatedMembers = new List<UnitMember>();
+        var checks = new List<(UnitFinding Finding, Unit Source, List<UnitMember> Parts)>();
         foreach (var finding in current)
         {
-            var id = UnitIds.Verify(finding.Id);
             var source = units[finding.UnitId];
             var sourceMembers = members[finding.UnitId].ToList();
             var parts = new List<UnitMember>();
@@ -38,7 +38,7 @@ public sealed class RefreshVerification(ILedger ledger, ISourceTree tree, Config
                     throw new JsonException("browser verification needs current configuration and source hashing; run scan and verify through the CLI");
                 if (checkedUi.Add(finding.Finding.Path))
                     await UxSourceSnapshot.CheckAsync(ledger, tree, hasher, config, finding.Finding.Path, cancellationToken);
-                parts.AddRange(sourceMembers.Select(member => member with { UnitId = id }));
+                parts.AddRange(sourceMembers);
             }
             else
             {
@@ -48,18 +48,64 @@ public sealed class RefreshVerification(ILedger ledger, ISourceTree tree, Config
                     && paths.All(path => hashes.TryGetValue(path, out var hash) && recorded.GetValueOrDefault(path)?.ContentHash == hash);
                 parts.AddRange(unchanged
                     ? PlannedUnit.Verify(finding, sourceMembers, source.Fidelity).Members
-                    : paths.Where(hashes.ContainsKey).Select(path => new UnitMember(id, path, null, hashes[path], 0)));
+                    : paths.Where(hashes.ContainsKey).Select(path => new UnitMember("", path, null, hashes[path], 0)));
             }
-            var fingerprint = Fingerprints.Compute(parts);
-            units.TryGetValue(id, out var previous);
-            var status = previous is null || previous.Fingerprint != fingerprint ? UnitStatus.Pending
-                : previous.Status != UnitStatus.Retired ? previous.Status
-                : finding.Verification is not null && previous.SummaryHash == fingerprint ? UnitStatus.Done
-                : UnitStatus.Pending;
-            planned.Add(new Unit(id, UnitKind.Verify, FindingLocation.Of(finding.Finding), fingerprint, status, source.Fidelity, previous?.LensHash, previous?.Summary, previous?.SummaryHash));
-            updatedMembers.AddRange(parts);
+            checks.Add((finding, source, parts));
         }
-        var retired = units.Values.Where(unit => deterministic.Contains(unit.Id) && unit.Status != UnitStatus.Retired)
+
+        // Findings of one reporting unit checked over the same code share checks (D78): an existing check that stays done keeps its findings, and the rest are batched.
+        var batch = config?.VerifyBatch ?? 1;
+        var produced = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var group in checks.GroupBy(c => c.Finding.UnitId + "\n" + Fingerprints.Compute(c.Parts), StringComparer.Ordinal))
+        {
+            var byId = group.ToDictionary(c => c.Finding.Id);
+            var assigned = new HashSet<long>();
+            var existing = units.Values
+                .Select(unit => (Unit: unit, Ids: UnitIds.VerifiedFindings(unit.Id)))
+                .Where(x => x.Unit.Kind == UnitKind.Verify && x.Ids.Count > 0 && x.Ids.All(byId.ContainsKey))
+                .OrderBy(x => x.Unit.Status == UnitStatus.Retired).ThenByDescending(x => x.Ids.Count).ThenBy(x => x.Unit.Id, StringComparer.Ordinal);
+            foreach (var (unit, ids) in existing)
+            {
+                if (ids.Any(assigned.Contains) || Plan(ids) != UnitStatus.Done) continue;
+                Add(ids);
+                assigned.UnionWith(ids.Where(id => byId[id].Finding.Verification is not null));
+            }
+
+            var rest = group.Where(c => !assigned.Contains(c.Finding.Id)).OrderBy(c => c.Finding.Id).ToList();
+            foreach (var single in rest.Where(c => ReviewEligibility.RequiresBrowser(c.Finding.Finding, c.Source)))
+                Add([single.Finding.Id]);
+            foreach (var chunk in rest.Where(c => !ReviewEligibility.RequiresBrowser(c.Finding.Finding, c.Source)).Chunk(Math.Max(1, batch)))
+                Add([.. chunk.Select(c => c.Finding.Id)]);
+
+            UnitStatus Plan(IReadOnlyList<long> ids) => Status(UnitIds.Verify(ids), Fingerprints.Compute(byId[ids[0]].Parts), ids.All(id => byId[id].Finding.Verification is not null));
+
+            void Add(IReadOnlyList<long> ids)
+            {
+                var id = UnitIds.Verify(ids);
+                if (!produced.Add(id)) return;
+                var first = byId[ids[0]];
+                var fingerprint = Fingerprints.Compute(first.Parts);
+                units.TryGetValue(id, out var previous);
+                var key = ids.Count == 1 ? FindingLocation.Of(first.Finding.Finding)
+                    : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{FindingLocation.Of(first.Finding.Finding)} and {ids.Count - 1} more");
+                planned.Add(new Unit(id, UnitKind.Verify, key, fingerprint, Plan(ids), first.Source.Fidelity, previous?.LensHash, previous?.Summary, previous?.SummaryHash));
+                updatedMembers.AddRange(first.Parts.Select(member => member with { UnitId = id }));
+            }
+        }
+
+        // A check keeps the status it had while its code is unchanged; a retired check rebuilt exactly as its last verdict saw it is done again.
+        UnitStatus Status(string id, string fingerprint, bool verified)
+        {
+            units.TryGetValue(id, out var previous);
+            return previous is null || previous.Fingerprint != fingerprint ? UnitStatus.Pending
+                : previous.Status != UnitStatus.Retired ? previous.Status
+                : verified && previous.SummaryHash == fingerprint ? UnitStatus.Done
+                : UnitStatus.Pending;
+        }
+
+        var refreshed = current.Select(f => f.Id).ToHashSet();
+        var retired = units.Values.Where(unit => unit.Status != UnitStatus.Retired && !produced.Contains(unit.Id)
+                && (deterministic.Contains(unit.Id) || unit.Kind == UnitKind.Verify && UnitIds.VerifiedFindings(unit.Id).Any(refreshed.Contains)))
             .Select(unit => unit with { Status = UnitStatus.Retired }).ToList();
         planned.AddRange(retired);
         updatedMembers.AddRange(await ledger.GetMembersAsync(retired.Select(unit => unit.Id).ToList(), cancellationToken));

@@ -79,7 +79,7 @@ public sealed class Estimate(ILedger ledger, Config config, string? path = null)
         var own = priced.Where(c => c.By.Agent == agent).ToList();
         var mean = own.Average(c => c.CostUsd!.Value);
         var rate = config.Verify ? await FindingRateAsync(units, cancellationToken) : null;
-        var expected = rate is null ? 0 : (int)Math.Round(pending.Count(u => ProducesFindings(u.Kind)) * rate.PerUnit, MidpointRounding.AwayFromZero);
+        var expected = rate is null ? 0 : (int)Math.Round(pending.Count(u => ProducesFindings(u.Kind)) * rate.CallsPerUnit, MidpointRounding.AwayFromZero);
         var counts = pending.GroupBy(u => u.Kind).ToDictionary(g => g.Key, g => g.Count());
         if (expected > 0) counts.TryAdd(UnitKind.Verify, 0);
         var lines = counts
@@ -102,8 +102,9 @@ public sealed class Estimate(ILedger ledger, Config config, string? path = null)
             .Select(u => u.Id)
             .ToHashSet(StringComparer.Ordinal);
         if (analysed.Count < CallsForMeasuredRatio) return null;
-        var findings = (await ledger.GetCurrentFindingsAsync(cancellationToken)).Count(f => analysed.Contains(f.UnitId));
-        return new FindingRate((decimal)findings / analysed.Count, analysed.Count);
+        var perUnit = (await ledger.GetCurrentFindingsAsync(cancellationToken)).Where(f => analysed.Contains(f.UnitId)).GroupBy(f => f.UnitId).Select(g => g.Count()).ToList();
+        var calls = perUnit.Sum(count => (count + config.VerifyBatch - 1) / config.VerifyBatch);
+        return new FindingRate((decimal)perUnit.Sum() / analysed.Count, analysed.Count, (decimal)calls / analysed.Count, config.VerifyBatch);
     }
 
     private static bool ProducesFindings(UnitKind kind) => kind is not (UnitKind.Verify or UnitKind.Fix or UnitKind.Dependency);

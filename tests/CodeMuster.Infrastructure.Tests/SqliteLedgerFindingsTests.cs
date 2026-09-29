@@ -105,6 +105,25 @@ public class SqliteLedgerFindingsTests
     }
 
     [Fact]
+    public async Task RecordVerifications_StoresEachVerdict_WithOneAnalysis_AndMarksTheBatchDone()
+    {
+        using var temp = new TempDirectory();
+        using var ledger = await SqliteLedger.OpenAsync(temp.DatabasePath, CancellationToken.None);
+        var unit = Pending("src/A.cs");
+        await ledger.UpsertUnitsAsync([unit], [Member(unit)], CancellationToken.None);
+        await ledger.RecordAnalysisAsync(new Analysis(unit.Id, unit.Fingerprint, "lens", At, true, "A", null), [Finding("src/A.cs", 1), Finding("src/A.cs", 5)], CancellationToken.None);
+        var verify = new Unit(UnitIds.Verify([1, 2]), UnitKind.Verify, "src/A.cs:1-2 and 1 more", unit.Fingerprint, UnitStatus.Pending, Fidelity.Full, null, null, null);
+        await ledger.UpsertUnitsAsync([verify], [Member(unit) with { UnitId = verify.Id }], CancellationToken.None);
+        var confirmed = new VerifyResponse(Verdict.Confirmed, "Line 1 shows it.");
+        var refuted = new VerifyResponse(Verdict.Refuted, "Line 5 guards it.");
+
+        await ledger.RecordVerificationsAsync(new Analysis(verify.Id, verify.Fingerprint, "lens", At, true, "2 verdicts", null), [(1, confirmed), (2, refuted)], CancellationToken.None);
+
+        Assert.Equal([confirmed, refuted], (await ledger.GetCurrentFindingsAsync(CancellationToken.None)).Select(f => f.Verification));
+        Assert.Equal(UnitStatus.Done, (await ledger.GetUnitAsync(verify.Id, CancellationToken.None))!.Status);
+    }
+
+    [Fact]
     public async Task RecordVerification_Again_ReplacesTheVerdict()
     {
         using var temp = new TempDirectory();

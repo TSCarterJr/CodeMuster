@@ -22,12 +22,13 @@ public class VerifyTests
         Assert.Equal(0, analyze.ExitCode);
         var files = int.Parse(Regex.Match(analyze.Stdout, @"^completed (\d+) unit\(s\), 0 gave up\r?$", RegexOptions.Multiline).Groups[1].Value);
         var status = (await CliProcess.RunAsync(repo.Root, "status")).Stdout.ReplaceLineEndings("\n");
-        Assert.Contains($"\nfile {files}/{files}\nverify 0/{2 * files}\n", status);
+        // Both findings of a file share one verify unit (D78).
+        Assert.Contains($"\nfile {files}/{files}\nverify 0/{files}\n", status);
 
         var verify = await CliProcess.RunAsync(repo.Root, environment, "verify", "--agent", "fake", "-j", "4");
 
         Assert.Equal(0, verify.ExitCode);
-        Assert.Contains($"completed {2 * files} unit(s), 0 gave up", verify.Stdout);
+        Assert.Contains($"completed {files} unit(s), 0 gave up", verify.Stdout);
         Assert.DoesNotMatch(new Regex("^\\d+/\\d+ file:", RegexOptions.Multiline), verify.Stdout);
         var report = await CliProcess.RunAsync(repo.Root, "report");
         Assert.Contains($"## Findings ({files}, {files} refuted not shown)", report.Stdout);

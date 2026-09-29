@@ -35,6 +35,7 @@ public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdent
         {
             return unit.Kind switch
             {
+                UnitKind.Verify when UnitIds.VerifiedFindings(unit.Id).Count > 1 => await RecordVerdictsAsync(unit, members, current, analysis, responseJson, cancellationToken),
                 UnitKind.Verify => await RecordVerdictAsync(unit, current, analysis, responseJson, cancellationToken),
                 UnitKind.Fix => await RecordFixAsync(unit, current, analysis, responseJson, cancellationToken),
                 _ => await RecordFindingsAsync(unit, members, current, analysis, responseJson, cancellationToken),
@@ -122,6 +123,39 @@ public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdent
         }
     }
 
+    // A batched verify unit (D78): one verdict per current finding it lists, recorded with one analysis; a finding left out gets a verify unit of its own.
+    private async Task<DoneResult> RecordVerdictsAsync(Unit unit, IReadOnlyList<UnitMember> members, IReadOnlyList<UnitFinding> current, Analysis analysis, string responseJson, CancellationToken cancellationToken)
+    {
+        var ids = UnitIds.VerifiedFindings(unit.Id);
+        var findings = current.Where(f => ids.Contains(f.Id)).ToList();
+        if (findings.Count == 0) return new DoneResult(DoneOutcome.Rejected, Replaced(unit.Id));
+        var response = VerifyBatchResponseJson.Parse(responseJson);
+        if (response.Verdicts.Count == 0) throw new JsonException("verdicts is empty; answer every finding listed");
+        if (response.Verdicts.FirstOrDefault(v => !ids.Contains(v.Finding)) is { } stray)
+            return new DoneResult(DoneOutcome.Rejected, string.Create(CultureInfo.InvariantCulture, $"finding {stray.Finding} is not in {unit.Id}"));
+        if (response.Verdicts.Any(v => string.IsNullOrWhiteSpace(v.Reason)))
+            return new DoneResult(DoneOutcome.Rejected, "every verdict needs an evidence-backed reason");
+        if (response.Verdicts.GroupBy(v => v.Finding).FirstOrDefault(g => g.Count() > 1) is { } twice)
+            return new DoneResult(DoneOutcome.Rejected, string.Create(CultureInfo.InvariantCulture, $"finding {twice.Key} is answered more than once"));
+
+        var answered = response.Verdicts.Where(v => findings.Any(f => f.Id == v.Finding)).ToList();
+        var counts = string.Join(", ", answered.GroupBy(v => v.Verdict).OrderBy(g => g.Key)
+            .Select(g => string.Create(CultureInfo.InvariantCulture, $"{g.Count()} {g.Key.ToString().ToLowerInvariant()}")));
+        var summary = string.Create(CultureInfo.InvariantCulture, $"recorded {answered.Count} verdict(s): {counts}");
+        await ledger.RecordVerificationsAsync(analysis with { Summary = summary },
+            [.. answered.Select(v => (v.Finding, new VerifyResponse(v.Verdict, v.Reason)))], cancellationToken);
+
+        var missing = findings.Where(f => answered.All(v => v.Finding != f.Id)).Select(f => PlannedUnit.Verify(f, members, unit.Fidelity)).ToList();
+        if (missing.Count > 0)
+        {
+            await ledger.UpsertUnitsAsync(
+                [.. missing.Select(p => new Unit(p.Id, p.Kind, p.Key, Fingerprints.Compute(p.Members), UnitStatus.Pending, p.Fidelity, null, null, null))],
+                [.. missing.SelectMany(p => p.Members)], cancellationToken);
+        }
+
+        return new DoneResult(DoneOutcome.Recorded, summary) { Verdicts = answered };
+    }
+
     private async Task<DoneResult> RecordFixAsync(Unit unit, IReadOnlyList<UnitFinding> current, Analysis analysis, string responseJson, CancellationToken cancellationToken)
     {
         var response = FixResponseJson.Parse(responseJson);
@@ -183,14 +217,11 @@ public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdent
 
     private async Task RetireVerifyUnitsAsync(IEnumerable<UnitFinding> replaced, CancellationToken cancellationToken)
     {
-        var retired = new List<Unit>();
-        foreach (var finding in replaced)
-        {
-            if (await ledger.GetUnitAsync(UnitIds.Verify(finding.Id), cancellationToken) is { Status: not UnitStatus.Retired } verify)
-            {
-                retired.Add(verify with { Status = UnitStatus.Retired });
-            }
-        }
+        var ids = replaced.Select(f => f.Id).ToHashSet();
+        var retired = ids.Count == 0 ? [] : (await ledger.GetUnitsAsync(cancellationToken))
+            .Where(u => u.Kind == UnitKind.Verify && u.Status != UnitStatus.Retired && UnitIds.VerifiedFindings(u.Id).Any(ids.Contains))
+            .Select(u => u with { Status = UnitStatus.Retired })
+            .ToList();
 
         if (retired.Count > 0)
         {
@@ -200,10 +231,8 @@ public sealed class Done(ILedger ledger, IClock clock, Config config, AgentIdent
 
     private async Task AddVerifyUnitsAsync(Unit unit, IReadOnlyList<UnitMember> members, CancellationToken cancellationToken)
     {
-        var planned = (await ledger.GetCurrentFindingsAsync(cancellationToken))
-            .Where(f => f.UnitId == unit.Id)
-            .Select(f => PlannedUnit.Verify(f, members, unit.Fidelity))
-            .ToList();
+        var findings = (await ledger.GetCurrentFindingsAsync(cancellationToken)).Where(f => f.UnitId == unit.Id).ToList();
+        var planned = VerifyBatches.Plan(unit, findings, members, unit.Fidelity, config.VerifyBatch, []);
         if (planned.Count > 0)
         {
             var created = planned.Select(p => new Unit(p.Id, p.Kind, p.Key, Fingerprints.Compute(p.Members), UnitStatus.Pending, p.Fidelity, null, null, null)).ToList();

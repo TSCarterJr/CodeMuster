@@ -34,6 +34,9 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     /// <summary>Whether scan plans the <c>architecture</c> unit over the UI's structure and the <c>api</c> unit over the endpoint map (D69).</summary>
     public bool ArchitectureReview { get; init; } = true;
 
+    /// <summary>Most findings of one analysis verified in one agent call (D78); 1 gives every finding its own verify unit (D27).</summary>
+    public int VerifyBatch { get; init; } = 6;
+
     /// <summary>Whether test files are reviewed like any other file. Off by default: test files are recorded excluded with reason <c>test</c> but still mapped (D79).</summary>
     public bool ReviewTests { get; init; }
 

@@ -30,4 +30,13 @@ public sealed record PlannedUnit(string Id, UnitKind Kind, string Key, Fidelity 
         var id = UnitIds.Verify(finding.Id);
         return new PlannedUnit(id, UnitKind.Verify, FindingLocation.Of(finding.Finding), fidelity, members.Where(m => m.Distance >= 0).Select(m => m with { UnitId = id }).ToList());
     }
+
+    /// <summary>The verify unit for several findings of one analysis (D78): the same members, keyed by the first finding's lines and how many more it holds. One finding plans exactly <see cref="Verify(UnitFinding, IReadOnlyList{UnitMember}, Fidelity)"/>.</summary>
+    public static PlannedUnit Verify(IReadOnlyList<UnitFinding> findings, IReadOnlyList<UnitMember> members, Fidelity fidelity)
+    {
+        if (findings.Count == 1) return Verify(findings[0], members, fidelity);
+        var id = UnitIds.Verify([.. findings.Select(f => f.Id)]);
+        var key = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{FindingLocation.Of(findings[0].Finding)} and {findings.Count - 1} more");
+        return new PlannedUnit(id, UnitKind.Verify, key, fidelity, members.Where(m => m.Distance >= 0).Select(m => m with { UnitId = id }).ToList());
+    }
 }

@@ -57,7 +57,6 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
         IReadOnlyList<UnitFinding> current = units.Any(u => u.Kind is UnitKind.Verify or UnitKind.Fix)
             ? await ledger.GetCurrentFindingsAsync(cancellationToken)
             : [];
-        var findings = current.ToDictionary(f => UnitIds.Verify(f.Id), f => f.Finding);
         var sourceUnits = (await ledger.GetUnitsAsync(cancellationToken)).ToDictionary(u => u.Id, StringComparer.Ordinal);
         var receipts = await ledger.GetLatestEvidenceAsync(cancellationToken);
         var uiPaths = units.Any(u => u.Kind == UnitKind.Ux)
@@ -73,18 +72,23 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
                 .ThenBy(m => m.Path, StringComparer.Ordinal)
                 .ThenBy(m => m.Range?.StartLine ?? 0)
                 .ToList();
-            Finding? finding = null;
-            if (unit.Kind == UnitKind.Verify && !findings.TryGetValue(unit.Id, out finding))
+            var verified = UnitIds.VerifiedFindings(unit.Id);
+            var tested = unit.Kind == UnitKind.Verify ? current.Where(f => verified.Contains(f.Id)).OrderBy(f => f.Id).ToList() : [];
+            if (unit.Kind == UnitKind.Verify && tested.Count == 0)
             {
                 throw new InvalidOperationException(Done.Replaced(unit.Id));
             }
 
+            // A batched check (D78) lists its findings instead of one; browser findings are never batched.
+            IReadOnlyList<UnitFinding> batch = verified.Count > 1 ? tested : [];
+            var prior = batch.Count == 0 ? tested.FirstOrDefault() : null;
+            var finding = prior?.Finding;
             var targets = unit.Kind == UnitKind.Fix ? Targets(current, sourceUnits, unit.Key) : [];
-            var prior = unit.Kind == UnitKind.Verify ? current.FirstOrDefault(f => UnitIds.Verify(f.Id) == unit.Id) : null;
             var requiresBrowser = unit.Kind == UnitKind.Ux || prior is not null && ReviewEligibility.RequiresBrowser(prior.Finding, sourceUnits.GetValueOrDefault(prior.UnitId));
             var markdown = unit.Kind == UnitKind.Impact ? await RenderImpactAsync(unit, unitMembers, cancellationToken)
                 : unit.Kind == UnitKind.Duplicate ? await RenderDuplicateAsync(unit, unitMembers, cancellationToken)
                 : unit.Kind is UnitKind.Architecture or UnitKind.Api ? await RenderArchitectureAsync(unit, unitMembers, cancellationToken)
+                : batch.Count > 0 ? RenderBatch(unit, await SelectAsync(unitMembers, unit.Kind, cancellationToken), batch)
                 : Render(unit, await SelectAsync(unitMembers, unit.Kind, cancellationToken), finding, targets, prior, uiPaths,
                     prior is null ? null : receipts.GetValueOrDefault(prior.UnitId)?.EvidenceJson, requiresBrowser);
             var failure = unit.Status == UnitStatus.Failed
@@ -210,6 +214,36 @@ public sealed class Next(ILedger ledger, ISourceTree tree, Config config, bool i
         lines.Add("## Files");
         AppendFiles(lines, parts);
         AppendResponse(lines, unit, finding, requiresBrowser);
+        return string.Join('\n', lines) + "\n";
+    }
+
+    private string RenderBatch(Unit unit, IReadOnlyList<Part> parts, IReadOnlyList<UnitFinding> batch)
+    {
+        var lenses = config.LensesFor(parts.Select(p => (p.Member.Path, Languages.FromPath(p.Member.Path))));
+        var lines = Header(unit, lenses.Select(l => l.Id), parts);
+        lines.AddRange(["## Instructions", "", VerifyInstructions, "",
+            "Several findings reported against the same code are listed below. Judge each one on its own evidence, as if it were the only one, and answer every one by its id.",
+            "", "## Findings", "", "```json",
+            JsonSerializer.Serialize(batch.Select(f => new { f.Id, f.Finding }), DomainJson.Options), "```", ""]);
+        var prior = batch.Where(f => f.Verification is not null || f.Fix is not null).Select(f => new { f.Id, f.Verification, f.Fix }).ToList();
+        if (prior.Count > 0)
+        {
+            lines.AddRange(["## Prior outcomes (historical evidence)", JsonSerializer.Serialize(prior, DomainJson.Options), ""]);
+        }
+
+        lines.Add("## Files");
+        AppendFiles(lines, parts);
+        lines.AddRange(["", "## Response", "", "Reply with JSON only, in exactly this shape:", "", "```json", VerifyBatchResponseJson.Sample, "```", ""]);
+        const string rule = "Answer every finding id listed under Findings exactly once; each reason must point at the lines that settle it.";
+        if (interactive)
+        {
+            lines.AddRange([rule + " Then record it with:", "", $"    codemuster done {unit.Id} --fingerprint {unit.Fingerprint} --findings <path-to-your-json-file>"]);
+        }
+        else
+        {
+            lines.Add(rule + " Print the JSON and nothing else; the driver records it for you.");
+        }
+
         return string.Join('\n', lines) + "\n";
     }
 

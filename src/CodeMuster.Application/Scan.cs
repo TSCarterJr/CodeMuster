@@ -154,9 +154,13 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
     private async Task<IEnumerable<PlannedUnit>> PlanVerifyUnitsAsync(IReadOnlyList<PlannedUnit> planned, CancellationToken cancellationToken)
     {
         var sources = planned.Where(p => p.Kind is not (UnitKind.Dependency or UnitKind.DeadCode)).ToDictionary(p => p.Id, StringComparer.Ordinal);
+        var units = await ledger.GetUnitsAsync(cancellationToken);
+        var byId = units.ToDictionary(u => u.Id, StringComparer.Ordinal);
+        var live = units.Where(u => u.Kind == UnitKind.Verify && u.Status != UnitStatus.Retired).ToList();
         return (await ledger.GetCurrentFindingsAsync(cancellationToken))
             .Where(f => sources.TryGetValue(f.UnitId, out var source) && Fingerprints.Compute(source.Members) == f.Fingerprint)
-            .Select(f => PlannedUnit.Verify(f, sources[f.UnitId].Members, sources[f.UnitId].Fidelity));
+            .GroupBy(f => f.UnitId, StringComparer.Ordinal)
+            .SelectMany(g => VerifyBatches.Plan(byId.GetValueOrDefault(g.Key), [.. g], sources[g.Key].Members, sources[g.Key].Fidelity, config.VerifyBatch, live));
     }
 
     /// <summary>Files the audit may look at: everything not excluded, plus data manifests and lockfiles, which are excluded as code but are exactly what the audit tools read (D38).</summary>

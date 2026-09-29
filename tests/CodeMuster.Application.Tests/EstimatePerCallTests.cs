@@ -80,7 +80,7 @@ public class EstimatePerCallTests
         Unit("fix:x", UnitKind.Fix, UnitStatus.Pending);
         Calls(20, UnitKind.File, 0.30m);
 
-        var report = await RunAsync(Config.Default);
+        var report = await RunAsync(Config.Default with { VerifyBatch = 1 });
 
         Assert.Equal(
         [
@@ -90,6 +90,21 @@ public class EstimatePerCallTests
             "fix 1 call(s) at $0.30 each, the mean of all 20 claude calls (fewer than 20 fix calls recorded) ~$0.30",
             "total 9 call(s) ~$2.70 at recorded rates",
         ], PerCall(report));
+    }
+
+    [Fact]
+    public async Task ExpectedVerifyCalls_CountBatches_NotFindings()
+    {
+        for (var i = 0; i < 20; i++) Analysed("file:done" + i, i < 10 ? 2 : 8);
+        Unit("file:a", UnitKind.File, UnitStatus.Pending);
+        Unit("file:b", UnitKind.File, UnitStatus.Pending);
+        Calls(20, UnitKind.File, 0.30m);
+
+        var report = await RunAsync(Config.Default);
+
+        Assert.Equal(
+            "verify 3 call(s): 0 pending and ~3 expected at 5 findings per analysed unit over 20 units in batches of up to 6, at $0.30 each, the mean of all 20 claude calls (fewer than 20 verify calls recorded) ~$0.90",
+            PerCall(report)[2]);
     }
 
     [Fact]

@@ -310,6 +310,7 @@ Edit the existing `.codemuster/config.json`; keep lenses that are already useful
 | `slice_token_budget` | `24000` | Approximate amount of full code in a slice before farther members are reduced to signatures. |
 | `resolution_threshold` | `0.9` | Required fraction of resolved calls for slice coverage to be considered complete. |
 | `verify` | `true` | Create a verification pass for reported findings. |
+| `verify_batch` | `6` | Most findings of one analysis verified in one agent call. The code is sent once and each finding still gets its own verdict and reason. `1` gives every finding its own call. |
 | `vulnerabilities` | `true` | Run ecosystem dependency audit tools during scanning. |
 | `dead_code` | `false` | Record conservative static usage assessments and report-only unused candidates during scan. |
 | `impact` | `true` | Plan an `impact` unit for each symbol whose body or signature changed since the previous scan. See [Impact review](#impact-review). |

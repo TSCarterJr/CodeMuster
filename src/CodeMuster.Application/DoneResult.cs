@@ -28,4 +28,7 @@ public sealed record DoneResult(DoneOutcome Outcome, string Message)
 
     /// <summary>The verdict a verification recorded, or null.</summary>
     public Verdict? Verdict { get; init; }
+
+    /// <summary>The verdicts a batched verification recorded (D78); empty for any other outcome or unit.</summary>
+    public IReadOnlyList<FindingVerdict> Verdicts { get; init; } = [];
 }

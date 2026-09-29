@@ -103,6 +103,11 @@ public sealed class Run(ILedger ledger, ISourceTree tree, IClock clock, Config c
                 {
                     events.Emit("verify_outcome", ("unit", pack.UnitId), ("key", pack.Key), ("verdict", verdict.ToString().ToLowerInvariant()));
                 }
+
+                foreach (var each in result.Verdicts)
+                {
+                    events.Emit("verify_outcome", ("unit", pack.UnitId), ("key", pack.Key), ("finding", each.Finding), ("verdict", each.Verdict.ToString().ToLowerInvariant()));
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

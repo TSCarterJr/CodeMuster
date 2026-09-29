@@ -6,6 +6,11 @@ start with 0.2.8.
 
 ## Unreleased
 
+- Verification sends each unit's code once for up to six of its findings, instead of once per
+  finding, and records a separate verdict and reason for each. A finding the model leaves out is
+  verified again on its own. `verify_batch` in config sets the batch size, and `1` restores one
+  call per finding. `scan` and `verify` regroup checks still waiting from earlier versions; checks
+  already answered are kept.
 - Test files are no longer sent for AI review by default. Scan recognizes them by folder
   (`tests/`, `__tests__/`, `e2e-*/`, ...), by name (`*.test.*`, `*.spec.*`, `*Tests.cs`, ...) and
   by C# test project, records them excluded with reason `test`, and still maps them so impact

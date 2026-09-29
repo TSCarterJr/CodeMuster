@@ -17,7 +17,9 @@ public sealed record EstimateCost(string Model, decimal CostUsd);
 /// <summary>Findings recorded per analysed unit, from which verify calls are expected (D82).</summary>
 /// <param name="PerUnit">Current findings over analysed units.</param>
 /// <param name="Units">Analysed units the rate is measured over.</param>
-public sealed record FindingRate(decimal PerUnit, int Units);
+/// <param name="CallsPerUnit">Verify calls per analysed unit once its findings are grouped into batches (D78).</param>
+/// <param name="Batch">Most findings one verify call holds.</param>
+public sealed record FindingRate(decimal PerUnit, int Units, decimal CallsPerUnit, int Batch);
 
 /// <summary>The calls of one unit kind priced at a recorded cost per call (D82).</summary>
 /// <param name="Kind">The unit kind.</param>
@@ -93,7 +95,7 @@ public sealed record EstimateReport(IReadOnlyList<EstimateLine> Lines, long Tota
     {
         var kind = line.Kind.ToString().ToLowerInvariant();
         var expected = line.Expected > 0 && perCall.Findings is { } rate
-            ? string.Create(CultureInfo.InvariantCulture, $": {line.Pending} pending and ~{line.Expected} expected at {rate.PerUnit:0.#} findings per analysed unit over {rate.Units} units,")
+            ? string.Create(CultureInfo.InvariantCulture, $": {line.Pending} pending and ~{line.Expected} expected at {rate.PerUnit:0.#} findings per analysed unit over {rate.Units} units{(rate.Batch > 1 ? $" in batches of up to {rate.Batch}" : "")},")
             : "";
         var basis = line.OwnKind
             ? string.Create(CultureInfo.InvariantCulture, $"the mean of {line.MeasuredFrom} {kind} calls")
