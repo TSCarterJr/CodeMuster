@@ -2,6 +2,15 @@
 
 ## Current task status
 
+- 2026-09-29, claude: REL056 released 0.5.6 at Tim's request: ASK1 (run, verify and fix ask for
+  the installed agent, model, thinking and jobs at a terminal when --agent is missing; D84),
+  AUTO1 (`codemuster auto` and bare `codemuster` at a terminal: step list, one set of agent
+  questions, estimate gate and --max-cost, `run --no-verify`, --steps/--skip/--yes for scripts;
+  D85) and AUTO2 (the launcher offers the update before auto). Choices are remembered in
+  ~/.codemuster/choices (D86; CODEMUSTER_STATE_DIR moves it for tests). Tag v0.5.6 at 5fbca70,
+  release 36602154254; a fresh install reports 0.5.6. All 2,181 .NET and 76 npm tests passed.
+  The interactive prompts are unit-tested with injected input, not driven in a real terminal,
+  and the launcher's install-and-rerun has not run against a real newer version yet.
 - 2026-09-29, claude: REL055 released 0.5.5: EST1 (estimate priced per recorded call, D82),
   TESTS1 (test files kept out of AI review, still mapped; D79, D83), VERIFYB1 (up to six findings
   of one analysis per verify call, ids like `verify:12,13`, no schema change; D78) and BATCH1 (up
