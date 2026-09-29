@@ -4,7 +4,10 @@ User-visible changes by released version. Add upcoming changes under Unreleased;
 move them to a dated version heading before publishing. Historical entries below
 start with 0.2.8.
 
-## Unreleased
+## 0.5.6 - 2026-09-29
+
+Use `npm install -g codemuster@0.5.6` to update. The ledger stays at schema 9. From now on,
+`codemuster auto` offers each newer version itself.
 
 - `codemuster auto` runs the flow in one command: it lists the steps to toggle (doctor, scan,
   estimate, run, verify, report, and on request fix and validate), asks for the agent settings once,
