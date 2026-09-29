@@ -38,6 +38,9 @@ public sealed record StatusReport(
     /// <summary>Units skipped without being analyzed because their pack exceeded the budget.</summary>
     public int Skipped { get; init; }
 
+    /// <summary>Present files excluded as test code (D79), also counted in <see cref="Excluded"/>.</summary>
+    public int TestFiles { get; init; }
+
     /// <summary>Browser review applicability and recorded evidence, separate from code coverage.</summary>
     public string? UxStatus { get; init; }
 
@@ -77,7 +80,7 @@ public sealed record StatusReport(
 
         if (Skipped > 0) lines.Add(string.Create(CultureInfo.InvariantCulture, $"skipped {Skipped}"));
         lines.Add(string.Create(CultureInfo.InvariantCulture, $"stale {Stale}"));
-        lines.Add(string.Create(CultureInfo.InvariantCulture, $"excluded {Excluded}"));
+        lines.Add(string.Create(CultureInfo.InvariantCulture, $"excluded {Excluded}{(TestFiles > 0 ? $" ({TestFiles} test files)" : "")}"));
         lines.Add(string.Create(CultureInfo.InvariantCulture, $"low-fidelity {LowFidelity}"));
         if (UxStatus is not null) lines.Add(UxStatus);
         if (SpendLine is { } spendLine) lines.Add(spendLine);

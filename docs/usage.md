@@ -317,6 +317,7 @@ Edit the existing `.codemuster/config.json`; keep lenses that are already useful
 | `architecture_review` | `true` | Plan one `architecture` unit over the UI's structure and one `api` unit over the HTTP endpoints. See [UI and API design review](#ui-and-api-design-review). |
 | `user_experience` | Disabled | UI-only browser review settings: `enabled`, optional HTTP(S) `base_url`, and `include`/`exclude` globs. See [application reviews](application-reviews.md). |
 | `exclude` | `[]` | Additional repo-relative exclusion globs. |
+| `review_tests` | `false` | Review test files like any other file. By default they are excluded with reason `test`. See [Test files](#test-files). |
 | `test_command` | `[]` | Program and arguments to run once before fixing and after each fix attempt; empty means no configured validation. |
 | `prices` | Not set | Per-model prices in US dollars per million tokens that override or extend the bundled price table. See [Spend](#spend). |
 
@@ -346,6 +347,19 @@ audits; repository `exclude` globs still apply to those checks.
 
 Run `scan` after upgrading to retire previously queued non-code units. Their history is retained.
 Inspect the reported excluded-file count when interpreting coverage.
+
+### Test files
+
+Test code is left out of AI review by default and recorded excluded with reason `test`. A file is
+test code when a folder in its path is `test`, `tests`, `__tests__`, `spec`, `specs` or `e2e`, or
+starts with `e2e-`; when its name matches `*.test.*`, `*.spec.*`, `*_test.*`, `test_*.py`,
+`*Test.cs` or `*Tests.cs`; or when it belongs to a C# project that sets `IsTestProject`, uses the
+MSTest SDK, or references `Microsoft.NET.Test.Sdk`, xunit, NUnit or MSTest. Your own `exclude`
+globs are checked first.
+
+Test files are still mapped, so `impact` review and `map references` see the calls tests make.
+Unused-code review does not count them: product code that only tests call is still a candidate.
+`status` shows how many excluded files are tests. Set `"review_tests": true` to review them.
 
 ### Validate fixes
 

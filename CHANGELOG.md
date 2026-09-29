@@ -6,6 +6,11 @@ start with 0.2.8.
 
 ## Unreleased
 
+- Test files are no longer sent for AI review by default. Scan recognizes them by folder
+  (`tests/`, `__tests__/`, `e2e-*/`, ...), by name (`*.test.*`, `*.spec.*`, `*Tests.cs`, ...) and
+  by C# test project, records them excluded with reason `test`, and still maps them so impact
+  review sees their calls. Unused-code review ignores calls from tests. Set `"review_tests": true`
+  to review them. On ToolbagCRM this removed about a quarter of the queue.
 - `estimate` prices the pending work per call at what your recorded calls actually cost, per unit
   kind, and counts the verify calls that future findings will create from the recorded findings
   per analysed unit. On a repository where Claude Code calls cost about $0.37 each, the token

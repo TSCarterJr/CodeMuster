@@ -20,9 +20,25 @@ public sealed class DeadCodeScan
     /// <summary>Source units to upsert before recording their static assessments.</summary>
     public IReadOnlyList<PlannedUnit> Plans { get; }
 
-    /// <summary>Builds assessments using the complete included source context and mapper diagnostics.</summary>
-    public static DeadCodeScan Build(CompositeMap mapped, IReadOnlyList<FileRecord> included, IReadOnlyDictionary<string, string> sources)
+    /// <summary>Builds assessments using the complete included source context and mapper diagnostics. Symbols, entry points, edges and references in <paramref name="testPaths"/> are left out, so code only tests use is still a candidate (D83).</summary>
+    public static DeadCodeScan Build(CompositeMap mapped, IReadOnlyList<FileRecord> included, IReadOnlyDictionary<string, string> sources, IReadOnlySet<string>? testPaths = null)
     {
+        if (testPaths is { Count: > 0 })
+        {
+            var testSymbols = mapped.Map.Symbols.Concat(mapped.Map.Declarations).Where(s => testPaths.Contains(s.Path)).Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
+            mapped = mapped with
+            {
+                Map = mapped.Map with
+                {
+                    Symbols = [.. mapped.Map.Symbols.Where(s => !testPaths.Contains(s.Path))],
+                    Declarations = [.. mapped.Map.Declarations.Where(d => !testPaths.Contains(d.Path))],
+                    EntryPoints = [.. mapped.Map.EntryPoints.Where(e => !testSymbols.Contains(e.SymbolId))],
+                    Edges = [.. mapped.Map.Edges.Where(e => !testSymbols.Contains(e.From))],
+                    References = [.. mapped.Map.References.Where(r => !testPaths.Contains(r.Path) && !testSymbols.Contains(r.From))],
+                },
+            };
+        }
+
         var files = included.Where(file => file.ExcludedReason is null && file.DeletedAt is null)
             .OrderBy(file => file.Path, StringComparer.Ordinal).ToList();
         var code = files.Where(file => IsCode(file.Language) || mapped.MappedLanguages.Contains(file.Language)).ToList();

@@ -63,6 +63,27 @@ public class DeadCodeScanTests
     }
 
     [Fact]
+    public async Task ACallerInATestFile_DoesNotMakeProductCodeUsed()
+    {
+        var sources = Sources();
+        var mapped = Map();
+        mapped = mapped with
+        {
+            Map = mapped.Map with
+            {
+                Symbols = [.. mapped.Map.Symbols, new Symbol("check", "api/InvoicesTests.cs", new LineRange(1, 1), "method", "public void Check()", "check-hash")],
+                Edges = [new Edge("check", "helper", EdgeKind.Call)],
+                References = [new Reference("check", "helper", ReferenceKind.Call, "api/InvoicesTests.cs", 1, 1)],
+            }
+        };
+        var ledger = new FakeLedger();
+
+        await SaveAsync(DeadCodeScan.Build(mapped, Files(sources), sources, new HashSet<string>(["api/InvoicesTests.cs"], StringComparer.Ordinal)), ledger);
+
+        Assert.Equal("api/Invoices.cs", Assert.Single(await ledger.GetCurrentFindingsAsync(CancellationToken.None)).Finding.Path);
+    }
+
+    [Fact]
     public async Task MissingMapsRecordUnknownEvidenceWithoutDeadCodeFindings()
     {
         var sources = new Dictionary<string, string> { ["api/Invoices.cs"] = "class Invoices { private void Helper() { } }" };

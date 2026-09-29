@@ -34,6 +34,9 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     /// <summary>Whether scan plans the <c>architecture</c> unit over the UI's structure and the <c>api</c> unit over the endpoint map (D69).</summary>
     public bool ArchitectureReview { get; init; } = true;
 
+    /// <summary>Whether test files are reviewed like any other file. Off by default: test files are recorded excluded with reason <c>test</c> but still mapped (D79).</summary>
+    public bool ReviewTests { get; init; }
+
     /// <summary>Per-model prices that override or extend the bundled price table (D63); null when the repository sets none.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<ModelPrice>? Prices { get; init; }
@@ -44,10 +47,17 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     /// <summary>True when this repository's own <see cref="Exclude"/> globs cover the path, whatever the built-in rules say about it.</summary>
     public bool ExcludedHere(string path) => excludeGlobs.AnyMatch(path);
 
-    /// <summary>Why a file is not analyzed: the built-in reason first, then <c>exclude:&lt;glob&gt;</c> for the first exclude glob it matches; null when it is analyzed.</summary>
-    public string? ExcludedReason(string path, bool linguistGenerated) =>
+    /// <summary>Why a file is not analyzed: the built-in reason first, then <c>exclude:&lt;glob&gt;</c> for the first exclude glob it matches, then <c>test</c> for test code unless <see cref="ReviewTests"/> is on (D79); null when it is analyzed.</summary>
+    /// <param name="path">Repo-relative path.</param>
+    /// <param name="linguistGenerated">Whether gitattributes mark the file generated.</param>
+    /// <param name="inTestProject">Whether the file belongs to a C# test project, which only scan reads project files to know.</param>
+    public string? ExcludedReason(string path, bool linguistGenerated, bool inTestProject = false) =>
         Exclusions.Reason(path, linguistGenerated)
-        ?? (excludeGlobs.FirstMatch(path) is { } glob ? "exclude:" + glob : null);
+        ?? (excludeGlobs.FirstMatch(path) is { } glob ? "exclude:" + glob : null)
+        ?? (!ReviewTests && (inTestProject || TestFiles.IsTestPath(path)) ? TestReason : null);
+
+    /// <summary>The exclusion reason of test code (D79).</summary>
+    public const string TestReason = "test";
 
     /// <summary>True when an edit to the file changes what the next scan plans or records: a file it reviews, a solution, project, tsconfig.json or jsconfig.json the mappers load, or, with <see cref="Vulnerabilities"/> on, a package.json whose audit unit it fingerprints (D38). Lockfiles and other excluded files do not count.</summary>
     public bool AffectsScan(string path, bool linguistGenerated)
@@ -58,7 +68,7 @@ public sealed record Config(IReadOnlyList<Lens> Lenses, int SliceTokenBudget = 2
     }
 
     internal bool IsMappingInput(string path, string? excludedReason) =>
-        excludedReason is null || excludedReason == "data" && !ExcludedHere(path)
+        excludedReason is null or TestReason || excludedReason == "data" && !ExcludedHere(path)
         && (Path.GetExtension(path).ToLowerInvariant() is ".sln" or ".slnx" or ".csproj"
             || Path.GetFileName(path) is "tsconfig.json" or "jsconfig.json");
 

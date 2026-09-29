@@ -27,7 +27,8 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         var lastCommits = await LastCommitsAsync(files, cancellationToken);
         var existing = (await ledger.GetFilesAsync(cancellationToken)).ToDictionary(f => f.Path, StringComparer.Ordinal);
         var hashes = await ContentHashes.CurrentAsync(hasher, files, existing, cancellationToken);
-        var current = files.Select(file => Refresh(file, existing.GetValueOrDefault(file.Path), hashes[file.Path], lastCommits, now)).ToList();
+        var inTestProject = config.ReviewTests ? (_ => false) : await TestProjectsAsync(files, cancellationToken);
+        var current = files.Select(file => Refresh(file, existing.GetValueOrDefault(file.Path), hashes[file.Path], lastCommits, now, inTestProject(file.Path))).ToList();
 
         var present = current.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
         var deleted = existing.Values
@@ -213,7 +214,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
                 try { sources[file.Path] = await tree.ReadFileAsync(file.Path, cancellationToken); }
                 catch (IOException ex) { progress?.Report($"dead-code source unavailable for {file.Path}: {ex.Message}"); }
             }
-            deadCode = DeadCodeScan.Build(mapped, included, sources);
+            deadCode = DeadCodeScan.Build(mapped, included, sources, current.Where(f => f.ExcludedReason == Config.TestReason).Select(f => f.Path).ToHashSet(StringComparer.Ordinal));
             planned = [.. planned, .. deadCode.Plans];
         }
         if (config.Verify)
@@ -310,7 +311,7 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
         }
     }
 
-    private FileRecord Refresh(SourceFile file, FileRecord? previous, string hash, IReadOnlyDictionary<string, CommitStamp>? lastCommits, string now)
+    private FileRecord Refresh(SourceFile file, FileRecord? previous, string hash, IReadOnlyDictionary<string, CommitStamp>? lastCommits, string now, bool inTestProject)
     {
         var unchanged = previous?.ContentHash == hash;
         return new FileRecord(
@@ -323,11 +324,43 @@ public sealed class Scan(ILedger ledger, ISourceTree tree, IContentHasher hasher
             now,
             lastCommits is null ? previous?.LastCommit : lastCommits.GetValueOrDefault(file.Path)?.Sha,
             lastCommits is null ? previous?.LastCommitAt : lastCommits.GetValueOrDefault(file.Path)?.At,
-            config.ExcludedReason(file.Path, file.LinguistGenerated),
+            config.ExcludedReason(file.Path, file.LinguistGenerated, inTestProject),
             null,
             unchanged ? previous!.Summary : null,
             unchanged ? previous!.SummaryHash : null);
     }
+
+    /// <summary>Whether a path belongs to a C# test project: the nearest directory above it holding a project file decides, and a project file that cannot be read is not a test project (D79).</summary>
+    private async Task<Func<string, bool>> TestProjectsAsync(IReadOnlyList<SourceFile> files, CancellationToken cancellationToken)
+    {
+        var owners = new Dictionary<string, bool>(StringComparer.Ordinal);
+        foreach (var project in files.Where(f => f.Path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)))
+        {
+            bool isTest;
+            try
+            {
+                isTest = TestFiles.IsTestProject(await tree.ReadFileAsync(project.Path, cancellationToken));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                isTest = false;
+            }
+
+            var directory = DirectoryOf(project.Path);
+            owners[directory] = owners.GetValueOrDefault(directory) || isTest;
+        }
+
+        return path =>
+        {
+            for (var directory = DirectoryOf(path); ; directory = DirectoryOf(directory))
+            {
+                if (owners.TryGetValue(directory, out var isTest)) return isTest;
+                if (directory.Length == 0) return false;
+            }
+        };
+    }
+
+    private static string DirectoryOf(string path) => path.LastIndexOf('/') is var slash and >= 0 ? path[..slash] : "";
 
     private static UnitStatus StatusFor(Unit? previous, string fingerprint, string lensHash)
     {

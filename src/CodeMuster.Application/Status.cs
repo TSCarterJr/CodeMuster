@@ -38,6 +38,7 @@ public sealed class Status(ILedger ledger, Config config)
             vulnerable)
         {
             Skipped = units.Count(u => u.Status == UnitStatus.Skipped),
+            TestFiles = files.Count(f => f.ExcludedReason == Config.TestReason && f.DeletedAt is null),
             UxStatus = !config.UserExperience.Enabled ? null : run is null ? "UX: no scan yet" : uxUnits.Count == 0 ? "UX: not applicable (no UI targets in the configured scope)"
                 : $"UX: browser evidence recorded for {reviewed}/{uxUnits.Count} UI targets; {uxUnits.Count - reviewed} incomplete",
             UxIncomplete = config.UserExperience.Enabled && reviewed < uxUnits.Count,
